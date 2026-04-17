@@ -34,30 +34,35 @@ pub struct ConstDecl {
     pub name: String,
     pub ty: TypeExpr,
     pub value: Literal,
+    pub doc: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumDef {
     pub name: String,
     pub variants: Vec<EnumVariant>,
+    pub doc: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumVariant {
     pub name: String,
     pub value: Option<i64>,
+    pub doc: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDef {
     pub name: String,
     pub fields: Vec<FieldDef>,
+    pub doc: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageDef {
     pub name: String,
     pub fields: Vec<FieldDef>,
+    pub doc: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,6 +71,7 @@ pub struct FieldDef {
     pub optional: bool,
     pub ty: TypeExpr,
     pub default: Option<Literal>,
+    pub doc: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -158,43 +164,49 @@ fn build_import(pair: Pair<Rule>) -> ImportDecl {
 }
 
 fn build_const(pair: Pair<Rule>) -> ConstDecl {
-    let mut inner = pair.into_inner();
+    let mut inner = pair.into_inner().peekable();
+    let doc   = extract_doc(&mut inner);
     let name  = inner.next().unwrap().as_str().to_string();
     let ty    = build_type_expr(inner.next().unwrap());
     let value = build_literal(inner.next().unwrap());
-    ConstDecl { name, ty, value }
+    ConstDecl { name, ty, value, doc }
 }
 
 fn build_enum(pair: Pair<Rule>) -> EnumDef {
-    let mut inner = pair.into_inner();
+    let mut inner = pair.into_inner().peekable();
+    let doc      = extract_doc(&mut inner);
     let name     = inner.next().unwrap().as_str().to_string();
     let variants = inner.map(build_enum_variant).collect();
-    EnumDef { name, variants }
+    EnumDef { name, variants, doc }
 }
 
 fn build_enum_variant(pair: Pair<Rule>) -> EnumVariant {
-    let mut inner = pair.into_inner();
+    let mut inner = pair.into_inner().peekable();
+    let doc   = extract_doc(&mut inner);
     let name  = inner.next().unwrap().as_str().to_string();
     let value = inner.next().map(|p| p.as_str().parse::<i64>().unwrap());
-    EnumVariant { name, value }
+    EnumVariant { name, value, doc }
 }
 
 fn build_struct(pair: Pair<Rule>) -> StructDef {
-    let mut inner = pair.into_inner();
+    let mut inner = pair.into_inner().peekable();
+    let doc    = extract_doc(&mut inner);
     let name   = inner.next().unwrap().as_str().to_string();
     let fields = inner.map(build_field).collect();
-    StructDef { name, fields }
+    StructDef { name, fields, doc }
 }
 
 fn build_message(pair: Pair<Rule>) -> MessageDef {
-    let mut inner = pair.into_inner();
+    let mut inner = pair.into_inner().peekable();
+    let doc    = extract_doc(&mut inner);
     let name   = inner.next().unwrap().as_str().to_string();
     let fields = inner.map(build_field).collect();
-    MessageDef { name, fields }
+    MessageDef { name, fields, doc }
 }
 
 fn build_field(pair: Pair<Rule>) -> FieldDef {
-    let mut inner = pair.into_inner();
+    let mut inner = pair.into_inner().peekable();
+    let doc  = extract_doc(&mut inner);
     let name = inner.next().unwrap().as_str().to_string();
 
     let next = inner.next().unwrap();
@@ -207,7 +219,24 @@ fn build_field(pair: Pair<Rule>) -> FieldDef {
     let ty      = build_type_expr(type_pair);
     let default = inner.next().map(build_literal);
 
-    FieldDef { name, optional, ty, default }
+    FieldDef { name, optional, ty, default, doc }
+}
+
+/// Consume a leading `doc_block` (if present) and return the trimmed doc lines.
+/// Each raw `doc_comment` string looks like `"## some text"` — the `##` prefix is stripped.
+fn extract_doc<'i>(
+    inner: &mut std::iter::Peekable<impl Iterator<Item = Pair<'i, Rule>>>,
+) -> Vec<String> {
+    if inner.peek().map(|p| p.as_rule()) == Some(Rule::doc_block) {
+        inner
+            .next()
+            .unwrap()
+            .into_inner()
+            .map(|p| p.as_str().strip_prefix("##").unwrap_or("").trim().to_string())
+            .collect()
+    } else {
+        vec![]
+    }
 }
 
 fn build_type_expr(pair: Pair<Rule>) -> TypeExpr {
@@ -366,6 +395,7 @@ mod tests {
                 name: "PI".into(),
                 ty: TypeExpr { base: BaseType::Primitive(PrimitiveType::F64), array: None },
                 value: Literal::Float(3.14),
+                doc: vec![],
             })
         );
     }
@@ -379,6 +409,7 @@ mod tests {
                 name: "MAX".into(),
                 ty: TypeExpr { base: BaseType::Primitive(PrimitiveType::U32), array: None },
                 value: Literal::Int(256),
+                doc: vec![],
             })
         );
     }
@@ -392,6 +423,7 @@ mod tests {
                 name: "FRAME".into(),
                 ty: TypeExpr { base: BaseType::String, array: None },
                 value: Literal::Str("world".into()),
+                doc: vec![],
             })
         );
     }
@@ -403,9 +435,9 @@ mod tests {
         let f = p("enum DriveMode { Idle = 0  Forward = 1  Error = 2 }");
         let Item::Enum(e) = &f.items[0] else { panic!() };
         assert_eq!(e.name, "DriveMode");
-        assert_eq!(e.variants[0], EnumVariant { name: "Idle".into(),    value: Some(0) });
-        assert_eq!(e.variants[1], EnumVariant { name: "Forward".into(), value: Some(1) });
-        assert_eq!(e.variants[2], EnumVariant { name: "Error".into(),   value: Some(2) });
+        assert_eq!(e.variants[0], EnumVariant { name: "Idle".into(),    value: Some(0), doc: vec![] });
+        assert_eq!(e.variants[1], EnumVariant { name: "Forward".into(), value: Some(1), doc: vec![] });
+        assert_eq!(e.variants[2], EnumVariant { name: "Error".into(),   value: Some(2), doc: vec![] });
     }
 
     #[test]

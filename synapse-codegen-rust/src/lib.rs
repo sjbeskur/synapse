@@ -28,6 +28,7 @@ pub fn generate(file: &SynFile) -> String {
 // ── Const ─────────────────────────────────────────────────────────────────────
 
 fn emit_const(out: &mut String, c: &ConstDecl) {
+    emit_doc(out, &c.doc, "");
     let ty  = scalar_type_str(&c.ty);
     let val = literal_str(&c.value);
     out.push_str(&format!("pub const {}: {} = {};\n\n", c.name, ty, val));
@@ -36,9 +37,11 @@ fn emit_const(out: &mut String, c: &ConstDecl) {
 // ── Enum ──────────────────────────────────────────────────────────────────────
 
 fn emit_enum(out: &mut String, e: &EnumDef) {
+    emit_doc(out, &e.doc, "");
     out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
     out.push_str(&format!("pub enum {} {{\n", e.name));
     for v in &e.variants {
+        emit_doc(out, &v.doc, "    ");
         match v.value {
             Some(n) => out.push_str(&format!("    {} = {},\n", v.name, n)),
             None    => out.push_str(&format!("    {},\n", v.name)),
@@ -50,6 +53,7 @@ fn emit_enum(out: &mut String, e: &EnumDef) {
 // ── Struct ────────────────────────────────────────────────────────────────────
 
 fn emit_struct(out: &mut String, s: &StructDef) {
+    emit_doc(out, &s.doc, "");
     out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
     out.push_str(&format!("pub struct {} {{\n", s.name));
     for f in &s.fields {
@@ -61,6 +65,7 @@ fn emit_struct(out: &mut String, s: &StructDef) {
 // ── Message ───────────────────────────────────────────────────────────────────
 
 fn emit_message(out: &mut String, m: &MessageDef) {
+    emit_doc(out, &m.doc, "");
     out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
     out.push_str(&format!("pub struct {} {{\n", m.name));
     for f in &m.fields {
@@ -72,8 +77,21 @@ fn emit_message(out: &mut String, m: &MessageDef) {
 // ── Field ─────────────────────────────────────────────────────────────────────
 
 fn emit_field(out: &mut String, f: &FieldDef) {
+    emit_doc(out, &f.doc, "    ");
     let ty_str = field_type_str(&f.ty, f.optional);
     out.push_str(&format!("    pub {}: {},\n", f.name, ty_str));
+}
+
+// ── Doc helpers ───────────────────────────────────────────────────────────────
+
+fn emit_doc(out: &mut String, doc: &[String], indent: &str) {
+    for line in doc {
+        if line.is_empty() {
+            out.push_str(&format!("{indent}///\n"));
+        } else {
+            out.push_str(&format!("{indent}/// {line}\n"));
+        }
+    }
 }
 
 // ── Type helpers ──────────────────────────────────────────────────────────────

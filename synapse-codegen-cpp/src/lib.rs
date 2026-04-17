@@ -46,6 +46,7 @@ pub fn generate_types(file: &SynFile) -> String {
 // ── Const ─────────────────────────────────────────────────────────────────────
 
 fn emit_const(out: &mut String, c: &ConstDecl) {
+    emit_doc(out, &c.doc, "");
     let ty  = base_type_str(&c.ty.base);
     let val = literal_str(&c.value);
     out.push_str(&format!("static constexpr {} {} = {};\n\n", ty, c.name, val));
@@ -54,8 +55,10 @@ fn emit_const(out: &mut String, c: &ConstDecl) {
 // ── Enum ──────────────────────────────────────────────────────────────────────
 
 fn emit_enum(out: &mut String, e: &EnumDef) {
+    emit_doc(out, &e.doc, "");
     out.push_str(&format!("enum class {} : int32_t {{\n", e.name));
     for v in &e.variants {
+        emit_doc(out, &v.doc, "    ");
         match v.value {
             Some(n) => out.push_str(&format!("    {} = {},\n", v.name, n)),
             None    => out.push_str(&format!("    {},\n", v.name)),
@@ -67,6 +70,7 @@ fn emit_enum(out: &mut String, e: &EnumDef) {
 // ── Struct ────────────────────────────────────────────────────────────────────
 
 fn emit_struct(out: &mut String, s: &StructDef) {
+    emit_doc(out, &s.doc, "");
     out.push_str(&format!("struct {} {{\n", s.name));
     for f in &s.fields {
         emit_field(out, f);
@@ -77,7 +81,7 @@ fn emit_struct(out: &mut String, s: &StructDef) {
 // ── Message ───────────────────────────────────────────────────────────────────
 
 fn emit_message(out: &mut String, m: &MessageDef) {
-    out.push_str("// message\n");
+    emit_doc(out, &m.doc, "");
     out.push_str(&format!("struct {} {{\n", m.name));
     for f in &m.fields {
         emit_field(out, f);
@@ -88,6 +92,7 @@ fn emit_message(out: &mut String, m: &MessageDef) {
 // ── Field ─────────────────────────────────────────────────────────────────────
 
 fn emit_field(out: &mut String, f: &FieldDef) {
+    emit_doc(out, &f.doc, "    ");
     // C/C++ fixed arrays require `T name[N]` syntax; Optional<T[N]> is not valid C++
     if let Some(ArraySuffix::Fixed(n)) = &f.ty.array {
         let base = base_type_str(&f.ty.base);
@@ -153,6 +158,18 @@ fn primitive_str(p: PrimitiveType) -> &'static str {
         PrimitiveType::U64   => "uint64_t",
         PrimitiveType::Bool  => "bool",
         PrimitiveType::Bytes => "Span<uint8_t>",
+    }
+}
+
+// ── Doc helpers ───────────────────────────────────────────────────────────────
+
+fn emit_doc(out: &mut String, doc: &[String], indent: &str) {
+    for line in doc {
+        if line.is_empty() {
+            out.push_str(&format!("{indent}///\n"));
+        } else {
+            out.push_str(&format!("{indent}/// {line}\n"));
+        }
     }
 }
 
@@ -327,7 +344,6 @@ mod tests {
         let out = codegen(src);
         assert!(out.contains("enum class DriveMode : int32_t {"));
         assert!(out.contains("static constexpr double MAX_SPEED = 2.5;"));
-        assert!(out.contains("// message"));
         assert!(out.contains("struct RobotState {"));
         assert!(out.contains("    DriveMode mode;"));
         assert!(out.contains("    geometry::Point position;"));

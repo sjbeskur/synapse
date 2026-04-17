@@ -317,14 +317,14 @@ mod synapse_tests {
     #[test]
     fn line_comments() {
         assert!(parses_file(
-            "// top comment\nstruct S { x: f64 // x coord\n}"
+            "# top comment\nstruct S { x: f64 # x coord\n}"
         ));
     }
 
     #[test]
-    fn block_comments() {
+    fn doc_comments() {
         assert!(parses_file(
-            "/* header */ struct S { /* inline */ x: f64 }"
+            "## A struct\nstruct S {\n## x field\nx: f64\n}"
         ));
     }
 

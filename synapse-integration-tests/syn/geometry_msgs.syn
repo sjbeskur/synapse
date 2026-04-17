@@ -2,7 +2,7 @@ namespace geometry_msgs
 
 import "std_msgs.syn"
 
-// ── Primitives ────────────────────────────────────────────────────────────────
+# ── Primitives ────────────────────────────────────────────────────────────────
 
 struct Vector3 {
     x: f64
@@ -29,7 +29,7 @@ struct Quaternion {
     w: f64
 }
 
-// ── Accel ─────────────────────────────────────────────────────────────────────
+# ── Accel ─────────────────────────────────────────────────────────────────────
 
 struct Accel {
     linear:  Vector3
@@ -51,7 +51,7 @@ message AccelWithCovarianceStamped {
     accel:  AccelWithCovariance
 }
 
-// ── Inertia ───────────────────────────────────────────────────────────────────
+# ── Inertia ───────────────────────────────────────────────────────────────────
 
 struct Inertia {
     m:   f64
@@ -69,14 +69,14 @@ message InertiaStamped {
     inertia: Inertia
 }
 
-// ── Point ─────────────────────────────────────────────────────────────────────
+# ── Point ─────────────────────────────────────────────────────────────────────
 
 message PointStamped {
     header: std_msgs::Header
     point:  Point
 }
 
-// ── Polygon ───────────────────────────────────────────────────────────────────
+# ── Polygon ───────────────────────────────────────────────────────────────────
 
 struct Polygon {
     points: Point32[]
@@ -87,7 +87,7 @@ message PolygonStamped {
     polygon: Polygon
 }
 
-// ── Pose ──────────────────────────────────────────────────────────────────────
+# ── Pose ──────────────────────────────────────────────────────────────────────
 
 struct Pose {
     position:    Point
@@ -120,14 +120,14 @@ message PoseWithCovarianceStamped {
     pose:   PoseWithCovariance
 }
 
-// ── Quaternion ────────────────────────────────────────────────────────────────
+# ── Quaternion ────────────────────────────────────────────────────────────────
 
 message QuaternionStamped {
     header:     std_msgs::Header
     quaternion: Quaternion
 }
 
-// ── Transform ─────────────────────────────────────────────────────────────────
+# ── Transform ─────────────────────────────────────────────────────────────────
 
 struct Transform {
     translation: Vector3
@@ -140,7 +140,7 @@ message TransformStamped {
     transform:      Transform
 }
 
-// ── Twist ─────────────────────────────────────────────────────────────────────
+# ── Twist ─────────────────────────────────────────────────────────────────────
 
 struct Twist {
     linear:  Vector3
@@ -162,14 +162,14 @@ message TwistWithCovarianceStamped {
     twist:  TwistWithCovariance
 }
 
-// ── Vector3 ───────────────────────────────────────────────────────────────────
+# ── Vector3 ───────────────────────────────────────────────────────────────────
 
 message Vector3Stamped {
     header: std_msgs::Header
     vector: Vector3
 }
 
-// ── Wrench ────────────────────────────────────────────────────────────────────
+# ── Wrench ────────────────────────────────────────────────────────────────────
 
 struct Wrench {
     force:  Vector3

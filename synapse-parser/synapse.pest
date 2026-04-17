@@ -6,7 +6,9 @@
 //
 //   namespace geometry
 //
+//   ## A 3-dimensional point.
 //   struct Point {
+//       ## X axis.
 //       x: f64 = 0.0
 //       y: f64 = 0.0
 //       z: f64 = 0.0
@@ -25,7 +27,7 @@
 //       position:     geometry::Point
 //       label:        string[<=64]       = "robot"
 //       sensor_data:  u8[]
-//       error_code?:  i32                // optional field
+//       error_code?:  i32                # optional field
 //   }
 
 // ============================================================
@@ -33,10 +35,13 @@
 // ============================================================
 
 WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
-COMMENT    = _{
-    "//" ~ (!("\n" | "\r") ~ ANY)*
-  | "/*" ~ (!"*/" ~ ANY)* ~ "*/"
-}
+
+// Single '#' = silent comment (like TOML).
+// '##' = doc comment — captured and forwarded to generated code.
+COMMENT = _{ "#" ~ !"#" ~ (!("\n" | "\r") ~ ANY)* }
+
+doc_comment = @{ "##" ~ (!("\n" | "\r") ~ ANY)* }
+doc_block   =  { doc_comment+ }
 
 // ============================================================
 // File
@@ -64,7 +69,7 @@ import_decl = { "import" ~ string_lit }
 namespace_decl = { "namespace" ~ scoped_ident }
 
 // const MAX: f64 = 3.14
-const_decl = { "const" ~ ident ~ ":" ~ type_expr ~ "=" ~ literal }
+const_decl = { doc_block? ~ "const" ~ ident ~ ":" ~ type_expr ~ "=" ~ literal }
 
 // ============================================================
 // Enum
@@ -74,24 +79,24 @@ const_decl = { "const" ~ ident ~ ":" ~ type_expr ~ "=" ~ literal }
 //     Idle    = 0
 //     Moving  = 1
 // }
-enum_def     = { "enum" ~ ident ~ "{" ~ enum_variant* ~ "}" }
-enum_variant = { ident ~ ("=" ~ int_lit)? }
+enum_def     = { doc_block? ~ "enum" ~ ident ~ "{" ~ enum_variant* ~ "}" }
+enum_variant = { doc_block? ~ ident ~ ("=" ~ int_lit)? }
 
 // ============================================================
 // Struct and Message
 // ============================================================
 
 // struct — plain data aggregate (no implied serialization)
-struct_def  = { "struct"  ~ ident ~ "{" ~ field* ~ "}" }
+struct_def  = { doc_block? ~ "struct"  ~ ident ~ "{" ~ field* ~ "}" }
 
 // message — serializable unit; code generators may produce serialize/deserialize logic
-message_def = { "message" ~ ident ~ "{" ~ field* ~ "}" }
+message_def = { doc_block? ~ "message" ~ ident ~ "{" ~ field* ~ "}" }
 
 // field:  Type
 // field?: Type          (optional — maps to Option<T> / std::optional<T>)
 // field:  Type = val    (with default value)
 // field?: Type = val    (optional with default)
-field = { ident ~ optional_marker? ~ ":" ~ type_expr ~ ("=" ~ literal)? }
+field = { doc_block? ~ ident ~ optional_marker? ~ ":" ~ type_expr ~ ("=" ~ literal)? }
 optional_marker = { "?" }
 
 // ============================================================
