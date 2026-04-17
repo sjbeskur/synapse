@@ -1,0 +1,12 @@
+namespace std_msgs
+
+struct Time {
+    sec:  u32
+    nsec: u32
+}
+
+struct Header {
+    seq:      u32
+    stamp:    Time
+    frame_id: string
+}

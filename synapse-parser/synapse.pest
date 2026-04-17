@@ -1,0 +1,167 @@
+// Synapse language grammar (.syn)
+//
+// Language-agnostic message/type definition for code generation targeting Rust and C++.
+//
+// Example:
+//
+//   namespace geometry
+//
+//   struct Point {
+//       x: f64 = 0.0
+//       y: f64 = 0.0
+//       z: f64 = 0.0
+//   }
+//
+//   enum DriveMode {
+//       Idle    = 0
+//       Forward = 1
+//       Error   = 2
+//   }
+//
+//   const MAX_SPEED: f64 = 2.5
+//
+//   message RobotState {
+//       mode:         DriveMode          = DriveMode::Idle
+//       position:     geometry::Point
+//       label:        string[<=64]       = "robot"
+//       sensor_data:  u8[]
+//       error_code?:  i32                // optional field
+//   }
+
+// ============================================================
+// Whitespace and comments — insignificant everywhere
+// ============================================================
+
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+COMMENT    = _{
+    "//" ~ (!("\n" | "\r") ~ ANY)*
+  | "/*" ~ (!"*/" ~ ANY)* ~ "*/"
+}
+
+// ============================================================
+// File
+// ============================================================
+
+file = { SOI ~ item* ~ EOI }
+
+item = _{
+    import_decl
+  | namespace_decl
+  | const_decl
+  | enum_def
+  | struct_def
+  | message_def
+}
+
+// ============================================================
+// Top-level declarations
+// ============================================================
+
+// import "path/to/file.syn"
+import_decl = { "import" ~ string_lit }
+
+// namespace geometry::msgs
+namespace_decl = { "namespace" ~ scoped_ident }
+
+// const MAX: f64 = 3.14
+const_decl = { "const" ~ ident ~ ":" ~ type_expr ~ "=" ~ literal }
+
+// ============================================================
+// Enum
+// ============================================================
+
+// enum Status {
+//     Idle    = 0
+//     Moving  = 1
+// }
+enum_def     = { "enum" ~ ident ~ "{" ~ enum_variant* ~ "}" }
+enum_variant = { ident ~ ("=" ~ int_lit)? }
+
+// ============================================================
+// Struct and Message
+// ============================================================
+
+// struct — plain data aggregate (no implied serialization)
+struct_def  = { "struct"  ~ ident ~ "{" ~ field* ~ "}" }
+
+// message — serializable unit; code generators may produce serialize/deserialize logic
+message_def = { "message" ~ ident ~ "{" ~ field* ~ "}" }
+
+// field:  Type
+// field?: Type          (optional — maps to Option<T> / std::optional<T>)
+// field:  Type = val    (with default value)
+// field?: Type = val    (optional with default)
+field = { ident ~ optional_marker? ~ ":" ~ type_expr ~ ("=" ~ literal)? }
+optional_marker = { "?" }
+
+// ============================================================
+// Types
+// ============================================================
+
+type_expr = { base_type ~ array_suffix? }
+
+// string before primitive: catch "string" keyword before it falls through to type_ref.
+// primitive before type_ref: prevent "i32", "f64" etc. matching as user-defined names.
+base_type = { string_type | primitive_type | type_ref }
+
+// "string" is its own base type; bounds use array_suffix: string[<=N]
+string_type = { "string" }
+
+// Primitive type names map directly to target languages:
+//   Rust: i8/i16/i32/i64/u8/u16/u32/u64/f32/f64/bool
+//   C++:  int8_t … uint64_t / float / double / bool
+//   bytes → Vec<u8> / std::vector<uint8_t>
+primitive_type = {
+    "f64" | "f32"
+  | "i64" | "i32" | "i16" | "i8"
+  | "u64" | "u32" | "u16" | "u8"
+  | "bool" | "bytes"
+}
+
+// User-defined type reference, optionally namespace-qualified
+// e.g.  Point   geometry::Point   nav::msgs::Odometry
+type_ref = { scoped_ident }
+
+// Array suffixes — same syntax for all base types including string:
+//   []      dynamic (unbounded)     Vec<T>  / std::vector<T>
+//   [N]     fixed-size              [T; N]  / std::array<T, N>
+//   [<=N]   bounded dynamic         Vec<T> with max N / std::vector<T>
+//
+// For string: string[<=64] means a string of at most 64 chars (not array-of-strings)
+array_suffix = { "[" ~ array_size? ~ "]" }
+array_size   = { bounded_size | pos_int }
+bounded_size = { "<=" ~ pos_int }
+
+// ============================================================
+// Identifiers
+// ============================================================
+
+ident        = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+scoped_ident =  { ident ~ ("::" ~ ident)* }
+
+pos_int = @{ "0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+
+// ============================================================
+// Literals
+// ============================================================
+
+// float before int: "1.0" must not match as integer "1"
+// ident_lit last: fallback for enum variant refs (Idle, DriveMode::Idle)
+literal = { float_lit | int_lit | bool_lit | string_lit | ident_lit }
+
+float_lit = @{
+    "-"? ~ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ ~ float_exp?
+  | "-"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT* ~ float_exp?
+  | "-"? ~ ASCII_DIGIT+ ~ float_exp
+}
+float_exp = @{ ^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+ }
+
+int_lit    = @{ "-"? ~ ASCII_DIGIT+ }
+
+// Word-boundary check prevents "true_val" matching as bool "true"
+bool_lit   = @{ ("true" | "false") ~ !(ASCII_ALPHANUMERIC | "_") }
+
+string_lit = @{ "\"" ~ ((!("\"" | "\\") ~ ANY) | "\\" ~ ANY)* ~ "\"" }
+
+// Enum variant or constant reference: Idle, Status::Idle, pkg::Status::Idle
+ident_lit = { scoped_ident }

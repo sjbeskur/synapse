@@ -1,0 +1,182 @@
+namespace geometry_msgs
+
+import "std_msgs.syn"
+
+// ── Primitives ────────────────────────────────────────────────────────────────
+
+struct Vector3 {
+    x: f64
+    y: f64
+    z: f64
+}
+
+struct Point {
+    x: f64
+    y: f64
+    z: f64
+}
+
+struct Point32 {
+    x: f32
+    y: f32
+    z: f32
+}
+
+struct Quaternion {
+    x: f64
+    y: f64
+    z: f64
+    w: f64
+}
+
+// ── Accel ─────────────────────────────────────────────────────────────────────
+
+struct Accel {
+    linear:  Vector3
+    angular: Vector3
+}
+
+message AccelStamped {
+    header: std_msgs::Header
+    accel:  Accel
+}
+
+struct AccelWithCovariance {
+    accel:      Accel
+    covariance: f64[36]
+}
+
+message AccelWithCovarianceStamped {
+    header: std_msgs::Header
+    accel:  AccelWithCovariance
+}
+
+// ── Inertia ───────────────────────────────────────────────────────────────────
+
+struct Inertia {
+    m:   f64
+    com: Vector3
+    ixx: f64
+    ixy: f64
+    ixz: f64
+    iyy: f64
+    iyz: f64
+    izz: f64
+}
+
+message InertiaStamped {
+    header:  std_msgs::Header
+    inertia: Inertia
+}
+
+// ── Point ─────────────────────────────────────────────────────────────────────
+
+message PointStamped {
+    header: std_msgs::Header
+    point:  Point
+}
+
+// ── Polygon ───────────────────────────────────────────────────────────────────
+
+struct Polygon {
+    points: Point32[]
+}
+
+message PolygonStamped {
+    header:  std_msgs::Header
+    polygon: Polygon
+}
+
+// ── Pose ──────────────────────────────────────────────────────────────────────
+
+struct Pose {
+    position:    Point
+    orientation: Quaternion
+}
+
+struct Pose2D {
+    x:     f64
+    y:     f64
+    theta: f64
+}
+
+message PoseArray {
+    header: std_msgs::Header
+    poses:  Pose[]
+}
+
+message PoseStamped {
+    header: std_msgs::Header
+    pose:   Pose
+}
+
+struct PoseWithCovariance {
+    pose:       Pose
+    covariance: f64[36]
+}
+
+message PoseWithCovarianceStamped {
+    header: std_msgs::Header
+    pose:   PoseWithCovariance
+}
+
+// ── Quaternion ────────────────────────────────────────────────────────────────
+
+message QuaternionStamped {
+    header:     std_msgs::Header
+    quaternion: Quaternion
+}
+
+// ── Transform ─────────────────────────────────────────────────────────────────
+
+struct Transform {
+    translation: Vector3
+    rotation:    Quaternion
+}
+
+message TransformStamped {
+    header:         std_msgs::Header
+    child_frame_id: string
+    transform:      Transform
+}
+
+// ── Twist ─────────────────────────────────────────────────────────────────────
+
+struct Twist {
+    linear:  Vector3
+    angular: Vector3
+}
+
+message TwistStamped {
+    header: std_msgs::Header
+    twist:  Twist
+}
+
+struct TwistWithCovariance {
+    twist:      Twist
+    covariance: f64[36]
+}
+
+message TwistWithCovarianceStamped {
+    header: std_msgs::Header
+    twist:  TwistWithCovariance
+}
+
+// ── Vector3 ───────────────────────────────────────────────────────────────────
+
+message Vector3Stamped {
+    header: std_msgs::Header
+    vector: Vector3
+}
+
+// ── Wrench ────────────────────────────────────────────────────────────────────
+
+struct Wrench {
+    force:  Vector3
+    torque: Vector3
+}
+
+message WrenchStamped {
+    header: std_msgs::Header
+    wrench: Wrench
+}

@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "synapse-parser",
+    "synapse-codegen-rust",
+    "synapse-codegen-cpp",
+    "synapse",
+    "synapse-integration-tests",
+]
+resolver = "2"

@@ -1,0 +1,70 @@
+// Synapse example — geometry and robot state definitions
+
+// ── Geometry primitives ──────────────────────────────────────
+
+namespace geometry
+
+struct Point {
+    x: f64 = 0.0
+    y: f64 = 0.0
+    z: f64 = 0.0
+}
+
+struct Quaternion {
+    x: f64 = 0.0
+    y: f64 = 0.0
+    z: f64 = 0.0
+    w: f64 = 1.0
+}
+
+struct Pose {
+    position:    Point
+    orientation: Quaternion
+}
+
+struct Twist {
+    linear:  Point
+    angular: Point
+}
+
+// ── Robot state ──────────────────────────────────────────────
+
+namespace robot
+
+import "geometry.syn"
+
+enum DriveMode {
+    Idle    = 0
+    Forward = 1
+    Reverse = 2
+    Turning = 3
+    Error   = 4
+}
+
+const MAX_SPEED:    f64 = 2.5
+const MAX_WAYPOINTS: u32 = 256
+
+message Header {
+    seq:   u32
+    stamp: u64
+    frame: string[<=64] = "world"
+}
+
+message Odometry {
+    header:   Header
+    pose:     geometry::Pose
+    velocity: geometry::Twist
+    // 6×6 covariance matrix (row-major)
+    covariance: f64[36]
+}
+
+message RobotState {
+    header:      Header
+    mode:        DriveMode        = DriveMode::Idle
+    odometry:    Odometry
+    battery:     f32              = 100.0
+    label:       string[<=64]     = "robot"
+    sensor_data: u8[]
+    waypoints:   geometry::Point[<=256]
+    error_code?: i32              // present only when mode == Error
+}

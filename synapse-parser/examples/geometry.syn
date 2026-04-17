@@ -1,0 +1,29 @@
+
+struct Vector3 {
+    x: f64 = 0.0
+    y: f64 = 0.0
+    z: f64 = 0.0
+}
+
+
+struct Quaternion{
+    xyz: Vector3
+    w: f64 = 0.0
+}
+
+struct Twist{
+    linear: Vector3 
+    angular: Vector3 
+}
+
+struct Twist{
+
+    # This expresses velocity in free space with uncertainty.
+    twist: Twist 
+
+    # Row-major representation of the 6x6 covariance matrix
+    # The orientation parameters use a fixed-axis representation.
+    # In order, the parameters are:
+    # (x, y, z, rotation about X axis, rotation about Y axis, rotation about Z axis)
+    covariance: float64[36] 
+}

@@ -1,0 +1,13 @@
+[package]
+name = "synapse"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "synapse"
+path = "src/main.rs"
+
+[dependencies]
+synapse-parser        = { path = "../synapse-parser" }
+synapse-codegen-rust  = { path = "../synapse-codegen-rust" }
+synapse-codegen-cpp   = { path = "../synapse-codegen-cpp" }
