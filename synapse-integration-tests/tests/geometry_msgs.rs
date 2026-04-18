@@ -1,5 +1,6 @@
 use std::{fs, path::Path, process::Command};
 use synapse_parser::ast::parse;
+use synapse_codegen_cfs::RustOptions;
 
 fn syn_dir() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("syn")
@@ -141,6 +142,42 @@ fn rust_compiles() {
     assert!(status.success(), "Rust compilation of generated code failed");
 }
 
+// ── Rust no_std compile ────────────────────────────────────────────────────────
+
+#[test]
+fn rust_nostd_compiles() {
+    let std_src = synapse_codegen_rust::generate_nostd(&read_and_parse("std_msgs.syn"));
+    let geo_src = synapse_codegen_rust::generate_nostd(&read_and_parse("geometry_msgs.syn"));
+
+    // Strip the full preamble from each module body — emit it once at the top level.
+    let preamble = synapse_codegen_rust::NOSTD_PREAMBLE;
+    let strip = |s: &str| s.replacen(preamble, "", 1);
+
+    let combined = format!(
+        "#![no_std]\n\
+         #![allow(dead_code, unused_imports)]\n\
+         {types}\
+         pub mod std_msgs {{\n    use super::Slice;\n{std}\n}}\n\
+         pub mod geometry_msgs {{\n    use super::std_msgs;\n    use super::Slice;\n{geo}\n}}\n",
+        // Only the Slice definition, without the #![no_std] line
+        types = preamble.replace("#![no_std]\n", ""),
+        std = strip(&std_src),
+        geo = strip(&geo_src),
+    );
+
+    let tmp = std::env::temp_dir().join("synapse_geo_nostd_integration.rs");
+    fs::write(&tmp, &combined).unwrap();
+
+    let status = Command::new("rustc")
+        .args(["--edition", "2021", "--crate-type", "lib", "--out-dir"])
+        .arg(std::env::temp_dir())
+        .arg(&tmp)
+        .status()
+        .expect("rustc not found");
+
+    assert!(status.success(), "no_std Rust compilation of generated code failed");
+}
+
 // ── C++ compile ────────────────────────────────────────────────────────────────
 
 fn find_cpp_compiler() -> Option<&'static str> {
@@ -186,7 +223,105 @@ fn cpp_compiles() {
     assert!(status.success(), "C++ compilation of generated code failed");
 }
 
+// ── cFS C codegen ──────────────────────────────────────────────────────────────
+
+#[test]
+fn cfs_codegen_geometry_msgs() {
+    let out = synapse_codegen_cfs::generate(&read_and_parse("geometry_msgs.syn"));
+
+    // All 14 stamped messages get MID defines
+    for (name, mid) in STAMPED_MIDS {
+        let screaming = to_screaming_snake(name);
+        assert!(
+            out.contains(&format!("#define {}_MID  {}", screaming, mid)),
+            "missing MID define for {name}"
+        );
+    }
+
+    // All stamped messages get telemetry headers (all are tlm — bit 12 clear)
+    assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
+    assert!(!out.contains("CFE_MSG_CommandHeader_t Header;"));
+
+    // Spot-check a few structs
+    assert!(out.contains("} AccelStamped_t;"));
+    assert!(out.contains("} TransformStamped_t;"));
+    assert!(out.contains("} WrenchStamped_t;"));
+}
+
+// ── cFS Rust codegen ───────────────────────────────────────────────────────────
+
+#[test]
+fn cfs_rust_codegen_geometry_msgs() {
+    let opts = RustOptions::default();
+    let out = synapse_codegen_cfs::generate_rust(&read_and_parse("geometry_msgs.syn"), &opts);
+
+    // MID consts — Rust uses no U suffix
+    for (name, mid_hex) in STAMPED_HEX {
+        let screaming = to_screaming_snake(name);
+        assert!(
+            out.contains(&format!("pub const {}_MID: u16 = {};", screaming, mid_hex)),
+            "missing Rust MID const for {name}"
+        );
+    }
+
+    // All stamped messages are telemetry
+    assert!(out.contains("pub header: cfs::TelemetryHeader,"));
+    assert!(!out.contains("pub header: cfs::CommandHeader,"));
+
+    // repr(C) on every message
+    assert!(out.contains("#[repr(C)]"));
+
+    // Spot-check structs
+    assert!(out.contains("pub struct PoseStamped {"));
+    assert!(out.contains("pub struct TransformStamped {"));
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+fn to_screaming_snake(name: &str) -> String {
+    let mut out = String::new();
+    for (i, ch) in name.chars().enumerate() {
+        if ch.is_uppercase() && i > 0 { out.push('_'); }
+        out.push(ch.to_ascii_uppercase());
+    }
+    out
+}
+
+/// All 14 stamped messages with their C MID strings (U suffix).
+const STAMPED_MIDS: &[(&str, &str)] = &[
+    ("AccelStamped",                  "0x0800U"),
+    ("AccelWithCovarianceStamped",    "0x0801U"),
+    ("InertiaStamped",                "0x0802U"),
+    ("PointStamped",                  "0x0803U"),
+    ("PolygonStamped",                "0x0804U"),
+    ("PoseArray",                     "0x0805U"),
+    ("PoseStamped",                   "0x0806U"),
+    ("PoseWithCovarianceStamped",     "0x0807U"),
+    ("QuaternionStamped",             "0x0808U"),
+    ("TransformStamped",              "0x0809U"),
+    ("TwistStamped",                  "0x080AU"),
+    ("TwistWithCovarianceStamped",    "0x080BU"),
+    ("Vector3Stamped",                "0x080CU"),
+    ("WrenchStamped",                 "0x080DU"),
+];
+
+/// Same messages with Rust hex literals (no U suffix).
+const STAMPED_HEX: &[(&str, &str)] = &[
+    ("AccelStamped",                  "0x0800"),
+    ("AccelWithCovarianceStamped",    "0x0801"),
+    ("InertiaStamped",                "0x0802"),
+    ("PointStamped",                  "0x0803"),
+    ("PolygonStamped",                "0x0804"),
+    ("PoseArray",                     "0x0805"),
+    ("PoseStamped",                   "0x0806"),
+    ("PoseWithCovarianceStamped",     "0x0807"),
+    ("QuaternionStamped",             "0x0808"),
+    ("TransformStamped",              "0x0809"),
+    ("TwistStamped",                  "0x080A"),
+    ("TwistWithCovarianceStamped",    "0x080B"),
+    ("Vector3Stamped",                "0x080C"),
+    ("WrenchStamped",                 "0x080D"),
+];
 
 /// All 29 ROS geometry_msgs type names.
 const ROS_TYPE_NAMES: &[&str] = &[

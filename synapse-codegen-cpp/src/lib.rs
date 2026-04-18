@@ -182,6 +182,7 @@ fn literal_str(lit: &Literal) -> String {
             if s.contains('.') || s.contains('e') { s } else { format!("{}.0", s) }
         }
         Literal::Int(n)          => n.to_string(),
+        Literal::Hex(n)          => format!("0x{:X}U", n),
         Literal::Bool(b)         => b.to_string(),
         Literal::Str(s)          => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),

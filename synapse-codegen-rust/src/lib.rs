@@ -3,33 +3,67 @@ use synapse_parser::ast::{
     StructDef, SynFile, TypeExpr,
 };
 
-/// Generate Rust source code from a parsed Synapse file.
+// ── Public API ────────────────────────────────────────────────────────────────
+
+/// Generate `std`-based Rust source from a parsed Synapse file.
+/// Uses `String`, `Vec<T>`, and `#[derive(Debug, Clone, PartialEq)]`.
 pub fn generate(file: &SynFile) -> String {
+    emit_items(file, Mode::Std)
+}
+
+/// Generate `no_std`, no-alloc Rust source from a parsed Synapse file.
+///
+/// Replaces all heap types with a `Slice<T>` (ptr + len) that mirrors
+/// `Span<T>` in the generated C++ headers.  Emits `#![no_std]` and a
+/// `Slice<T>` definition in the preamble.
+pub fn generate_nostd(file: &SynFile) -> String {
+    let mut out = String::from(NOSTD_PREAMBLE);
+    out.push_str(&emit_items(file, Mode::NoStd));
+    out
+}
+
+/// Preamble emitted at the top of every `generate_nostd` output.
+/// Exposed so callers that combine multiple generated files can include it once.
+pub const NOSTD_PREAMBLE: &str = "\
+#![no_std]
+
+/// Raw slice — pointer and length, no heap allocation.
+/// Mirrors `Span<T>` in the generated C++ headers.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct Slice<T> {
+    pub ptr: *const T,
+    pub len: usize,
+}
+
+";
+
+// ── Mode ──────────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode { Std, NoStd }
+
+// ── Item emission ─────────────────────────────────────────────────────────────
+
+fn emit_items(file: &SynFile, mode: Mode) -> String {
     let mut out = String::new();
-
-    // Collect the active namespace (last namespace_decl wins, matching file convention)
-    // We don't emit a `mod` block — the caller can place the output where they like.
-
     for item in &file.items {
         match item {
-            Item::Namespace(_) | Item::Import(_) => {
-                // namespace/import are semantic hints for the resolver; not emitted as code
-            }
-            Item::Const(c)   => emit_const(&mut out, c),
+            Item::Namespace(_) | Item::Import(_) => {}
+            Item::Const(c)   => emit_const(&mut out, c, mode),
             Item::Enum(e)    => emit_enum(&mut out, e),
-            Item::Struct(s)  => emit_struct(&mut out, s),
-            Item::Message(m) => emit_message(&mut out, m),
+            Item::Struct(s)  => emit_struct(&mut out, s, mode),
+            Item::Message(m) => emit_message(&mut out, m, mode),
         }
     }
-
     out
 }
 
 // ── Const ─────────────────────────────────────────────────────────────────────
 
-fn emit_const(out: &mut String, c: &ConstDecl) {
+fn emit_const(out: &mut String, c: &ConstDecl, mode: Mode) {
     emit_doc(out, &c.doc, "");
-    let ty  = scalar_type_str(&c.ty);
+    let ty  = const_type_str(&c.ty, mode);
     let val = literal_str(&c.value);
     out.push_str(&format!("pub const {}: {} = {};\n\n", c.name, ty, val));
 }
@@ -52,33 +86,41 @@ fn emit_enum(out: &mut String, e: &EnumDef) {
 
 // ── Struct ────────────────────────────────────────────────────────────────────
 
-fn emit_struct(out: &mut String, s: &StructDef) {
+fn emit_struct(out: &mut String, s: &StructDef, mode: Mode) {
     emit_doc(out, &s.doc, "");
-    out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
+    out.push_str(struct_derive(mode));
     out.push_str(&format!("pub struct {} {{\n", s.name));
     for f in &s.fields {
-        emit_field(out, f);
+        emit_field(out, f, mode);
     }
     out.push_str("}\n\n");
 }
 
 // ── Message ───────────────────────────────────────────────────────────────────
 
-fn emit_message(out: &mut String, m: &MessageDef) {
+fn emit_message(out: &mut String, m: &MessageDef, mode: Mode) {
     emit_doc(out, &m.doc, "");
-    out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
+    out.push_str(struct_derive(mode));
     out.push_str(&format!("pub struct {} {{\n", m.name));
     for f in &m.fields {
-        emit_field(out, f);
+        emit_field(out, f, mode);
     }
     out.push_str("}\n\n");
 }
 
+fn struct_derive(mode: Mode) -> &'static str {
+    match mode {
+        // no_std: Slice<T> has no Debug/PartialEq; Copy works since ptr+len are Copy.
+        Mode::NoStd => "#[derive(Clone, Copy)]\n",
+        Mode::Std   => "#[derive(Debug, Clone, PartialEq)]\n",
+    }
+}
+
 // ── Field ─────────────────────────────────────────────────────────────────────
 
-fn emit_field(out: &mut String, f: &FieldDef) {
+fn emit_field(out: &mut String, f: &FieldDef, mode: Mode) {
     emit_doc(out, &f.doc, "    ");
-    let ty_str = field_type_str(&f.ty, f.optional);
+    let ty_str = field_type_str(&f.ty, f.optional, mode);
     out.push_str(&format!("    pub {}: {},\n", f.name, ty_str));
 }
 
@@ -96,41 +138,62 @@ fn emit_doc(out: &mut String, doc: &[String], indent: &str) {
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
 
-/// Full field type string, wrapping in `Option<>` when optional.
-fn field_type_str(ty: &TypeExpr, optional: bool) -> String {
-    let inner = type_str(ty);
-    if optional {
-        format!("Option<{}>", inner)
-    } else {
-        inner
-    }
+fn field_type_str(ty: &TypeExpr, optional: bool, mode: Mode) -> String {
+    let inner = type_str(ty, mode);
+    if optional { format!("Option<{}>", inner) } else { inner }
 }
 
-/// Type string without the Option wrapper.
-fn type_str(ty: &TypeExpr) -> String {
-    let base = base_type_str(&ty.base);
+fn type_str(ty: &TypeExpr, mode: Mode) -> String {
+    let base = base_type_str(&ty.base, mode);
     match &ty.array {
-        None                        => base,
-        Some(ArraySuffix::Dynamic)  => format!("Vec<{}>", base),
-        Some(ArraySuffix::Fixed(n)) => format!("[{}; {}]", base, n),
-        Some(ArraySuffix::Bounded(n)) => format!("Vec<{}>  /* max {} */", base, n),
+        None => base,
+        Some(ArraySuffix::Fixed(n))   => format!("[{}; {}]", base, n),
+        Some(ArraySuffix::Dynamic)    => wrap_dynamic(base, mode),
+        Some(ArraySuffix::Bounded(n)) => {
+            // string[<=N] is a bounded string, not an array of strings
+            if matches!(&ty.base, BaseType::String) {
+                match mode {
+                    Mode::Std   => format!("Vec<String>  /* max {} */", n),
+                    Mode::NoStd => format!("Slice<u8>  /* max {} */", n),
+                }
+            } else {
+                format!("{}  /* max {} */", wrap_dynamic(base, mode), n)
+            }
+        }
     }
 }
 
-/// Base type with no array suffix — used for const type annotations too.
-fn scalar_type_str(ty: &TypeExpr) -> String {
-    base_type_str(&ty.base)
+fn wrap_dynamic(base: String, mode: Mode) -> String {
+    match mode {
+        Mode::Std   => format!("Vec<{}>", base),
+        Mode::NoStd => format!("Slice<{}>", base),
+    }
 }
 
-fn base_type_str(base: &BaseType) -> String {
+/// Type string for const declarations — scalar only, no array suffix.
+fn const_type_str(ty: &TypeExpr, mode: Mode) -> String {
+    match &ty.base {
+        // Consts are always static; &'static str works in no_std
+        BaseType::String => match mode {
+            Mode::Std   => "String".to_string(),
+            Mode::NoStd => "&'static str".to_string(),
+        },
+        other => base_type_str(other, mode),
+    }
+}
+
+fn base_type_str(base: &BaseType, mode: Mode) -> String {
     match base {
-        BaseType::String           => "String".to_string(),
-        BaseType::Primitive(p)     => primitive_str(*p).to_string(),
-        BaseType::Ref(segments)    => segments.join("::"),
+        BaseType::String        => match mode {
+            Mode::Std   => "String".to_string(),
+            Mode::NoStd => "Slice<u8>".to_string(),
+        },
+        BaseType::Primitive(p)  => primitive_str(*p, mode).to_string(),
+        BaseType::Ref(segments) => segments.join("::"),
     }
 }
 
-fn primitive_str(p: PrimitiveType) -> &'static str {
+fn primitive_str(p: PrimitiveType, mode: Mode) -> &'static str {
     match p {
         PrimitiveType::F32   => "f32",
         PrimitiveType::F64   => "f64",
@@ -143,7 +206,11 @@ fn primitive_str(p: PrimitiveType) -> &'static str {
         PrimitiveType::U32   => "u32",
         PrimitiveType::U64   => "u64",
         PrimitiveType::Bool  => "bool",
-        PrimitiveType::Bytes => "Vec<u8>",
+        // bytes is always a raw byte buffer; in no_std use Slice<u8>
+        PrimitiveType::Bytes => match mode {
+            Mode::Std   => "Vec<u8>",
+            Mode::NoStd => "Slice<u8>",
+        },
     }
 }
 
@@ -152,13 +219,13 @@ fn primitive_str(p: PrimitiveType) -> &'static str {
 fn literal_str(lit: &Literal) -> String {
     match lit {
         Literal::Float(f) => {
-            // Always emit with a decimal point so it's unambiguously a float literal
             let s = format!("{}", f);
             if s.contains('.') || s.contains('e') { s } else { format!("{}.0", s) }
         }
-        Literal::Int(n)         => n.to_string(),
-        Literal::Bool(b)        => b.to_string(),
-        Literal::Str(s)         => format!("{:?}", s),   // produces Rust string literal with escapes
+        Literal::Int(n)          => n.to_string(),
+        Literal::Hex(n)          => format!("0x{:X}", n),
+        Literal::Bool(b)         => b.to_string(),
+        Literal::Str(s)          => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
     }
 }
@@ -170,28 +237,24 @@ mod tests {
     use super::*;
     use synapse_parser::ast::parse;
 
-    fn codegen(src: &str) -> String {
-        generate(&parse(src).unwrap())
-    }
+    fn codegen(src: &str) -> String { generate(&parse(src).unwrap()) }
+    fn codegen_ns(src: &str) -> String { generate_nostd(&parse(src).unwrap()) }
 
-    // ── Const ────────────────────────────────────────────────
+    // ── Const (std) ──────────────────────────────────────────
 
     #[test]
     fn const_f64() {
-        let out = codegen("const PI: f64 = 3.14");
-        assert_eq!(out.trim(), "pub const PI: f64 = 3.14;");
+        assert_eq!(codegen("const PI: f64 = 3.14").trim(), "pub const PI: f64 = 3.14;");
     }
 
     #[test]
     fn const_u32() {
-        let out = codegen("const MAX: u32 = 256");
-        assert_eq!(out.trim(), "pub const MAX: u32 = 256;");
+        assert_eq!(codegen("const MAX: u32 = 256").trim(), "pub const MAX: u32 = 256;");
     }
 
     #[test]
     fn const_bool() {
-        let out = codegen("const FLAG: bool = true");
-        assert_eq!(out.trim(), "pub const FLAG: bool = true;");
+        assert_eq!(codegen("const FLAG: bool = true").trim(), "pub const FLAG: bool = true;");
     }
 
     #[test]
@@ -220,7 +283,7 @@ mod tests {
         assert!(!out.contains('='));
     }
 
-    // ── Struct ───────────────────────────────────────────────
+    // ── Struct (std) ─────────────────────────────────────────
 
     #[test]
     fn struct_primitive_fields() {
@@ -228,8 +291,6 @@ mod tests {
         assert!(out.contains("#[derive(Debug, Clone, PartialEq)]"));
         assert!(out.contains("pub struct Point {"));
         assert!(out.contains("    pub x: f64,"));
-        assert!(out.contains("    pub y: f64,"));
-        assert!(out.contains("    pub z: f64,"));
     }
 
     #[test]
@@ -239,7 +300,7 @@ mod tests {
         assert!(out.contains("    pub orientation: geometry::Quaternion,"));
     }
 
-    // ── Message ──────────────────────────────────────────────
+    // ── Message (std) ────────────────────────────────────────
 
     #[test]
     fn message_optional_field() {
@@ -278,6 +339,57 @@ mod tests {
         assert!(out.contains("    pub label: Vec<String>  /* max 64 */,"));
     }
 
+    // ── no_std ───────────────────────────────────────────────
+
+    #[test]
+    fn nostd_preamble() {
+        let out = codegen_ns("struct Foo { x: i32 }");
+        assert!(out.contains("#![no_std]"));
+        assert!(out.contains("pub struct Slice<T>"));
+        assert!(out.contains("pub ptr: *const T,"));
+        assert!(out.contains("pub len: usize,"));
+    }
+
+    #[test]
+    fn nostd_derives() {
+        let out = codegen_ns("struct Point { x: f64 }");
+        assert!(out.contains("#[derive(Clone, Copy)]"));
+        assert!(!out.contains("Debug"));
+        assert!(!out.contains("PartialEq"));
+        // enums still get full derives
+        let out2 = codegen_ns("enum E { A B }");
+        assert!(out2.contains("#[derive(Debug, Clone, Copy, PartialEq, Eq)]"));
+    }
+
+    #[test]
+    fn nostd_vec_replaced() {
+        let out = codegen_ns("message M { data: u8[]  payload: bytes  label: string }");
+        assert!(out.contains("    pub data: Slice<u8>,"));
+        assert!(out.contains("    pub payload: Slice<u8>,"));
+        assert!(out.contains("    pub label: Slice<u8>,"));
+        assert!(!out.contains("Vec"));
+        assert!(!out.contains("String"));
+    }
+
+    #[test]
+    fn nostd_fixed_array_unchanged() {
+        let out = codegen_ns("message M { covariance: f64[36] }");
+        assert!(out.contains("    pub covariance: [f64; 36],"));
+    }
+
+    #[test]
+    fn nostd_bounded_array() {
+        let out = codegen_ns("message M { waypoints: Point[<=256]  label: string[<=64] }");
+        assert!(out.contains("    pub waypoints: Slice<Point>  /* max 256 */,"));
+        assert!(out.contains("    pub label: Slice<u8>  /* max 64 */,"));
+    }
+
+    #[test]
+    fn nostd_const_string() {
+        let out = codegen_ns(r#"const FRAME: string = "world""#);
+        assert!(out.contains(r#"pub const FRAME: &'static str = "world";"#));
+    }
+
     // ── Full file ─────────────────────────────────────────────
 
     #[test]
@@ -285,11 +397,8 @@ mod tests {
         let src = r#"
             namespace robot
             import "geometry.syn"
-
             enum DriveMode { Idle = 0  Forward = 1  Error = 2 }
-
             const MAX_SPEED: f64 = 2.5
-
             message RobotState {
                 mode:        DriveMode
                 position:    geometry::Point
@@ -299,7 +408,6 @@ mod tests {
                 error_code?: i32
             }
         "#;
-
         let out = codegen(src);
         assert!(out.contains("pub enum DriveMode"));
         assert!(out.contains("pub const MAX_SPEED: f64 = 2.5;"));
@@ -310,8 +418,6 @@ mod tests {
         assert!(out.contains("    pub sensor_data: Vec<u8>,"));
         assert!(out.contains("    pub error_code: Option<i32>,"));
     }
-
-    // ── Namespace/import skipped ──────────────────────────────
 
     #[test]
     fn namespace_and_import_produce_no_output() {

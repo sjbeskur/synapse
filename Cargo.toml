@@ -3,6 +3,7 @@ members = [
     "synapse-parser",
     "synapse-codegen-rust",
     "synapse-codegen-cpp",
+    "synapse-codegen-cfs",
     "synapse",
     "synapse-integration-tests",
 ]

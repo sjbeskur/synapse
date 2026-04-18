@@ -7,3 +7,4 @@ edition = "2024"
 synapse-parser        = { path = "../synapse-parser" }
 synapse-codegen-rust  = { path = "../synapse-codegen-rust" }
 synapse-codegen-cpp   = { path = "../synapse-codegen-cpp" }
+synapse-codegen-cfs   = { path = "../synapse-codegen-cfs" }

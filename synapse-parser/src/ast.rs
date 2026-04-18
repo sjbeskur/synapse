@@ -35,6 +35,7 @@ pub struct ConstDecl {
     pub ty: TypeExpr,
     pub value: Literal,
     pub doc: Vec<String>,
+    pub attrs: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +43,7 @@ pub struct EnumDef {
     pub name: String,
     pub variants: Vec<EnumVariant>,
     pub doc: Vec<String>,
+    pub attrs: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,6 +58,7 @@ pub struct StructDef {
     pub name: String,
     pub fields: Vec<FieldDef>,
     pub doc: Vec<String>,
+    pub attrs: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +66,7 @@ pub struct MessageDef {
     pub name: String,
     pub fields: Vec<FieldDef>,
     pub doc: Vec<String>,
+    pub attrs: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -121,10 +125,18 @@ pub type ScopedIdent = Vec<String>;
 pub enum Literal {
     Float(f64),
     Int(i64),
+    Hex(u64),
     Bool(bool),
     Str(String),
     /// Enum variant or constant reference, e.g. `DriveMode::Idle`
     Ident(ScopedIdent),
+}
+
+/// A declaration attribute, e.g. `@mid(0x0801)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    pub name: String,
+    pub value: Literal,
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -166,18 +178,20 @@ fn build_import(pair: Pair<Rule>) -> ImportDecl {
 fn build_const(pair: Pair<Rule>) -> ConstDecl {
     let mut inner = pair.into_inner().peekable();
     let doc   = extract_doc(&mut inner);
+    let attrs = extract_attrs(&mut inner);
     let name  = inner.next().unwrap().as_str().to_string();
     let ty    = build_type_expr(inner.next().unwrap());
     let value = build_literal(inner.next().unwrap());
-    ConstDecl { name, ty, value, doc }
+    ConstDecl { name, ty, value, doc, attrs }
 }
 
 fn build_enum(pair: Pair<Rule>) -> EnumDef {
     let mut inner = pair.into_inner().peekable();
     let doc      = extract_doc(&mut inner);
+    let attrs    = extract_attrs(&mut inner);
     let name     = inner.next().unwrap().as_str().to_string();
     let variants = inner.map(build_enum_variant).collect();
-    EnumDef { name, variants, doc }
+    EnumDef { name, variants, doc, attrs }
 }
 
 fn build_enum_variant(pair: Pair<Rule>) -> EnumVariant {
@@ -191,17 +205,19 @@ fn build_enum_variant(pair: Pair<Rule>) -> EnumVariant {
 fn build_struct(pair: Pair<Rule>) -> StructDef {
     let mut inner = pair.into_inner().peekable();
     let doc    = extract_doc(&mut inner);
+    let attrs  = extract_attrs(&mut inner);
     let name   = inner.next().unwrap().as_str().to_string();
     let fields = inner.map(build_field).collect();
-    StructDef { name, fields, doc }
+    StructDef { name, fields, doc, attrs }
 }
 
 fn build_message(pair: Pair<Rule>) -> MessageDef {
     let mut inner = pair.into_inner().peekable();
     let doc    = extract_doc(&mut inner);
+    let attrs  = extract_attrs(&mut inner);
     let name   = inner.next().unwrap().as_str().to_string();
     let fields = inner.map(build_field).collect();
-    MessageDef { name, fields, doc }
+    MessageDef { name, fields, doc, attrs }
 }
 
 fn build_field(pair: Pair<Rule>) -> FieldDef {
@@ -223,7 +239,6 @@ fn build_field(pair: Pair<Rule>) -> FieldDef {
 }
 
 /// Consume a leading `doc_block` (if present) and return the trimmed doc lines.
-/// Each raw `doc_comment` string looks like `"## some text"` — the `##` prefix is stripped.
 fn extract_doc<'i>(
     inner: &mut std::iter::Peekable<impl Iterator<Item = Pair<'i, Rule>>>,
 ) -> Vec<String> {
@@ -237,6 +252,21 @@ fn extract_doc<'i>(
     } else {
         vec![]
     }
+}
+
+/// Consume zero or more leading `attribute` pairs and return them.
+fn extract_attrs<'i>(
+    inner: &mut std::iter::Peekable<impl Iterator<Item = Pair<'i, Rule>>>,
+) -> Vec<Attribute> {
+    let mut attrs = vec![];
+    while inner.peek().map(|p| p.as_rule()) == Some(Rule::attribute) {
+        let attr = inner.next().unwrap();
+        let mut ai = attr.into_inner();
+        let name  = ai.next().unwrap().as_str().to_string();
+        let value = build_literal(ai.next().unwrap());
+        attrs.push(Attribute { name, value });
+    }
+    attrs
 }
 
 fn build_type_expr(pair: Pair<Rule>) -> TypeExpr {
@@ -303,6 +333,11 @@ fn build_literal(pair: Pair<Rule>) -> Literal {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
         Rule::float_lit  => Literal::Float(inner.as_str().parse::<f64>().unwrap()),
+        Rule::hex_lit    => {
+            let s = inner.as_str();
+            let digits = &s[2..]; // strip 0x / 0X
+            Literal::Hex(u64::from_str_radix(digits, 16).unwrap())
+        }
         Rule::int_lit    => Literal::Int(inner.as_str().parse::<i64>().unwrap()),
         Rule::bool_lit   => Literal::Bool(inner.as_str() == "true"),
         Rule::string_lit => {
@@ -395,7 +430,7 @@ mod tests {
                 name: "PI".into(),
                 ty: TypeExpr { base: BaseType::Primitive(PrimitiveType::F64), array: None },
                 value: Literal::Float(3.14),
-                doc: vec![],
+                doc: vec![], attrs: vec![],
             })
         );
     }
@@ -409,7 +444,7 @@ mod tests {
                 name: "MAX".into(),
                 ty: TypeExpr { base: BaseType::Primitive(PrimitiveType::U32), array: None },
                 value: Literal::Int(256),
-                doc: vec![],
+                doc: vec![], attrs: vec![],
             })
         );
     }
@@ -423,7 +458,7 @@ mod tests {
                 name: "FRAME".into(),
                 ty: TypeExpr { base: BaseType::String, array: None },
                 value: Literal::Str("world".into()),
-                doc: vec![],
+                doc: vec![], attrs: vec![],
             })
         );
     }
@@ -438,6 +473,7 @@ mod tests {
         assert_eq!(e.variants[0], EnumVariant { name: "Idle".into(),    value: Some(0), doc: vec![] });
         assert_eq!(e.variants[1], EnumVariant { name: "Forward".into(), value: Some(1), doc: vec![] });
         assert_eq!(e.variants[2], EnumVariant { name: "Error".into(),   value: Some(2), doc: vec![] });
+        assert!(e.attrs.is_empty());
     }
 
     #[test]
@@ -509,6 +545,47 @@ mod tests {
         assert_eq!(m.fields[0].ty.base, BaseType::String);
         assert_eq!(m.fields[0].ty.array, Some(ArraySuffix::Bounded(64)));
         assert_eq!(m.fields[0].default, Some(Literal::Str("robot".into())));
+    }
+
+    // ── Hex literal ──────────────────────────────────────────
+
+    #[test]
+    fn hex_literal_const() {
+        let f = p("const MID: u16 = 0x0801");
+        let Item::Const(c) = &f.items[0] else { panic!() };
+        assert_eq!(c.value, Literal::Hex(0x0801));
+    }
+
+    #[test]
+    fn hex_literal_uppercase() {
+        let f = p("const MID: u16 = 0X1F80");
+        let Item::Const(c) = &f.items[0] else { panic!() };
+        assert_eq!(c.value, Literal::Hex(0x1F80));
+    }
+
+    // ── Attributes ───────────────────────────────────────────
+
+    #[test]
+    fn attribute_hex_on_message() {
+        let f = p("@mid(0x0801)\nmessage NavTlm { x: f64 }");
+        let Item::Message(m) = &f.items[0] else { panic!() };
+        assert_eq!(m.attrs.len(), 1);
+        assert_eq!(m.attrs[0].name, "mid");
+        assert_eq!(m.attrs[0].value, Literal::Hex(0x0801));
+    }
+
+    #[test]
+    fn attribute_ident_ref() {
+        let f = p("@mid(nav_app::NAV_TLM_MID)\nmessage NavTlm { x: f64 }");
+        let Item::Message(m) = &f.items[0] else { panic!() };
+        assert_eq!(m.attrs[0].value, Literal::Ident(vec!["nav_app".into(), "NAV_TLM_MID".into()]));
+    }
+
+    #[test]
+    fn no_attrs_is_empty() {
+        let f = p("message Foo { x: i32 }");
+        let Item::Message(m) = &f.items[0] else { panic!() };
+        assert!(m.attrs.is_empty());
     }
 
     // ── String escape sequences ───────────────────────────────

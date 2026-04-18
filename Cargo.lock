@@ -155,8 +155,16 @@ dependencies = [
 name = "synapse"
 version = "0.1.0"
 dependencies = [
+ "synapse-codegen-cfs",
  "synapse-codegen-cpp",
  "synapse-codegen-rust",
+ "synapse-parser",
+]
+
+[[package]]
+name = "synapse-codegen-cfs"
+version = "0.1.0"
+dependencies = [
  "synapse-parser",
 ]
 
@@ -178,6 +186,7 @@ dependencies = [
 name = "synapse-integration-tests"
 version = "0.1.0"
 dependencies = [
+ "synapse-codegen-cfs",
  "synapse-codegen-cpp",
  "synapse-codegen-rust",
  "synapse-parser",

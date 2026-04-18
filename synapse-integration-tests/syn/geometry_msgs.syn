@@ -36,6 +36,7 @@ struct Accel {
     angular: Vector3
 }
 
+@mid(0x0800)
 message AccelStamped {
     header: std_msgs::Header
     accel:  Accel
@@ -46,6 +47,7 @@ struct AccelWithCovariance {
     covariance: f64[36]
 }
 
+@mid(0x0801)
 message AccelWithCovarianceStamped {
     header: std_msgs::Header
     accel:  AccelWithCovariance
@@ -64,6 +66,7 @@ struct Inertia {
     izz: f64
 }
 
+@mid(0x0802)
 message InertiaStamped {
     header:  std_msgs::Header
     inertia: Inertia
@@ -71,6 +74,7 @@ message InertiaStamped {
 
 # ── Point ─────────────────────────────────────────────────────────────────────
 
+@mid(0x0803)
 message PointStamped {
     header: std_msgs::Header
     point:  Point
@@ -82,6 +86,7 @@ struct Polygon {
     points: Point32[]
 }
 
+@mid(0x0804)
 message PolygonStamped {
     header:  std_msgs::Header
     polygon: Polygon
@@ -100,11 +105,13 @@ struct Pose2D {
     theta: f64
 }
 
+@mid(0x0805)
 message PoseArray {
     header: std_msgs::Header
     poses:  Pose[]
 }
 
+@mid(0x0806)
 message PoseStamped {
     header: std_msgs::Header
     pose:   Pose
@@ -115,6 +122,7 @@ struct PoseWithCovariance {
     covariance: f64[36]
 }
 
+@mid(0x0807)
 message PoseWithCovarianceStamped {
     header: std_msgs::Header
     pose:   PoseWithCovariance
@@ -122,6 +130,7 @@ message PoseWithCovarianceStamped {
 
 # ── Quaternion ────────────────────────────────────────────────────────────────
 
+@mid(0x0808)
 message QuaternionStamped {
     header:     std_msgs::Header
     quaternion: Quaternion
@@ -134,6 +143,7 @@ struct Transform {
     rotation:    Quaternion
 }
 
+@mid(0x0809)
 message TransformStamped {
     header:         std_msgs::Header
     child_frame_id: string
@@ -147,6 +157,7 @@ struct Twist {
     angular: Vector3
 }
 
+@mid(0x080A)
 message TwistStamped {
     header: std_msgs::Header
     twist:  Twist
@@ -157,6 +168,7 @@ struct TwistWithCovariance {
     covariance: f64[36]
 }
 
+@mid(0x080B)
 message TwistWithCovarianceStamped {
     header: std_msgs::Header
     twist:  TwistWithCovariance
@@ -164,6 +176,7 @@ message TwistWithCovarianceStamped {
 
 # ── Vector3 ───────────────────────────────────────────────────────────────────
 
+@mid(0x080C)
 message Vector3Stamped {
     header: std_msgs::Header
     vector: Vector3
@@ -176,6 +189,7 @@ struct Wrench {
     torque: Vector3
 }
 
+@mid(0x080D)
 message WrenchStamped {
     header: std_msgs::Header
     wrench: Wrench
