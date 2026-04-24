@@ -43,6 +43,9 @@ COMMENT = _{ "#" ~ !"#" ~ (!("\n" | "\r") ~ ANY)* }
 doc_comment = @{ "##" ~ (!("\n" | "\r") ~ ANY)* }
 doc_block   =  { doc_comment+ }
 
+// Attribute: @name(literal)  e.g. @mid(0x0801)  @mid(nav_app::NAV_TLM_MID)
+attribute = { "@" ~ ident ~ "(" ~ literal ~ ")" }
+
 // ============================================================
 // File
 // ============================================================
@@ -69,7 +72,7 @@ import_decl = { "import" ~ string_lit }
 namespace_decl = { "namespace" ~ scoped_ident }
 
 // const MAX: f64 = 3.14
-const_decl = { doc_block? ~ "const" ~ ident ~ ":" ~ type_expr ~ "=" ~ literal }
+const_decl = { doc_block? ~ attribute* ~ "const" ~ ident ~ ":" ~ type_expr ~ "=" ~ literal }
 
 // ============================================================
 // Enum
@@ -79,7 +82,7 @@ const_decl = { doc_block? ~ "const" ~ ident ~ ":" ~ type_expr ~ "=" ~ literal }
 //     Idle    = 0
 //     Moving  = 1
 // }
-enum_def     = { doc_block? ~ "enum" ~ ident ~ "{" ~ enum_variant* ~ "}" }
+enum_def     = { doc_block? ~ attribute* ~ "enum" ~ ident ~ "{" ~ enum_variant* ~ "}" }
 enum_variant = { doc_block? ~ ident ~ ("=" ~ int_lit)? }
 
 // ============================================================
@@ -87,10 +90,10 @@ enum_variant = { doc_block? ~ ident ~ ("=" ~ int_lit)? }
 // ============================================================
 
 // struct — plain data aggregate (no implied serialization)
-struct_def  = { doc_block? ~ "struct"  ~ ident ~ "{" ~ field* ~ "}" }
+struct_def  = { doc_block? ~ attribute* ~ "struct"  ~ ident ~ "{" ~ field* ~ "}" }
 
 // message — serializable unit; code generators may produce serialize/deserialize logic
-message_def = { doc_block? ~ "message" ~ ident ~ "{" ~ field* ~ "}" }
+message_def = { doc_block? ~ attribute* ~ "message" ~ ident ~ "{" ~ field* ~ "}" }
 
 // field:  Type
 // field?: Type          (optional — maps to Option<T> / std::optional<T>)
@@ -150,9 +153,10 @@ pos_int = @{ "0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
 // Literals
 // ============================================================
 
-// float before int: "1.0" must not match as integer "1"
+// float before hex before int: "1.0" must not match as integer "1";
+// hex before int: "0x1F" must not match as integer "0".
 // ident_lit last: fallback for enum variant refs (Idle, DriveMode::Idle)
-literal = { float_lit | int_lit | bool_lit | string_lit | ident_lit }
+literal = { float_lit | hex_lit | int_lit | bool_lit | string_lit | ident_lit }
 
 float_lit = @{
     "-"? ~ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ ~ float_exp?
@@ -160,6 +164,8 @@ float_lit = @{
   | "-"? ~ ASCII_DIGIT+ ~ float_exp
 }
 float_exp = @{ ^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+ }
+
+hex_lit    = @{ ("0x" | "0X") ~ ASCII_HEX_DIGIT+ }
 
 int_lit    = @{ "-"? ~ ASCII_DIGIT+ }
 
