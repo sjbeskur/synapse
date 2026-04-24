@@ -1,7 +1,0 @@
-[package]
-name = "synapse-codegen-rust"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-synapse-parser = { path = "../synapse-parser" }

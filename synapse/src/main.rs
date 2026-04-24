@@ -1,39 +1,72 @@
-use std::{env, fs, process};
+use std::{fs, path::PathBuf, process};
+
+use clap::{Parser, ValueEnum};
+
+#[derive(Parser)]
+#[command(
+    name = "synapse",
+    about = "NASA cFS message definition compiler — generates C headers and Rust bindings from .syn files"
+)]
+struct Args {
+    /// Target language
+    #[arg(long, value_enum)]
+    lang: Lang,
+
+    /// Write output to this directory instead of stdout.
+    /// Output file is named after the input file with the appropriate extension.
+    #[arg(long, short = 'o')]
+    out_dir: Option<PathBuf>,
+
+    /// Input .syn file
+    file: PathBuf,
+}
+
+#[derive(Clone, ValueEnum)]
+enum Lang {
+    /// NASA cFS C header (.h)
+    C,
+    /// Rust #[repr(C)] bindings (.rs)
+    Rust,
+}
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let args = Args::parse();
 
-    // Accept: synapse --lang rust [--no-std] <file.syn>
-    if args.len() < 4 || args[1] != "--lang" {
-        eprintln!("Usage: synapse --lang <rust|cpp|cfs|cfs-rust> [--no-std] <file.syn>");
-        process::exit(1);
-    }
-
-    let lang    = &args[2];
-    let no_std  = args.iter().any(|a| a == "--no-std");
-    let path    = args.last().unwrap();
-
+    let path = &args.file;
     let source = fs::read_to_string(path).unwrap_or_else(|e| {
-        eprintln!("Error reading {path}: {e}");
+        eprintln!("Error reading {}: {e}", path.display());
         process::exit(1);
     });
 
     let file = synapse_parser::ast::parse(&source).unwrap_or_else(|e| {
-        eprintln!("Parse error in {path}:\n{e}");
+        eprintln!("Parse error in {}:\n{e}", path.display());
         process::exit(1);
     });
 
-    let output = match lang.as_str() {
-        "rust" if no_std => synapse_codegen_rust::generate_nostd(&file),
-        "rust"           => synapse_codegen_rust::generate(&file),
-        "cpp"            => synapse_codegen_cpp::generate(&file),
-        "cfs"            => synapse_codegen_cfs::generate(&file),
-        "cfs-rust"       => synapse_codegen_cfs::generate_rust(&file, &Default::default()),
-        other => {
-            eprintln!("Unknown language: {other}. Supported: rust, cpp, cfs, cfs-rust");
-            process::exit(1);
-        }
+    let (output, ext) = match args.lang {
+        Lang::C    => (synapse_codegen_cfs::generate_c(&file),    "h"),
+        Lang::Rust => (synapse_codegen_cfs::generate_rust(&file, &Default::default()), "rs"),
     };
 
-    print!("{}", output);
+    match args.out_dir {
+        None => print!("{output}"),
+        Some(dir) => {
+            fs::create_dir_all(&dir).unwrap_or_else(|e| {
+                eprintln!("Error creating output directory {}: {e}", dir.display());
+                process::exit(1);
+            });
+
+            let stem = path.file_stem()
+                .expect("input file has no stem")
+                .to_string_lossy();
+            let out_path = dir.join(format!("{stem}.{ext}"));
+
+            fs::write(&out_path, &output).unwrap_or_else(|e| {
+                eprintln!("Error writing {}: {e}", out_path.display());
+                process::exit(1);
+            });
+
+            eprintln!("wrote {}", out_path.display());
+        }
+    }
 }

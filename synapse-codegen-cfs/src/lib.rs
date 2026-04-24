@@ -1,6 +1,6 @@
 use synapse_parser::ast::{
     ArraySuffix, Attribute, BaseType, ConstDecl, Item, Literal, MessageDef, PrimitiveType,
-    SynFile, TypeExpr,
+    StructDef, SynFile, TypeExpr,
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -27,15 +27,15 @@ pub struct RustOptions<'a> {
 impl Default for RustOptions<'_> {
     fn default() -> Self {
         RustOptions {
-            cfs_module: "cfs",
-            tlm_header: "TelemetryHeader",
-            cmd_header: "CommandHeader",
+            cfs_module: "cfs_sys",
+            tlm_header: "CFE_MSG_TelemetryHeader_t",
+            cmd_header: "CFE_MSG_CommandHeader_t",
         }
     }
 }
 
-/// Generate a complete NASA cFS C header from a parsed Synapse file.
-pub fn generate(file: &SynFile) -> String {
+/// Generate a NASA cFS C header (`*_msg.h` + MID `#define`s) from a parsed Synapse file.
+pub fn generate_c(file: &SynFile) -> String {
     let mut out = String::from(PREAMBLE);
     emit_items(file, &mut out);
     out
@@ -71,13 +71,12 @@ fn emit_items(file: &SynFile, out: &mut String) {
     }
     if has_mids { out.push('\n'); }
 
-    // Second pass: emit const, enum, struct, message types
+    // Second pass: emit const, struct, and message types
     for item in &file.items {
         match item {
-            Item::Namespace(_) | Item::Import(_) => {}
+            Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
             Item::Const(c)   => emit_const(out, c),
-            Item::Enum(_)    => {} // enums not needed in cFS message headers
-            Item::Struct(_)  => {} // plain structs not emitted; only messages get cFS wrappers
+            Item::Struct(s)  => emit_struct(out, s),
             Item::Message(m) => emit_message(out, m),
         }
     }
@@ -88,6 +87,23 @@ fn emit_items(file: &SynFile, out: &mut String) {
 fn emit_const(out: &mut String, c: &ConstDecl) {
     let val = literal_str(&c.value);
     out.push_str(&format!("#define {}  {}\n\n", c.name, val));
+}
+
+// ── Struct (plain supporting type, no cFS header) ─────────────────────────────
+
+fn emit_struct(out: &mut String, s: &StructDef) {
+    for line in &s.doc {
+        if line.is_empty() { out.push_str("///\n"); } else { out.push_str(&format!("/// {line}\n")); }
+    }
+    out.push_str("typedef struct {\n");
+    for f in &s.fields {
+        if let Some(ArraySuffix::Fixed(n)) = &f.ty.array {
+            out.push_str(&format!("    {} {}[{}];\n", base_type_str(&f.ty.base), f.name, n));
+        } else {
+            out.push_str(&format!("    {} {};\n", non_fixed_type_str(&f.ty), f.name));
+        }
+    }
+    out.push_str(&format!("}} {}_t;\n\n", s.name));
 }
 
 // ── Message ───────────────────────────────────────────────────────────────────
@@ -144,10 +160,9 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
     // Second pass: types
     for item in &file.items {
         match item {
-            Item::Namespace(_) | Item::Import(_) => {}
+            Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
             Item::Const(c)   => emit_rust_const(out, c),
-            Item::Enum(_)    => {}
-            Item::Struct(_)  => {}
+            Item::Struct(s)  => emit_rust_struct(out, s),
             Item::Message(m) => emit_rust_message(out, m, opts),
         }
     }
@@ -156,6 +171,18 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
 fn emit_rust_const(out: &mut String, c: &ConstDecl) {
     let val = rust_literal_str(&c.value);
     out.push_str(&format!("pub const {}: u16 = {};\n\n", c.name, val));
+}
+
+fn emit_rust_struct(out: &mut String, s: &StructDef) {
+    for line in &s.doc {
+        if line.is_empty() { out.push_str("///\n"); } else { out.push_str(&format!("/// {line}\n")); }
+    }
+    out.push_str("#[repr(C)]\n");
+    out.push_str(&format!("pub struct {} {{\n", s.name));
+    for f in &s.fields {
+        out.push_str(&format!("    pub {}: {},\n", f.name, rust_field_type_str(&f.ty)));
+    }
+    out.push_str("}\n\n");
 }
 
 fn emit_rust_message(out: &mut String, m: &MessageDef, opts: &RustOptions) {
@@ -349,7 +376,7 @@ mod tests {
     use super::*;
     use synapse_parser::ast::parse;
 
-    fn codegen(src: &str) -> String { generate(&parse(src).unwrap()) }
+    fn codegen(src: &str) -> String { generate_c(&parse(src).unwrap()) }
 
     #[test]
     fn tlm_message_with_hex_mid() {
@@ -402,7 +429,7 @@ mod tests {
         assert!(out.contains("pub const NAV_TLM_MID: u16 = 0x0801;"));
         assert!(out.contains("#[repr(C)]"));
         assert!(out.contains("pub struct NavTlm {"));
-        assert!(out.contains("    pub header: cfs::TelemetryHeader,"));
+        assert!(out.contains("    pub header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
         assert!(out.contains("    pub x: f64,"));
         assert!(out.contains("    pub y: f64,"));
     }
@@ -411,7 +438,7 @@ mod tests {
     fn rust_cmd_struct() {
         let out = rust_codegen("@mid(0x1880)\nmessage NavCmd { seq: u16 }");
         assert!(out.contains("pub const NAV_CMD_MID: u16 = 0x1880;"));
-        assert!(out.contains("    pub header: cfs::CommandHeader,"));
+        assert!(out.contains("    pub header: cfs_sys::CFE_MSG_CommandHeader_t,"));
     }
 
     #[test]
@@ -422,17 +449,17 @@ mod tests {
 
     #[test]
     fn rust_custom_module() {
-        let opts = RustOptions { cfs_module: "cfe_sys", ..Default::default() };
+        let opts = RustOptions { cfs_module: "my_cfs", ..Default::default() };
         let out = generate_rust(&parse("@mid(0x0801)\nmessage T { x: f32 }").unwrap(), &opts);
-        assert!(out.contains("cfe_sys::TelemetryHeader"));
+        assert!(out.contains("my_cfs::CFE_MSG_TelemetryHeader_t"));
     }
 
     #[test]
     fn rust_bare_module() {
         let opts = RustOptions { cfs_module: "", ..Default::default() };
         let out = generate_rust(&parse("@mid(0x0801)\nmessage T { x: f32 }").unwrap(), &opts);
-        assert!(out.contains("    pub header: TelemetryHeader,"));
-        assert!(!out.contains("::TelemetryHeader"));
+        assert!(out.contains("    pub header: CFE_MSG_TelemetryHeader_t,"));
+        assert!(!out.contains("::CFE_MSG_TelemetryHeader_t"));
     }
 
     #[test]
