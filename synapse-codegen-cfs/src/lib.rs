@@ -37,6 +37,7 @@ impl Default for RustOptions<'_> {
 /// Generate a NASA cFS C header (`*_msg.h` + MID `#define`s) from a parsed Synapse file.
 pub fn generate_c(file: &SynFile) -> String {
     let mut out = String::from(PREAMBLE);
+    emit_c_imports(file, &mut out);
     emit_items(file, &mut out);
     out
 }
@@ -47,11 +48,38 @@ pub fn generate_c(file: &SynFile) -> String {
 /// matching the C ABI layout. MID constants are emitted as `pub const`.
 pub fn generate_rust(file: &SynFile, opts: &RustOptions) -> String {
     let mut out = String::new();
+    emit_rust_imports(file, &mut out);
     emit_rust_items(file, opts, &mut out);
     out
 }
 
 // ── Item emission ─────────────────────────────────────────────────────────────
+
+fn emit_c_imports(file: &SynFile, out: &mut String) {
+    let mut emitted = false;
+    for item in &file.items {
+        if let Item::Import(import) = item {
+            out.push_str(&format!("#include \"{}\"\n", import_c_header(&import.path)));
+            emitted = true;
+        }
+    }
+    if emitted {
+        out.push('\n');
+    }
+}
+
+fn emit_rust_imports(file: &SynFile, out: &mut String) {
+    let mut emitted = false;
+    for item in &file.items {
+        if let Item::Import(import) = item {
+            out.push_str(&format!("use crate::{};\n", import_rust_module(&import.path)));
+            emitted = true;
+        }
+    }
+    if emitted {
+        out.push('\n');
+    }
+}
 
 fn emit_items(file: &SynFile, out: &mut String) {
     // First pass: emit #define MID lines for messages with @mid
@@ -72,12 +100,14 @@ fn emit_items(file: &SynFile, out: &mut String) {
     if has_mids { out.push('\n'); }
 
     // Second pass: emit const, struct, and message types
+    let mut namespace = Vec::new();
     for item in &file.items {
         match item {
-            Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
+            Item::Namespace(ns) => namespace = ns.name.clone(),
+            Item::Import(_) | Item::Enum(_) => {}
             Item::Const(c)   => emit_const(out, c),
-            Item::Struct(s)  => emit_struct(out, s),
-            Item::Message(m) => emit_message(out, m),
+            Item::Struct(s)  => emit_struct(out, s, &namespace),
+            Item::Message(m) => emit_message(out, m, &namespace),
         }
     }
 }
@@ -91,24 +121,20 @@ fn emit_const(out: &mut String, c: &ConstDecl) {
 
 // ── Struct (plain supporting type, no cFS header) ─────────────────────────────
 
-fn emit_struct(out: &mut String, s: &StructDef) {
+fn emit_struct(out: &mut String, s: &StructDef, namespace: &[String]) {
     for line in &s.doc {
         if line.is_empty() { out.push_str("///\n"); } else { out.push_str(&format!("/// {line}\n")); }
     }
     out.push_str("typedef struct {\n");
     for f in &s.fields {
-        if let Some(ArraySuffix::Fixed(n)) = &f.ty.array {
-            out.push_str(&format!("    {} {}[{}];\n", base_type_str(&f.ty.base), f.name, n));
-        } else {
-            out.push_str(&format!("    {} {};\n", non_fixed_type_str(&f.ty), f.name));
-        }
+        emit_c_field(out, f, namespace);
     }
-    out.push_str(&format!("}} {}_t;\n\n", s.name));
+    out.push_str(&format!("}} {};\n\n", c_decl_type_name(&s.name, namespace)));
 }
 
 // ── Message ───────────────────────────────────────────────────────────────────
 
-fn emit_message(out: &mut String, m: &MessageDef) {
+fn emit_message(out: &mut String, m: &MessageDef, namespace: &[String]) {
     let header_type = if is_command(m) {
         "CFE_MSG_CommandHeader_t"
     } else {
@@ -126,15 +152,9 @@ fn emit_message(out: &mut String, m: &MessageDef) {
     out.push_str(&format!("typedef struct {{\n"));
     out.push_str(&format!("    {} Header;\n", header_type));
     for f in &m.fields {
-        if let Some(ArraySuffix::Fixed(n)) = &f.ty.array {
-            let base = base_type_str(&f.ty.base);
-            out.push_str(&format!("    {} {}[{}];\n", base, f.name, n));
-        } else {
-            let ty = non_fixed_type_str(&f.ty);
-            out.push_str(&format!("    {} {};\n", ty, f.name));
-        }
+        emit_c_field(out, f, namespace);
     }
-    out.push_str(&format!("}} {}_t;\n\n", m.name));
+    out.push_str(&format!("}} {};\n\n", c_decl_type_name(&m.name, namespace)));
 }
 
 // ── Rust emission ─────────────────────────────────────────────────────────────
@@ -170,7 +190,8 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
 
 fn emit_rust_const(out: &mut String, c: &ConstDecl) {
     let val = rust_literal_str(&c.value);
-    out.push_str(&format!("pub const {}: u16 = {};\n\n", c.name, val));
+    let ty = rust_field_type_str(&c.ty);
+    out.push_str(&format!("pub const {}: {} = {};\n\n", c.name, ty, val));
 }
 
 fn emit_rust_struct(out: &mut String, s: &StructDef) {
@@ -203,7 +224,7 @@ fn emit_rust_message(out: &mut String, m: &MessageDef, opts: &RustOptions) {
 
     out.push_str("#[repr(C)]\n");
     out.push_str(&format!("pub struct {} {{\n", m.name));
-    out.push_str(&format!("    pub header: {},\n", qualified));
+    out.push_str(&format!("    pub cfs_header: {},\n", qualified));
     for f in &m.fields {
         let ty = rust_field_type_str(&f.ty);
         out.push_str(&format!("    pub {}: {},\n", f.name, ty));
@@ -212,6 +233,15 @@ fn emit_rust_message(out: &mut String, m: &MessageDef, opts: &RustOptions) {
 }
 
 fn rust_field_type_str(ty: &TypeExpr) -> String {
+    if ty.base == BaseType::String {
+        return match &ty.array {
+            None | Some(ArraySuffix::Dynamic) => "*const u8".to_string(),
+            Some(ArraySuffix::Fixed(n)) | Some(ArraySuffix::Bounded(n)) => {
+                format!("[u8; {}]", n)
+            }
+        };
+    }
+
     let base = rust_base_type_str(&ty.base);
     match &ty.array {
         None                        => base,
@@ -279,7 +309,7 @@ fn find_mid_attr(attrs: &[Attribute]) -> Option<&Literal> {
 
 /// A message is a command if its MID has bit 12 (0x1000) set, or if it has `@cmd`.
 fn is_command(m: &MessageDef) -> bool {
-    if m.attrs.iter().any(|a| a.name == "cmd") {
+    if m.attrs.iter().any(|a| a.name == "cmd" && a.value != Literal::Bool(false)) {
         return true;
     }
     if let Some(mid) = find_mid_attr(&m.attrs) {
@@ -322,8 +352,16 @@ fn literal_str(lit: &Literal) -> String {
     }
 }
 
-fn non_fixed_type_str(ty: &TypeExpr) -> String {
-    let base = base_type_str(&ty.base);
+fn non_fixed_type_str(ty: &TypeExpr, namespace: &[String]) -> String {
+    if ty.base == BaseType::String {
+        return match &ty.array {
+            None | Some(ArraySuffix::Dynamic) => "const char*".to_string(),
+            Some(ArraySuffix::Fixed(_)) => unreachable!("handled by emit_c_field"),
+            Some(ArraySuffix::Bounded(n)) => format!("char[{}]", n),
+        };
+    }
+
+    let base = base_type_str(&ty.base, namespace);
     match &ty.array {
         None                          => base,
         Some(ArraySuffix::Fixed(_))   => unreachable!("handled by caller"),
@@ -332,11 +370,63 @@ fn non_fixed_type_str(ty: &TypeExpr) -> String {
     }
 }
 
-fn base_type_str(base: &BaseType) -> String {
+fn base_type_str(base: &BaseType, namespace: &[String]) -> String {
     match base {
         BaseType::String        => "const char*".to_string(),
         BaseType::Primitive(p)  => primitive_str(*p).to_string(),
-        BaseType::Ref(segments) => segments.join("_"),
+        BaseType::Ref(segments) => c_ref_type_name(segments, namespace),
+    }
+}
+
+fn emit_c_field(out: &mut String, f: &synapse_parser::ast::FieldDef, namespace: &[String]) {
+    match (&f.ty.base, &f.ty.array) {
+        (BaseType::String, Some(ArraySuffix::Fixed(n) | ArraySuffix::Bounded(n))) => {
+            out.push_str(&format!("    char {}[{}];\n", f.name, n));
+        }
+        (_, Some(ArraySuffix::Fixed(n))) => {
+            out.push_str(&format!("    {} {}[{}];\n", base_type_str(&f.ty.base, namespace), f.name, n));
+        }
+        _ => {
+            out.push_str(&format!("    {} {};\n", non_fixed_type_str(&f.ty, namespace), f.name));
+        }
+    }
+}
+
+fn c_decl_type_name(name: &str, namespace: &[String]) -> String {
+    let mut segments = namespace.to_vec();
+    segments.push(name.to_string());
+    format!("{}_t", segments.join("_"))
+}
+
+fn c_ref_type_name(segments: &[String], namespace: &[String]) -> String {
+    let resolved = if segments.len() == 1 && !namespace.is_empty() {
+        let mut resolved = namespace.to_vec();
+        resolved.push(segments[0].clone());
+        resolved
+    } else {
+        segments.to_vec()
+    };
+    if resolved.is_empty() {
+        return "_t".to_string();
+    }
+    format!("{}_t", resolved.join("_"))
+}
+
+fn import_c_header(path: &str) -> String {
+    replace_extension(path, "h")
+}
+
+fn import_rust_module(path: &str) -> String {
+    let header = path.rsplit('/').next().unwrap_or(path);
+    replace_extension(header, "")
+}
+
+fn replace_extension(path: &str, ext: &str) -> String {
+    match path.rsplit_once('.') {
+        Some((stem, _)) if ext.is_empty() => stem.to_string(),
+        Some((stem, _)) => format!("{stem}.{ext}"),
+        None if ext.is_empty() => path.to_string(),
+        None => format!("{path}.{ext}"),
     }
 }
 
@@ -417,6 +507,31 @@ mod tests {
         assert!(out.contains("    double covariance[9];"));
     }
 
+    #[test]
+    fn c_refs_use_declared_typedef_names() {
+        let out = codegen("struct Point { x: f64 }\nmessage Pose { point: Point }");
+        assert!(out.contains("} Point_t;"));
+        assert!(out.contains("    Point_t point;"));
+    }
+
+    #[test]
+    fn c_qualified_refs_use_declared_typedef_names() {
+        let out = codegen("message Stamped { header: std_msgs::Header }");
+        assert!(out.contains("    std_msgs_Header_t header;"));
+    }
+
+    #[test]
+    fn c_bounded_string_uses_inline_storage() {
+        let out = codegen("struct Label { name: string[<=64] }");
+        assert!(out.contains("    char name[64];"));
+    }
+
+    #[test]
+    fn c_imports_emit_header_includes() {
+        let out = codegen(r#"import "std_msgs.syn""#);
+        assert!(out.contains("#include \"std_msgs.h\""));
+    }
+
     // ── Rust codegen ─────────────────────────────────────────
 
     fn rust_codegen(src: &str) -> String {
@@ -429,7 +544,7 @@ mod tests {
         assert!(out.contains("pub const NAV_TLM_MID: u16 = 0x0801;"));
         assert!(out.contains("#[repr(C)]"));
         assert!(out.contains("pub struct NavTlm {"));
-        assert!(out.contains("    pub header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
+        assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
         assert!(out.contains("    pub x: f64,"));
         assert!(out.contains("    pub y: f64,"));
     }
@@ -438,7 +553,7 @@ mod tests {
     fn rust_cmd_struct() {
         let out = rust_codegen("@mid(0x1880)\nmessage NavCmd { seq: u16 }");
         assert!(out.contains("pub const NAV_CMD_MID: u16 = 0x1880;"));
-        assert!(out.contains("    pub header: cfs_sys::CFE_MSG_CommandHeader_t,"));
+        assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
     }
 
     #[test]
@@ -458,8 +573,34 @@ mod tests {
     fn rust_bare_module() {
         let opts = RustOptions { cfs_module: "", ..Default::default() };
         let out = generate_rust(&parse("@mid(0x0801)\nmessage T { x: f32 }").unwrap(), &opts);
-        assert!(out.contains("    pub header: CFE_MSG_TelemetryHeader_t,"));
+        assert!(out.contains("    pub cfs_header: CFE_MSG_TelemetryHeader_t,"));
         assert!(!out.contains("::CFE_MSG_TelemetryHeader_t"));
+    }
+
+    #[test]
+    fn rust_message_can_have_payload_header_field() {
+        let out = rust_codegen("@mid(0x0801)\nmessage Stamped { header: std_msgs::Header }");
+        assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
+        assert!(out.contains("    pub header: std_msgs::Header,"));
+    }
+
+    #[test]
+    fn rust_const_uses_declared_type() {
+        let out = rust_codegen("const PI: f64 = 3.14\nconst ENABLED: bool = true");
+        assert!(out.contains("pub const PI: f64 = 3.14;"));
+        assert!(out.contains("pub const ENABLED: bool = true;"));
+    }
+
+    #[test]
+    fn rust_bounded_string_uses_inline_storage() {
+        let out = rust_codegen("struct Label { name: string[<=64] }");
+        assert!(out.contains("    pub name: [u8; 64],"));
+    }
+
+    #[test]
+    fn rust_imports_emit_crate_uses() {
+        let out = rust_codegen(r#"import "std_msgs.syn""#);
+        assert!(out.contains("use crate::std_msgs;"));
     }
 
     #[test]

@@ -1,3 +1,5 @@
+use crate::std_msgs;
+
 // Message IDs
 pub const ACCEL_STAMPED_MID: u16 = 0x0800;
 pub const ACCEL_WITH_COVARIANCE_STAMPED_MID: u16 = 0x0801;
@@ -51,7 +53,7 @@ pub struct Accel {
 
 #[repr(C)]
 pub struct AccelStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub accel: Accel,
 }
@@ -64,7 +66,7 @@ pub struct AccelWithCovariance {
 
 #[repr(C)]
 pub struct AccelWithCovarianceStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub accel: AccelWithCovariance,
 }
@@ -83,14 +85,14 @@ pub struct Inertia {
 
 #[repr(C)]
 pub struct InertiaStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub inertia: Inertia,
 }
 
 #[repr(C)]
 pub struct PointStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub point: Point,
 }
@@ -102,7 +104,7 @@ pub struct Polygon {
 
 #[repr(C)]
 pub struct PolygonStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub polygon: Polygon,
 }
@@ -122,14 +124,14 @@ pub struct Pose2D {
 
 #[repr(C)]
 pub struct PoseArray {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub poses: *const Pose,
 }
 
 #[repr(C)]
 pub struct PoseStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub pose: Pose,
 }
@@ -142,14 +144,14 @@ pub struct PoseWithCovariance {
 
 #[repr(C)]
 pub struct PoseWithCovarianceStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub pose: PoseWithCovariance,
 }
 
 #[repr(C)]
 pub struct QuaternionStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub quaternion: Quaternion,
 }
@@ -162,7 +164,7 @@ pub struct Transform {
 
 #[repr(C)]
 pub struct TransformStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub child_frame_id: *const u8,
     pub transform: Transform,
@@ -176,7 +178,7 @@ pub struct Twist {
 
 #[repr(C)]
 pub struct TwistStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub twist: Twist,
 }
@@ -189,14 +191,14 @@ pub struct TwistWithCovariance {
 
 #[repr(C)]
 pub struct TwistWithCovarianceStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub twist: TwistWithCovariance,
 }
 
 #[repr(C)]
 pub struct Vector3Stamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub vector: Vector3,
 }
@@ -209,7 +211,7 @@ pub struct Wrench {
 
 #[repr(C)]
 pub struct WrenchStamped {
-    pub header: cfs::TelemetryHeader,
+    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,
     pub header: std_msgs::Header,
     pub wrench: Wrench,
 }

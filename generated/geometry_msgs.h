@@ -1,6 +1,8 @@
 #pragma once
 #include "cfe.h"
 
+#include "std_msgs.h"
+
 /* Message IDs */
 #define ACCEL_STAMPED_MID  0x0800U
 #define ACCEL_WITH_COVARIANCE_STAMPED_MID  0x0801U
@@ -21,170 +23,170 @@ typedef struct {
     double x;
     double y;
     double z;
-} Vector3_t;
+} geometry_msgs_Vector3_t;
 
 typedef struct {
     double x;
     double y;
     double z;
-} Point_t;
+} geometry_msgs_Point_t;
 
 typedef struct {
     float x;
     float y;
     float z;
-} Point32_t;
+} geometry_msgs_Point32_t;
 
 typedef struct {
     double x;
     double y;
     double z;
     double w;
-} Quaternion_t;
+} geometry_msgs_Quaternion_t;
 
 typedef struct {
-    Vector3 linear;
-    Vector3 angular;
-} Accel_t;
+    geometry_msgs_Vector3_t linear;
+    geometry_msgs_Vector3_t angular;
+} geometry_msgs_Accel_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Accel accel;
-} AccelStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Accel_t accel;
+} geometry_msgs_AccelStamped_t;
 
 typedef struct {
-    Accel accel;
+    geometry_msgs_Accel_t accel;
     double covariance[36];
-} AccelWithCovariance_t;
+} geometry_msgs_AccelWithCovariance_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    AccelWithCovariance accel;
-} AccelWithCovarianceStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_AccelWithCovariance_t accel;
+} geometry_msgs_AccelWithCovarianceStamped_t;
 
 typedef struct {
     double m;
-    Vector3 com;
+    geometry_msgs_Vector3_t com;
     double ixx;
     double ixy;
     double ixz;
     double iyy;
     double iyz;
     double izz;
-} Inertia_t;
+} geometry_msgs_Inertia_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Inertia inertia;
-} InertiaStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Inertia_t inertia;
+} geometry_msgs_InertiaStamped_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Point point;
-} PointStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Point_t point;
+} geometry_msgs_PointStamped_t;
 
 typedef struct {
-    CFE_Span_t /* Point32 */ points;
-} Polygon_t;
+    CFE_Span_t /* geometry_msgs_Point32_t */ points;
+} geometry_msgs_Polygon_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Polygon polygon;
-} PolygonStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Polygon_t polygon;
+} geometry_msgs_PolygonStamped_t;
 
 typedef struct {
-    Point position;
-    Quaternion orientation;
-} Pose_t;
+    geometry_msgs_Point_t position;
+    geometry_msgs_Quaternion_t orientation;
+} geometry_msgs_Pose_t;
 
 typedef struct {
     double x;
     double y;
     double theta;
-} Pose2D_t;
+} geometry_msgs_Pose2D_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    CFE_Span_t /* Pose */ poses;
-} PoseArray_t;
+    std_msgs_Header_t header;
+    CFE_Span_t /* geometry_msgs_Pose_t */ poses;
+} geometry_msgs_PoseArray_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Pose pose;
-} PoseStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Pose_t pose;
+} geometry_msgs_PoseStamped_t;
 
 typedef struct {
-    Pose pose;
+    geometry_msgs_Pose_t pose;
     double covariance[36];
-} PoseWithCovariance_t;
+} geometry_msgs_PoseWithCovariance_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    PoseWithCovariance pose;
-} PoseWithCovarianceStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_PoseWithCovariance_t pose;
+} geometry_msgs_PoseWithCovarianceStamped_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Quaternion quaternion;
-} QuaternionStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Quaternion_t quaternion;
+} geometry_msgs_QuaternionStamped_t;
 
 typedef struct {
-    Vector3 translation;
-    Quaternion rotation;
-} Transform_t;
+    geometry_msgs_Vector3_t translation;
+    geometry_msgs_Quaternion_t rotation;
+} geometry_msgs_Transform_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
+    std_msgs_Header_t header;
     const char* child_frame_id;
-    Transform transform;
-} TransformStamped_t;
+    geometry_msgs_Transform_t transform;
+} geometry_msgs_TransformStamped_t;
 
 typedef struct {
-    Vector3 linear;
-    Vector3 angular;
-} Twist_t;
+    geometry_msgs_Vector3_t linear;
+    geometry_msgs_Vector3_t angular;
+} geometry_msgs_Twist_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Twist twist;
-} TwistStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Twist_t twist;
+} geometry_msgs_TwistStamped_t;
 
 typedef struct {
-    Twist twist;
+    geometry_msgs_Twist_t twist;
     double covariance[36];
-} TwistWithCovariance_t;
+} geometry_msgs_TwistWithCovariance_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    TwistWithCovariance twist;
-} TwistWithCovarianceStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_TwistWithCovariance_t twist;
+} geometry_msgs_TwistWithCovarianceStamped_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Vector3 vector;
-} Vector3Stamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Vector3_t vector;
+} geometry_msgs_Vector3Stamped_t;
 
 typedef struct {
-    Vector3 force;
-    Vector3 torque;
-} Wrench_t;
+    geometry_msgs_Vector3_t force;
+    geometry_msgs_Vector3_t torque;
+} geometry_msgs_Wrench_t;
 
 typedef struct {
     CFE_MSG_TelemetryHeader_t Header;
-    std_msgs_Header header;
-    Wrench wrench;
-} WrenchStamped_t;
+    std_msgs_Header_t header;
+    geometry_msgs_Wrench_t wrench;
+} geometry_msgs_WrenchStamped_t;
 
