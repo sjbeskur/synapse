@@ -1,5 +1,6 @@
-use std::path::Path;
 use std::fs;
+use std::path::Path;
+use std::process::Command;
 use synapse_codegen_cfs::RustOptions;
 use synapse_parser::ast::parse;
 
@@ -37,6 +38,7 @@ fn cfs_c_codegen_geometry_msgs() {
 
     assert!(out.contains("#pragma once"));
     assert!(out.contains("#include \"cfe.h\""));
+    assert!(out.contains("#include \"std_msgs.h\""));
 
     // All 14 stamped messages get MID defines
     for (name, mid) in STAMPED_MIDS {
@@ -52,28 +54,85 @@ fn cfs_c_codegen_geometry_msgs() {
     assert!(!out.contains("CFE_MSG_CommandHeader_t Header;"));
 
     // Plain structs get generated without cFS headers
-    assert!(out.contains("} Vector3_t;"));
-    assert!(out.contains("} Pose_t;"));
+    assert!(out.contains("} geometry_msgs_Vector3_t;"));
+    assert!(out.contains("} geometry_msgs_Pose_t;"));
 
     // Spot-check stamped message structs
-    assert!(out.contains("} AccelStamped_t;"));
-    assert!(out.contains("} TransformStamped_t;"));
-    assert!(out.contains("} WrenchStamped_t;"));
+    assert!(out.contains("} geometry_msgs_AccelStamped_t;"));
+    assert!(out.contains("} geometry_msgs_TransformStamped_t;"));
+    assert!(out.contains("} geometry_msgs_WrenchStamped_t;"));
 
     // Covariance fixed array
     assert!(out.contains("    double covariance[36];"));
 
     // Cross-namespace field (plain C, no namespace qualifier)
-    assert!(out.contains("    std_msgs_Header header;"));
+    assert!(out.contains("    std_msgs_Header_t header;"));
 }
 
 #[test]
 fn cfs_c_codegen_std_msgs() {
     let out = synapse_codegen_cfs::generate_c(&read_and_parse("std_msgs.syn"));
-    assert!(out.contains("} Time_t;"));
-    assert!(out.contains("} Header_t;"));
+    assert!(out.contains("} std_msgs_Time_t;"));
+    assert!(out.contains("} std_msgs_Header_t;"));
     assert!(out.contains("    uint32_t sec;"));
     assert!(out.contains("    uint32_t seq;"));
+}
+
+#[test]
+fn generated_c_geometry_msgs_compiles() {
+    let std_msgs = synapse_codegen_cfs::generate_c(&read_and_parse("std_msgs.syn"));
+    let geometry_msgs = synapse_codegen_cfs::generate_c(&read_and_parse("geometry_msgs.syn"));
+
+    let dir = std::env::temp_dir().join(format!("synapse-cc-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create temp cc dir");
+    fs::write(
+        dir.join("cfe.h"),
+        r#"
+#pragma once
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct {
+    uint8_t bytes[16];
+} CFE_MSG_TelemetryHeader_t;
+
+typedef struct {
+    uint8_t bytes[16];
+} CFE_MSG_CommandHeader_t;
+
+typedef struct {
+    const void *Data;
+    size_t Size;
+} CFE_Span_t;
+"#,
+    )
+    .expect("write cfe.h stub");
+    fs::write(dir.join("std_msgs.h"), std_msgs).expect("write std_msgs.h");
+    fs::write(dir.join("geometry_msgs.h"), geometry_msgs).expect("write geometry_msgs.h");
+    fs::write(
+        dir.join("check.c"),
+        r#"
+#include "geometry_msgs.h"
+"#,
+    )
+    .expect("write C check source");
+
+    let output = Command::new("cc")
+        .arg("-std=c99")
+        .arg("-fsyntax-only")
+        .arg("-I")
+        .arg(&dir)
+        .arg(dir.join("check.c"))
+        .output()
+        .expect("run cc");
+
+    assert!(
+        output.status.success(),
+        "generated C did not compile\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 // ── cFS Rust codegen ───────────────────────────────────────────────────────────
@@ -93,8 +152,8 @@ fn cfs_rust_codegen_geometry_msgs() {
     }
 
     // All are telemetry
-    assert!(out.contains("pub header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
-    assert!(!out.contains("pub header: cfs_sys::CFE_MSG_CommandHeader_t,"));
+    assert!(out.contains("pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
+    assert!(!out.contains("pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
 
     // repr(C) on every struct
     assert!(out.contains("#[repr(C)]"));
@@ -113,6 +172,60 @@ fn cfs_rust_codegen_std_msgs() {
     assert!(out.contains("pub struct Header {"));
     assert!(out.contains("pub sec: u32,"));
     assert!(out.contains("pub seq: u32,"));
+}
+
+#[test]
+fn generated_rust_geometry_msgs_compiles() {
+    let opts = RustOptions::default();
+    let std_msgs = synapse_codegen_cfs::generate_rust(&read_and_parse("std_msgs.syn"), &opts);
+    let geometry_msgs = synapse_codegen_cfs::generate_rust(&read_and_parse("geometry_msgs.syn"), &opts);
+
+    let src = format!(
+        r#"
+pub mod cfs_sys {{
+    #[repr(C)]
+    pub struct CFE_MSG_TelemetryHeader_t {{
+        pub bytes: [u8; 16],
+    }}
+
+    #[repr(C)]
+    pub struct CFE_MSG_CommandHeader_t {{
+        pub bytes: [u8; 16],
+    }}
+}}
+
+pub mod std_msgs {{
+{std_msgs}
+}}
+
+pub mod geometry_msgs {{
+    use crate::cfs_sys;
+{geometry_msgs}
+}}
+"#
+    );
+
+    let dir = std::env::temp_dir().join(format!("synapse-rustc-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create temp rustc dir");
+    let src_path = dir.join("generated_geometry.rs");
+    let lib_path = dir.join("libgenerated_geometry.rlib");
+    fs::write(&src_path, src).expect("write generated Rust test source");
+
+    let output = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg("--crate-type=lib")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&lib_path)
+        .output()
+        .expect("run rustc");
+
+    assert!(
+        output.status.success(),
+        "generated Rust did not compile\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
