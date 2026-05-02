@@ -1,0 +1,114 @@
+namespace camera_app
+
+import "std_msgs.syn"
+
+## Operating modes for an onboard camera.
+enum CameraMode {
+    ## Powered and configured, but not streaming or capturing.
+    Standby = 0
+    ## Producing preview frames.
+    Preview = 1
+    ## Capturing science or inspection imagery.
+    Capture = 2
+    ## Running calibration workflows.
+    Calibrate = 3
+    ## Camera has detected a fault condition.
+    Fault = 4
+}
+
+## Stable identifier for one physical or logical camera.
+struct CameraId {
+    ## Mission-defined camera name, for example "nav_left" or "dock_cam".
+    name: string[<=32]
+}
+
+## Image dimensions in pixels.
+struct ImageSize {
+    ## Image width in pixels.
+    width: u16
+    ## Image height in pixels.
+    height: u16
+}
+
+## Pinhole camera model and distortion coefficients.
+struct CameraIntrinsics {
+    ## Row-major 3x3 intrinsic matrix: [fx, 0, cx, 0, fy, cy, 0, 0, 1].
+    k: f64[9]
+    ## Distortion coefficients for the selected camera model.
+    distortion: f64[5]
+    ## Image size these intrinsics were calibrated against.
+    image_size: ImageSize
+}
+
+## Persistent calibration payload managed through cFS Table Services.
+table CameraCalibration {
+    ## Camera this calibration applies to.
+    camera: CameraId
+    ## Active intrinsic calibration values.
+    intrinsics: CameraIntrinsics
+    ## Coordinate frame associated with this calibration.
+    frame_id: string[<=32]
+    ## Whether this calibration has passed validation.
+    valid: bool
+}
+
+## Set a camera's operating mode.
+@mid(0x1881)
+command SetCameraMode {
+    ## Camera to control.
+    camera: CameraId
+    ## Requested operating mode.
+    mode: CameraMode
+}
+
+## Set exposure parameters for a camera.
+@mid(0x1882)
+command SetExposure {
+    ## Camera to control.
+    camera: CameraId
+    ## Exposure time in microseconds.
+    exposure_us: u32
+    ## Sensor gain multiplier.
+    gain: f32
+}
+
+## Send a new intrinsic calibration matrix directly over the Software Bus.
+@mid(0x1883)
+command UpdateIntrinsics {
+    ## Camera to update.
+    camera: CameraId
+    ## New intrinsic calibration values.
+    intrinsics: CameraIntrinsics
+}
+
+## Camera operating status telemetry.
+@mid(0x0881)
+telemetry CameraStatus {
+    ## Standard sequence, timestamp, and frame metadata.
+    header: std_msgs::Header
+    ## Camera this status describes.
+    camera: CameraId
+    ## Current operating mode.
+    mode: CameraMode
+    ## Current exposure time in microseconds.
+    exposure_us: u32
+    ## Current sensor gain multiplier.
+    gain: f32
+    ## Number of frames produced since boot or reset.
+    frame_count: u32
+    ## Number of dropped frames since boot or reset.
+    dropped_frames: u32
+}
+
+## Active calibration telemetry for a camera.
+@mid(0x0882)
+telemetry CameraCalibrationStatus {
+    ## Standard sequence, timestamp, and frame metadata.
+    header: std_msgs::Header
+    ## Camera this calibration status describes.
+    camera: CameraId
+    ## Active intrinsic calibration values.
+    active: CameraIntrinsics
+    ## Whether the active calibration is valid.
+    valid: bool
+}

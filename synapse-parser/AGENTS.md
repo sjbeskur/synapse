@@ -28,9 +28,9 @@ cargo run --example parse_synapse -- examples/sample.syn
 
 ## Language Shape
 
-Top-level items are `namespace`, `import`, `const`, `enum`, `struct`, and `message`.
+Top-level items are `namespace`, `import`, `const`, `enum`, `struct`, `command`, `telemetry`, `table`, and legacy `message`.
 
-Use `struct` for plain ABI-shaped data. Use `message` for cFS Software Bus packets; generators add the cFS command or telemetry header.
+Use `struct` for plain reusable ABI-shaped data. Use `command` for cFS Software Bus command packets; generators add `CFE_MSG_CommandHeader_t`. Use `telemetry` for cFS Software Bus telemetry packets; generators add `CFE_MSG_TelemetryHeader_t`. Use `table` for cFS Table Services payload data; generators do not add a Software Bus header. Legacy `message` remains accepted as a generic Software Bus packet.
 
 Types include Rust-style primitives (`f32`, `f64`, `i8` through `i64`, `u8` through `u64`, `bool`, `bytes`), `string`, and user-defined refs such as `Point` or `geometry::Point`.
 

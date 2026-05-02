@@ -37,7 +37,7 @@ struct Accel {
 }
 
 @mid(0x0800)
-message AccelStamped {
+telemetry AccelStamped {
     header: std_msgs::Header
     accel:  Accel
 }
@@ -48,7 +48,7 @@ struct AccelWithCovariance {
 }
 
 @mid(0x0801)
-message AccelWithCovarianceStamped {
+telemetry AccelWithCovarianceStamped {
     header: std_msgs::Header
     accel:  AccelWithCovariance
 }
@@ -67,7 +67,7 @@ struct Inertia {
 }
 
 @mid(0x0802)
-message InertiaStamped {
+telemetry InertiaStamped {
     header:  std_msgs::Header
     inertia: Inertia
 }
@@ -75,7 +75,7 @@ message InertiaStamped {
 # ── Point ─────────────────────────────────────────────────────────────────────
 
 @mid(0x0803)
-message PointStamped {
+telemetry PointStamped {
     header: std_msgs::Header
     point:  Point
 }
@@ -87,7 +87,7 @@ struct Polygon {
 }
 
 @mid(0x0804)
-message PolygonStamped {
+telemetry PolygonStamped {
     header:  std_msgs::Header
     polygon: Polygon
 }
@@ -106,13 +106,13 @@ struct Pose2D {
 }
 
 @mid(0x0805)
-message PoseArray {
+telemetry PoseArray {
     header: std_msgs::Header
     poses:  Pose[]
 }
 
 @mid(0x0806)
-message PoseStamped {
+telemetry PoseStamped {
     header: std_msgs::Header
     pose:   Pose
 }
@@ -123,7 +123,7 @@ struct PoseWithCovariance {
 }
 
 @mid(0x0807)
-message PoseWithCovarianceStamped {
+telemetry PoseWithCovarianceStamped {
     header: std_msgs::Header
     pose:   PoseWithCovariance
 }
@@ -131,7 +131,7 @@ message PoseWithCovarianceStamped {
 # ── Quaternion ────────────────────────────────────────────────────────────────
 
 @mid(0x0808)
-message QuaternionStamped {
+telemetry QuaternionStamped {
     header:     std_msgs::Header
     quaternion: Quaternion
 }
@@ -144,7 +144,7 @@ struct Transform {
 }
 
 @mid(0x0809)
-message TransformStamped {
+telemetry TransformStamped {
     header:         std_msgs::Header
     child_frame_id: string
     transform:      Transform
@@ -158,7 +158,7 @@ struct Twist {
 }
 
 @mid(0x080A)
-message TwistStamped {
+telemetry TwistStamped {
     header: std_msgs::Header
     twist:  Twist
 }
@@ -169,7 +169,7 @@ struct TwistWithCovariance {
 }
 
 @mid(0x080B)
-message TwistWithCovarianceStamped {
+telemetry TwistWithCovarianceStamped {
     header: std_msgs::Header
     twist:  TwistWithCovariance
 }
@@ -177,7 +177,7 @@ message TwistWithCovarianceStamped {
 # ── Vector3 ───────────────────────────────────────────────────────────────────
 
 @mid(0x080C)
-message Vector3Stamped {
+telemetry Vector3Stamped {
     header: std_msgs::Header
     vector: Vector3
 }
@@ -190,7 +190,7 @@ struct Wrench {
 }
 
 @mid(0x080D)
-message WrenchStamped {
+telemetry WrenchStamped {
     header: std_msgs::Header
     wrench: Wrench
 }

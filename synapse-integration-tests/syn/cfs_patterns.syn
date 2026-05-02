@@ -1,0 +1,18 @@
+namespace nav_app
+
+table NavConfig {
+    max_speed: f64
+    enabled: bool
+    frame_id: string[<=32]
+}
+
+@mid(0x1880)
+command SetMode {
+    mode: u8
+}
+
+@mid(0x0801)
+telemetry NavState {
+    x: f64
+    y: f64
+}

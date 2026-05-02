@@ -1,0 +1,210 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Synapse",
+  "scopeName": "source.synapse",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#attributes"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#fields"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.synapse",
+          "match": "##.*$"
+        },
+        {
+          "name": "comment.line.number-sign.synapse",
+          "match": "#(?!#).*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.synapse",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.synapse",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "name": "meta.attribute.synapse",
+          "begin": "(@)([A-Za-z][A-Za-z0-9_]*)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.annotation.synapse"
+            },
+            "2": {
+              "name": "entity.name.function.attribute.synapse"
+            },
+            "3": {
+              "name": "punctuation.section.parens.begin.synapse"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.parens.end.synapse"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#constants"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "name": "variable.other.constant-ref.synapse",
+              "match": "\\b[A-Za-z][A-Za-z0-9_]*(?:::[A-Za-z][A-Za-z0-9_]*)*\\b"
+            }
+          ]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.synapse",
+          "match": "\\b(namespace|import|const|enum|struct|command|telemetry|table|message)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.primitive.synapse",
+          "match": "\\b(f32|f64|i8|i16|i32|i64|u8|u16|u32|u64|bool|bytes|string)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.synapse",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.synapse",
+          "match": "\\b0[xX][0-9A-Fa-f]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.synapse",
+          "match": "-?(?:[0-9]*\\.[0-9]+|[0-9]+\\.[0-9]*|[0-9]+[eE][+-]?[0-9]+)(?:[eE][+-]?[0-9]+)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.synapse",
+          "match": "\\b-?[0-9]+\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.declaration.synapse",
+          "match": "\\b(namespace)\\s+([A-Za-z][A-Za-z0-9_]*(?:::[A-Za-z][A-Za-z0-9_]*)*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.namespace.synapse"
+            },
+            "2": {
+              "name": "entity.name.namespace.synapse"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.type.synapse",
+          "match": "\\b(enum|struct|command|telemetry|table|message)\\s+([A-Za-z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.synapse"
+            },
+            "2": {
+              "name": "entity.name.type.synapse"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.const.synapse",
+          "match": "\\b(const)\\s+([A-Za-z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.const.synapse"
+            },
+            "2": {
+              "name": "variable.other.constant.synapse"
+            }
+          }
+        }
+      ]
+    },
+    "fields": {
+      "patterns": [
+        {
+          "name": "meta.field.synapse",
+          "match": "\\b([A-Za-z][A-Za-z0-9_]*)(\\?)?\\s*(:)",
+          "captures": {
+            "1": {
+              "name": "variable.other.member.synapse"
+            },
+            "2": {
+              "name": "keyword.operator.optional.synapse"
+            },
+            "3": {
+              "name": "punctuation.separator.key-value.synapse"
+            }
+          }
+        },
+        {
+          "name": "keyword.operator.assignment.synapse",
+          "match": "="
+        },
+        {
+          "name": "punctuation.accessor.scope.synapse",
+          "match": "::"
+        }
+      ]
+    }
+  }
+}
