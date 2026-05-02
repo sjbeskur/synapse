@@ -12,7 +12,10 @@ fmt:
     cargo fmt --all
 
 check:
-    cargo check --workspace
+    cargo check -p synapse-parser -p synapse-codegen-cfs -p synapse -p synapse-integration-tests
+
+check-cfs:
+    CFS_DIR="{{cfs_core_inc}}" BINDGEN_EXTRA_CLANG_ARGS="{{bindgen_args}}" cargo check --workspace
 
 test:
     cargo test -p synapse-parser -p synapse-codegen-cfs -p synapse -p synapse-integration-tests
@@ -21,7 +24,7 @@ test-cfs:
     CFS_DIR="{{cfs_core_inc}}" BINDGEN_EXTRA_CLANG_ARGS="{{bindgen_args}}" cargo test
 
 build:
-    cargo build --workspace
+    cargo build -p synapse-parser -p synapse-codegen-cfs -p synapse -p synapse-integration-tests
 
 build-cfs:
     CFS_DIR="{{cfs_core_inc}}" BINDGEN_EXTRA_CLANG_ARGS="{{bindgen_args}}" cargo build --workspace

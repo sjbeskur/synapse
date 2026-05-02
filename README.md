@@ -49,11 +49,33 @@ table NavConfig {
 
 Generated tables do not include a Software Bus header. They are plain table data. The legacy `message` keyword still works for generic Software Bus packets, but new files should prefer `command` or `telemetry`.
 
+## Documentation Comments
+
+Use `##` for comments that should attach to the next declaration or field and eventually feed generated documentation:
+
+```syn
+## Stable identifier for one physical or logical camera.
+struct CameraId {
+    ## Mission-defined camera name.
+    name: string[<=32]
+}
+```
+
+Use single `#` comments for ordinary notes that should not become API documentation.
+
 ## UDP and Tables
 
 When communicating with cFS through UDP apps such as `CI_LAB` or `TO_LAB`, UDP is only the transport. The bytes entering or leaving the Software Bus are still cFS packets, so generated `command` and `telemetry` types need the cFS header.
 
 Table Services are different: the table data itself is normally a plain struct without a Software Bus header. Commands that load, validate, or activate tables are Software Bus command messages, but the table buffer/file is just table data.
+
+## Examples
+
+Sample `.syn` files live in `synapse-integration-tests/syn`.
+
+- `geometry_msgs.syn`: ROS-like geometry telemetry packets.
+- `cfs_patterns.syn`: minimal command, telemetry, and table examples.
+- `camera_msgs.syn`: camera control examples, including commands to set mode/exposure, a command to send updated intrinsics, telemetry for camera status, and a `CameraCalibration` table containing the persistent calibration data. The intrinsic `K` matrix is represented as a row-major `f64[9]`.
 
 ## Workspace
 
