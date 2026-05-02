@@ -33,6 +33,9 @@ gen-geometry:
     cargo run -p synapse -- --lang c -o generated synapse-integration-tests/syn/geometry_msgs.syn
     cargo run -p synapse -- --lang rust -o generated synapse-integration-tests/syn/geometry_msgs.syn
 
+vscode-syntax:
+    code --extensionDevelopmentPath="$PWD/vscode-synapse" "$PWD"
+
 cfs-clone:
     test -d "{{cfs_root}}/.git" || git clone https://github.com/nasa/cFS.git "{{cfs_root}}"
     git -C "{{cfs_root}}" submodule update --init --recursive

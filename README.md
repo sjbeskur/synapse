@@ -107,3 +107,13 @@ By default cFS is expected at `/tmp/cFS`. Override with:
 ```bash
 CFS_ROOT=/path/to/cFS just test-cfs
 ```
+
+## Editor Support
+
+A local VS Code syntax-highlighting extension lives in `vscode-synapse`.
+
+```bash
+just vscode-syntax
+```
+
+This launches VS Code with the extension development path pointed at the local Synapse grammar.

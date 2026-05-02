@@ -1,0 +1,35 @@
+{
+  "name": "synapse-vscode",
+  "displayName": "Synapse Language Support",
+  "description": "Syntax highlighting for Synapse .syn files.",
+  "version": "0.1.0",
+  "publisher": "synapse",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "synapse",
+        "aliases": [
+          "Synapse",
+          "synapse"
+        ],
+        "extensions": [
+          ".syn"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "synapse",
+        "scopeName": "source.synapse",
+        "path": "./syntaxes/synapse.tmLanguage.json"
+      }
+    ]
+  }
+}
