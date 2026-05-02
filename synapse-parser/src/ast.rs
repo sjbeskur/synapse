@@ -16,6 +16,9 @@ pub enum Item {
     Const(ConstDecl),
     Enum(EnumDef),
     Struct(StructDef),
+    Table(StructDef),
+    Command(MessageDef),
+    Telemetry(MessageDef),
     Message(MessageDef),
 }
 
@@ -63,10 +66,21 @@ pub struct StructDef {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageDef {
+    pub kind: PacketKind,
     pub name: String,
     pub fields: Vec<FieldDef>,
     pub doc: Vec<String>,
     pub attrs: Vec<Attribute>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PacketKind {
+    /// Legacy generic Software Bus packet. cFS generators infer command vs telemetry.
+    Message,
+    /// cFS Software Bus command packet.
+    Command,
+    /// cFS Software Bus telemetry packet.
+    Telemetry,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -157,7 +171,10 @@ fn build_file(pair: Pair<Rule>) -> SynFile {
             Rule::const_decl     => Some(Item::Const(build_const(p))),
             Rule::enum_def       => Some(Item::Enum(build_enum(p))),
             Rule::struct_def     => Some(Item::Struct(build_struct(p))),
-            Rule::message_def    => Some(Item::Message(build_message(p))),
+            Rule::table_def      => Some(Item::Table(build_struct(p))),
+            Rule::command_def    => Some(Item::Command(build_packet(p, PacketKind::Command))),
+            Rule::telemetry_def  => Some(Item::Telemetry(build_packet(p, PacketKind::Telemetry))),
+            Rule::message_def    => Some(Item::Message(build_packet(p, PacketKind::Message))),
             Rule::EOI            => None,
             r                    => unreachable!("unexpected rule: {:?}", r),
         })
@@ -211,13 +228,13 @@ fn build_struct(pair: Pair<Rule>) -> StructDef {
     StructDef { name, fields, doc, attrs }
 }
 
-fn build_message(pair: Pair<Rule>) -> MessageDef {
+fn build_packet(pair: Pair<Rule>, kind: PacketKind) -> MessageDef {
     let mut inner = pair.into_inner().peekable();
     let doc    = extract_doc(&mut inner);
     let attrs  = extract_attrs(&mut inner);
     let name   = inner.next().unwrap().as_str().to_string();
     let fields = inner.map(build_field).collect();
-    MessageDef { name, fields, doc, attrs }
+    MessageDef { kind, name, fields, doc, attrs }
 }
 
 fn build_field(pair: Pair<Rule>) -> FieldDef {
@@ -514,9 +531,36 @@ mod tests {
     fn message_optional_field() {
         let f = p("message Foo { required: i32  optional?: string }");
         let Item::Message(m) = &f.items[0] else { panic!() };
+        assert_eq!(m.kind, PacketKind::Message);
         assert!(!m.fields[0].optional);
         assert!(m.fields[1].optional);
         assert_eq!(m.fields[1].ty.base, BaseType::String);
+    }
+
+    #[test]
+    fn command_packet_kind() {
+        let f = p("@mid(0x1880)\ncommand SetMode { mode: u8 }");
+        let Item::Command(m) = &f.items[0] else { panic!() };
+        assert_eq!(m.kind, PacketKind::Command);
+        assert_eq!(m.name, "SetMode");
+        assert_eq!(m.fields[0].name, "mode");
+    }
+
+    #[test]
+    fn telemetry_packet_kind() {
+        let f = p("@mid(0x0801)\ntelemetry NavState { x: f64 }");
+        let Item::Telemetry(m) = &f.items[0] else { panic!() };
+        assert_eq!(m.kind, PacketKind::Telemetry);
+        assert_eq!(m.name, "NavState");
+        assert_eq!(m.fields[0].name, "x");
+    }
+
+    #[test]
+    fn table_is_plain_data_item() {
+        let f = p("table NavConfig { max_speed: f64  enabled: bool }");
+        let Item::Table(t) = &f.items[0] else { panic!() };
+        assert_eq!(t.name, "NavConfig");
+        assert_eq!(t.fields.len(), 2);
     }
 
     #[test]

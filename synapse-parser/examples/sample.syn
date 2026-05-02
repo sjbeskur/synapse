@@ -44,13 +44,13 @@ enum DriveMode {
 const MAX_SPEED:     f64 = 2.5
 const MAX_WAYPOINTS: u32 = 256
 
-message Header {
+struct Header {
     seq:   u32
     stamp: u64
     frame: string[<=64] = "world"
 }
 
-message Odometry {
+struct Odometry {
     header:   Header
     pose:     geometry::Pose
     velocity: geometry::Twist
@@ -58,7 +58,8 @@ message Odometry {
     covariance: f64[36]
 }
 
-message RobotState {
+@mid(0x0801)
+telemetry RobotState {
     header:      Header
     mode:        DriveMode        = DriveMode::Idle
     odometry:    Odometry
@@ -67,4 +68,15 @@ message RobotState {
     sensor_data: u8[]
     waypoints:   geometry::Point[<=256]
     error_code?: i32              # present only when mode == Error
+}
+
+@mid(0x1880)
+command SetDriveMode {
+    mode: DriveMode
+}
+
+table RobotConfig {
+    max_speed: f64
+    max_waypoints: u32
+    frame: string[<=64]
 }

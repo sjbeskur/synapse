@@ -223,6 +223,27 @@ mod synapse_tests {
     }
 
     #[test]
+    fn command_basic() {
+        assert!(parses_file(
+            "@mid(0x1880)\ncommand SetMode { mode: u8 }"
+        ));
+    }
+
+    #[test]
+    fn telemetry_basic() {
+        assert!(parses_file(
+            "@mid(0x0801)\ntelemetry NavState { x: f64  y: f64 }"
+        ));
+    }
+
+    #[test]
+    fn table_basic() {
+        assert!(parses_file(
+            "table NavConfig { max_speed: f64  enabled: bool }"
+        ));
+    }
+
+    #[test]
     fn message_optional_field() {
         assert!(parses_file(
             "message Foo { required: i32  optional?: string }"

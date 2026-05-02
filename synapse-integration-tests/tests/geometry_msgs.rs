@@ -30,6 +30,13 @@ fn geometry_msgs_parses() {
     assert_eq!(f.items.len(), 31);
 }
 
+#[test]
+fn cfs_patterns_parse() {
+    let f = read_and_parse("cfs_patterns.syn");
+    // namespace + table + command + telemetry
+    assert_eq!(f.items.len(), 4);
+}
+
 // ── cFS C codegen ──────────────────────────────────────────────────────────────
 
 #[test]
@@ -76,6 +83,23 @@ fn cfs_c_codegen_std_msgs() {
     assert!(out.contains("} std_msgs_Header_t;"));
     assert!(out.contains("    uint32_t sec;"));
     assert!(out.contains("    uint32_t seq;"));
+}
+
+#[test]
+fn cfs_c_codegen_command_telemetry_and_table() {
+    let out = synapse_codegen_cfs::generate_c(&read_and_parse("cfs_patterns.syn"));
+    assert!(out.contains("#define SET_MODE_MID  0x1880U"));
+    assert!(out.contains("#define NAV_STATE_MID  0x0801U"));
+    assert!(out.contains("} nav_app_NavConfig_t;"));
+    assert!(out.contains("} nav_app_SetMode_t;"));
+    assert!(out.contains("} nav_app_NavState_t;"));
+    assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
+    assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
+
+    let table_start = out.find("typedef struct {\n    double max_speed;").unwrap();
+    let table_end = out[table_start..].find("} nav_app_NavConfig_t;").unwrap() + table_start;
+    let table = &out[table_start..table_end];
+    assert!(!table.contains("CFE_MSG_"));
 }
 
 #[test]
@@ -172,6 +196,24 @@ fn cfs_rust_codegen_std_msgs() {
     assert!(out.contains("pub struct Header {"));
     assert!(out.contains("pub sec: u32,"));
     assert!(out.contains("pub seq: u32,"));
+}
+
+#[test]
+fn cfs_rust_codegen_command_telemetry_and_table() {
+    let opts = RustOptions::default();
+    let out = synapse_codegen_cfs::generate_rust(&read_and_parse("cfs_patterns.syn"), &opts);
+    assert!(out.contains("pub const SET_MODE_MID: u16 = 0x1880;"));
+    assert!(out.contains("pub const NAV_STATE_MID: u16 = 0x0801;"));
+    assert!(out.contains("pub struct NavConfig {"));
+    assert!(out.contains("pub struct SetMode {"));
+    assert!(out.contains("pub struct NavState {"));
+    assert!(out.contains("pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
+    assert!(out.contains("pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
+
+    let table_start = out.find("pub struct NavConfig {").unwrap();
+    let table_end = out[table_start..].find("}\n\n").unwrap() + table_start;
+    let table = &out[table_start..table_end];
+    assert!(!table.contains("cfs_header"));
 }
 
 #[test]

@@ -22,12 +22,20 @@
 //
 //   const MAX_SPEED: f64 = 2.5
 //
-//   message RobotState {
+//   telemetry RobotState {
 //       mode:         DriveMode          = DriveMode::Idle
 //       position:     geometry::Point
 //       label:        string[<=64]       = "robot"
 //       sensor_data:  u8[]
 //       error_code?:  i32                # optional field
+//   }
+//
+//   command SetMode {
+//       mode: DriveMode
+//   }
+//
+//   table RobotConfig {
+//       max_speed: f64
 //   }
 
 // ============================================================
@@ -58,6 +66,9 @@ item = _{
   | const_decl
   | enum_def
   | struct_def
+  | command_def
+  | telemetry_def
+  | table_def
   | message_def
 }
 
@@ -86,13 +97,22 @@ enum_def     = { doc_block? ~ attribute* ~ "enum" ~ ident ~ "{" ~ enum_variant* 
 enum_variant = { doc_block? ~ ident ~ ("=" ~ int_lit)? }
 
 // ============================================================
-// Struct and Message
+// Struct, Software Bus packets, and table data
 // ============================================================
 
 // struct — plain data aggregate (no implied serialization)
 struct_def  = { doc_block? ~ attribute* ~ "struct"  ~ ident ~ "{" ~ field* ~ "}" }
 
-// message — serializable unit; code generators may produce serialize/deserialize logic
+// command — cFS Software Bus command packet
+command_def = { doc_block? ~ attribute* ~ "command" ~ ident ~ "{" ~ field* ~ "}" }
+
+// telemetry — cFS Software Bus telemetry packet
+telemetry_def = { doc_block? ~ attribute* ~ "telemetry" ~ ident ~ "{" ~ field* ~ "}" }
+
+// table — cFS Table Services data payload, not a Software Bus packet
+table_def = { doc_block? ~ attribute* ~ "table" ~ ident ~ "{" ~ field* ~ "}" }
+
+// message — legacy generic Software Bus packet; code generators may infer command/telemetry
 message_def = { doc_block? ~ attribute* ~ "message" ~ ident ~ "{" ~ field* ~ "}" }
 
 // field:  Type

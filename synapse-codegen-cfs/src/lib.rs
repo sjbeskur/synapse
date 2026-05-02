@@ -1,6 +1,6 @@
 use synapse_parser::ast::{
     ArraySuffix, Attribute, BaseType, ConstDecl, Item, Literal, MessageDef, PrimitiveType,
-    StructDef, SynFile, TypeExpr,
+    PacketKind, StructDef, SynFile, TypeExpr,
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -42,10 +42,11 @@ pub fn generate_c(file: &SynFile) -> String {
     out
 }
 
-/// Generate `#[repr(C)]` Rust structs compatible with NASA cFS message bindings.
+/// Generate `#[repr(C)]` Rust structs compatible with NASA cFS bindings.
 ///
-/// Each `message` becomes a struct with the cFS header as the first field,
-/// matching the C ABI layout. MID constants are emitted as `pub const`.
+/// `command` and `telemetry` packets become structs with the cFS header as the
+/// first field, matching the C ABI layout. `struct` and `table` items remain
+/// plain data structs. MID constants are emitted as `pub const`.
 pub fn generate_rust(file: &SynFile, opts: &RustOptions) -> String {
     let mut out = String::new();
     emit_rust_imports(file, &mut out);
@@ -82,10 +83,10 @@ fn emit_rust_imports(file: &SynFile, out: &mut String) {
 }
 
 fn emit_items(file: &SynFile, out: &mut String) {
-    // First pass: emit #define MID lines for messages with @mid
+    // First pass: emit #define MID lines for Software Bus packets with @mid
     let mut has_mids = false;
     for item in &file.items {
-        if let Item::Message(m) = item {
+        if let Some(m) = packet_item(item) {
             if let Some(mid) = find_mid_attr(&m.attrs) {
                 if !has_mids {
                     out.push_str("/* Message IDs */\n");
@@ -106,8 +107,8 @@ fn emit_items(file: &SynFile, out: &mut String) {
             Item::Namespace(ns) => namespace = ns.name.clone(),
             Item::Import(_) | Item::Enum(_) => {}
             Item::Const(c)   => emit_const(out, c),
-            Item::Struct(s)  => emit_struct(out, s, &namespace),
-            Item::Message(m) => emit_message(out, m, &namespace),
+            Item::Struct(s) | Item::Table(s) => emit_struct(out, s, &namespace),
+            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => emit_message(out, m, &namespace),
         }
     }
 }
@@ -135,7 +136,7 @@ fn emit_struct(out: &mut String, s: &StructDef, namespace: &[String]) {
 // ── Message ───────────────────────────────────────────────────────────────────
 
 fn emit_message(out: &mut String, m: &MessageDef, namespace: &[String]) {
-    let header_type = if is_command(m) {
+    let header_type = if packet_is_command(m) {
         "CFE_MSG_CommandHeader_t"
     } else {
         "CFE_MSG_TelemetryHeader_t"
@@ -160,10 +161,10 @@ fn emit_message(out: &mut String, m: &MessageDef, namespace: &[String]) {
 // ── Rust emission ─────────────────────────────────────────────────────────────
 
 fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
-    // First pass: MID consts for messages with @mid
+    // First pass: MID consts for Software Bus packets with @mid
     let mut has_mids = false;
     for item in &file.items {
-        if let Item::Message(m) = item {
+        if let Some(m) = packet_item(item) {
             if let Some(mid) = find_mid_attr(&m.attrs) {
                 if !has_mids {
                     out.push_str("// Message IDs\n");
@@ -182,8 +183,8 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
         match item {
             Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
             Item::Const(c)   => emit_rust_const(out, c),
-            Item::Struct(s)  => emit_rust_struct(out, s),
-            Item::Message(m) => emit_rust_message(out, m, opts),
+            Item::Struct(s) | Item::Table(s) => emit_rust_struct(out, s),
+            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => emit_rust_message(out, m, opts),
         }
     }
 }
@@ -207,7 +208,7 @@ fn emit_rust_struct(out: &mut String, s: &StructDef) {
 }
 
 fn emit_rust_message(out: &mut String, m: &MessageDef, opts: &RustOptions) {
-    let header_type = if is_command(m) { opts.cmd_header } else { opts.tlm_header };
+    let header_type = if packet_is_command(m) { opts.cmd_header } else { opts.tlm_header };
     let qualified = if opts.cfs_module.is_empty() {
         header_type.to_string()
     } else {
@@ -307,8 +308,21 @@ fn find_mid_attr(attrs: &[Attribute]) -> Option<&Literal> {
     attrs.iter().find(|a| a.name == "mid").map(|a| &a.value)
 }
 
-/// A message is a command if its MID has bit 12 (0x1000) set, or if it has `@cmd`.
-fn is_command(m: &MessageDef) -> bool {
+fn packet_item(item: &Item) -> Option<&MessageDef> {
+    match item {
+        Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => Some(m),
+        _ => None,
+    }
+}
+
+/// A legacy message is a command if its MID has bit 12 (0x1000) set, or if it has `@cmd`.
+fn packet_is_command(m: &MessageDef) -> bool {
+    match m.kind {
+        PacketKind::Command => return true,
+        PacketKind::Telemetry => return false,
+        PacketKind::Message => {}
+    }
+
     if m.attrs.iter().any(|a| a.name == "cmd" && a.value != Literal::Bool(false)) {
         return true;
     }
@@ -488,6 +502,31 @@ mod tests {
     }
 
     #[test]
+    fn command_uses_command_header() {
+        let out = codegen("@mid(0x0801)\ncommand SetMode { mode: u8 }");
+        assert!(out.contains("#define SET_MODE_MID  0x0801U"));
+        assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
+        assert!(!out.contains("CFE_MSG_TelemetryHeader_t Header;"));
+    }
+
+    #[test]
+    fn telemetry_uses_telemetry_header() {
+        let out = codegen("@mid(0x1880)\ntelemetry NavState { x: f64 }");
+        assert!(out.contains("#define NAV_STATE_MID  0x1880U"));
+        assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
+        assert!(!out.contains("CFE_MSG_CommandHeader_t Header;"));
+    }
+
+    #[test]
+    fn table_is_plain_data_without_bus_header() {
+        let out = codegen("table NavConfig { max_speed: f64  enabled: bool }");
+        assert!(out.contains("} NavConfig_t;"));
+        assert!(out.contains("    double max_speed;"));
+        assert!(!out.contains("CFE_MSG_CommandHeader_t Header;"));
+        assert!(!out.contains("CFE_MSG_TelemetryHeader_t Header;"));
+    }
+
+    #[test]
     fn message_without_mid_no_define() {
         let out = codegen("message Bare { x: f32 }");
         assert!(!out.contains("#define"));
@@ -554,6 +593,30 @@ mod tests {
         let out = rust_codegen("@mid(0x1880)\nmessage NavCmd { seq: u16 }");
         assert!(out.contains("pub const NAV_CMD_MID: u16 = 0x1880;"));
         assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
+    }
+
+    #[test]
+    fn rust_command_uses_command_header() {
+        let out = rust_codegen("@mid(0x0801)\ncommand SetMode { mode: u8 }");
+        assert!(out.contains("pub const SET_MODE_MID: u16 = 0x0801;"));
+        assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
+        assert!(!out.contains("CFE_MSG_TelemetryHeader_t"));
+    }
+
+    #[test]
+    fn rust_telemetry_uses_telemetry_header() {
+        let out = rust_codegen("@mid(0x1880)\ntelemetry NavState { x: f64 }");
+        assert!(out.contains("pub const NAV_STATE_MID: u16 = 0x1880;"));
+        assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
+        assert!(!out.contains("CFE_MSG_CommandHeader_t"));
+    }
+
+    #[test]
+    fn rust_table_is_plain_data_without_bus_header() {
+        let out = rust_codegen("table NavConfig { max_speed: f64  enabled: bool }");
+        assert!(out.contains("pub struct NavConfig {"));
+        assert!(out.contains("    pub max_speed: f64,"));
+        assert!(!out.contains("cfs_header"));
     }
 
     #[test]
