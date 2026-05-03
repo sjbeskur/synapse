@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dev-dependencies]
-synapse-parser      = { path = "../synapse-parser" }
-synapse-codegen-cfs = { path = "../synapse-codegen-cfs" }
+synapse-parser      = { package = "cfs-synapse-parser", path = "../synapse-parser" }
+synapse-codegen-cfs = { package = "cfs-synapse-codegen-cfs", path = "../synapse-codegen-cfs" }
