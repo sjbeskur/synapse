@@ -171,6 +171,9 @@ The cFS generator currently emits:
 
 Enums, field defaults, and optional field markers are parsed into the AST, but cFS code generation for those pieces is still early. Prefer plain integer fields for generated packet payloads until enum emission and optional/default handling are completed.
 
+See `docs/language.md` for the current language status and `0.1.x` review checklist.
+See `docs/types.md` for the supported type forms and generated C/Rust mappings.
+
 ## Documentation Comments
 
 Use `##` for comments that should attach to the next declaration or field and eventually feed generated documentation:
@@ -198,6 +201,8 @@ Sample `.syn` files live in `synapse-integration-tests/syn`.
 - `geometry_msgs.syn`: ROS-like geometry telemetry packets.
 - `cfs_patterns.syn`: minimal command, telemetry, and table examples.
 - `camera_msgs.syn`: camera control syntax coverage, including commands to set mode/exposure, a command to send updated intrinsics, telemetry for camera status, and a `CameraCalibration` table containing persistent calibration data. It also exercises parsed enum and doc-comment support.
+
+See `docs/examples.md` for links to all sample `.syn` files and checked-in generated output.
 
 ## Workspace
 

@@ -1,0 +1,271 @@
+# Synapse Language Status
+
+This document records the current Synapse IDL surface before the soft `0.1.x` release. The goal for `0.1.x` is to publish a useful, honest tool while keeping room for intentional language improvements in `0.2.x`.
+
+See `docs/examples.md` for current `.syn` examples and generated output links.
+
+## Release Posture
+
+`0.1.x` should be treated as a stabilization and inventory release:
+
+- Keep the current syntax mostly intact.
+- Document what code generation supports today.
+- Mark parsed-only features clearly.
+- Avoid large language redesigns before the first publish.
+- Prefer conservative behavior over broad promises.
+
+`0.2.x` is the right place for deliberate IDL changes after the first release has real usage feedback.
+
+## Stable For 0.1
+
+These features are part of the intended `0.1.x` authoring path.
+
+### `namespace`
+
+```syn
+namespace camera_app
+```
+
+Namespaces are used by C codegen to prefix generated type names, such as `camera_app_CameraStatus_t`. Rust codegen currently keeps Rust type names unprefixed and uses Rust module structure/imports for organization.
+
+### `import`
+
+```syn
+import "std_msgs.syn"
+```
+
+Imports generate C `#include` lines and Rust `use crate::...` lines. The compiler does not currently perform full multi-file resolution or validation; build systems should generate imported files consistently.
+
+### `struct`
+
+```syn
+struct Point {
+    x: f64
+    y: f64
+}
+```
+
+Plain structs generate ABI-compatible C structs and Rust `#[repr(C)]` structs without cFS Software Bus headers.
+
+### `command`
+
+```syn
+@mid(0x1880)
+command SetMode {
+    mode: u8
+}
+```
+
+Commands generate Software Bus packet structs with `CFE_MSG_CommandHeader_t` as the first C field and `cfs_sys::CFE_MSG_CommandHeader_t` as the first Rust field.
+
+### `telemetry`
+
+```syn
+@mid(0x0801)
+telemetry NavState {
+    x: f64
+    y: f64
+}
+```
+
+Telemetry packets generate Software Bus packet structs with `CFE_MSG_TelemetryHeader_t` as the first C field and `cfs_sys::CFE_MSG_TelemetryHeader_t` as the first Rust field.
+
+### `table`
+
+```syn
+table NavConfig {
+    max_speed: f64
+    enabled: bool
+}
+```
+
+Tables generate plain data structs without cFS Software Bus headers. They are intended for cFS Table Services payload data, not table-management commands.
+
+### `@mid(...)`
+
+```syn
+@mid(0x1880)
+command SetMode {
+    mode: u8
+}
+```
+
+The cFS generator emits message ID constants for `command`, `telemetry`, and legacy `message` items with `@mid`.
+
+Current limitation: missing, duplicate, or range-inappropriate MIDs are not yet validated.
+
+### Primitive Types
+
+Supported primitive names:
+
+```text
+f32 f64
+i8 i16 i32 i64
+u8 u16 u32 u64
+bool
+bytes
+```
+
+These map to fixed C integer/float types and Rust primitive types where possible.
+
+See `docs/types.md` for the full scalar, array, bounded array, and string mapping reference.
+
+### Fixed Arrays
+
+```syn
+struct CameraIntrinsics {
+    k: f64[9]
+}
+```
+
+Fixed arrays generate inline storage in C and Rust.
+
+### Bounded Strings
+
+```syn
+struct CameraId {
+    name: string[<=32]
+}
+```
+
+Bounded strings generate inline `char[N]` storage in C and `[u8; N]` storage in Rust.
+
+### Documentation Comments
+
+```syn
+## Stable identifier for one camera.
+struct CameraId {
+    ## Mission-defined camera name.
+    name: string[<=32]
+}
+```
+
+`##` doc comments are parsed and emitted as generated documentation comments for supported declarations and fields. Single `#` comments are ordinary comments and are not emitted.
+
+## Supported With Caveats
+
+These features work enough to use carefully, but they have semantics that should be revisited before declaring them stable.
+
+### Dynamic Arrays
+
+```syn
+struct Polygon {
+    points: Point32[]
+}
+```
+
+Current C codegen represents dynamic arrays as `CFE_Span_t` with an element-type comment. Current Rust codegen represents them as raw pointers. This avoids allocation in cFS contexts, but it does not include a complete length/ownership model in the IDL.
+
+Review question for `0.2.x`: should dynamic arrays be allowed in Software Bus packet payloads, or restricted to non-packet helper structs?
+
+### Bounded Dynamic Arrays
+
+```syn
+struct Samples {
+    values: f32[<=128]
+}
+```
+
+Bounded dynamic arrays parse and generate span/pointer-style representations for non-string element types. The maximum bound is emitted as a comment, not enforced by generated types.
+
+Review question for `0.2.x`: should bounded arrays generate inline storage plus an explicit length field, or remain pointer/span based?
+
+### Unbounded Strings
+
+```syn
+struct Frame {
+    name: string
+}
+```
+
+Unbounded strings generate pointer-like representations. Prefer `string[<=N]` for ABI-stable cFS packet and table payloads.
+
+### `const`
+
+```syn
+const MAX_CAMERAS: u8 = 4
+```
+
+Constants generate C `#define`s and Rust `pub const`s. Constant resolution is still limited, especially when constants are used inside attributes such as `@mid(nav_app::NAV_TLM_MID)`.
+
+### Legacy `message`
+
+```syn
+@mid(0x0801)
+message NavState {
+    x: f64
+}
+```
+
+`message` remains supported for older files and generic Software Bus packets. cFS codegen infers command vs telemetry from attributes or MID bit patterns.
+
+New files should prefer explicit `command` or `telemetry`.
+
+Review question for `0.2.x`: keep `message`, deprecate it, or reserve it for non-cFS backends?
+
+## Parsed But Not Fully Generated
+
+These features are accepted by the parser but should not be relied on for generated cFS ABI output in `0.1.x`.
+
+### `enum`
+
+```syn
+enum CameraMode {
+    Standby = 0
+    Preview = 1
+}
+```
+
+Enums parse into the AST, but cFS C/Rust enum code generation is not yet complete. Avoid enum fields in generated packet/table payloads unless you have reviewed the generated output.
+
+Review question for `0.2.x`: should enums generate C `typedef enum`, integer constants, or fixed-width integer aliases?
+
+### Field Defaults
+
+```syn
+struct Point {
+    x: f64 = 0.0
+}
+```
+
+Defaults parse into the AST, but generated C/Rust structs do not currently use them to create constructors, initializers, or validation metadata.
+
+Review question for `0.2.x`: are defaults source-documentation only, or should generators emit default constructors/helpers?
+
+### Optional Fields
+
+```syn
+struct Status {
+    error_code?: i32
+}
+```
+
+Optional markers parse into the AST, but generated ABI structs do not currently encode optionality. Avoid optional fields for generated cFS ABI payloads in `0.1.x`.
+
+Review question for `0.2.x`: should optional fields be represented by explicit validity flags, pointer-like fields, `Option<T>` in Rust only, or rejected for cFS ABI types?
+
+## Under Review For 0.2
+
+These are likely areas for intentional language work after `0.1.x`.
+
+- Command code metadata, probably with an attribute such as `@cc(2)`.
+- MID validation for missing, duplicate, and command/telemetry range mismatches.
+- Namespace-scoped MID constants and constant resolution.
+- Enum codegen and ABI representation.
+- Optional/default semantics.
+- Dynamic array policy for cFS packet structs.
+- More explicit table metadata.
+- Better generated documentation style for C headers.
+- Multi-file import resolution and dependency graph validation.
+
+## 0.1 Release Checklist
+
+Before publishing `0.1.x`, review each feature above and choose one of:
+
+- Stable for `0.1`
+- Supported with caveats
+- Parsed only
+- Defer to `0.2`
+- Reject before publish
+
+The release should not imply that parsed-only features are fully supported by generated cFS output.
