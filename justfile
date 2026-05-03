@@ -12,26 +12,26 @@ fmt:
     cargo fmt --all
 
 check:
-    cargo check -p synapse-parser -p synapse-codegen-cfs -p synapse -p synapse-integration-tests
+    cargo check -p cfs-synapse-parser -p cfs-synapse-codegen-cfs -p cfs-synapse -p synapse-integration-tests
 
 check-cfs:
     CFS_DIR="{{cfs_core_inc}}" BINDGEN_EXTRA_CLANG_ARGS="{{bindgen_args}}" cargo check --workspace
 
 test:
-    cargo test -p synapse-parser -p synapse-codegen-cfs -p synapse -p synapse-integration-tests
+    cargo test -p cfs-synapse-parser -p cfs-synapse-codegen-cfs -p cfs-synapse -p synapse-integration-tests
 
 test-cfs:
     CFS_DIR="{{cfs_core_inc}}" BINDGEN_EXTRA_CLANG_ARGS="{{bindgen_args}}" cargo test
 
 build:
-    cargo build -p synapse-parser -p synapse-codegen-cfs -p synapse -p synapse-integration-tests
+    cargo build -p cfs-synapse-parser -p cfs-synapse-codegen-cfs -p cfs-synapse -p synapse-integration-tests
 
 build-cfs:
     CFS_DIR="{{cfs_core_inc}}" BINDGEN_EXTRA_CLANG_ARGS="{{bindgen_args}}" cargo build --workspace
 
 gen-geometry:
-    cargo run -p synapse -- --lang c -o generated synapse-integration-tests/syn/geometry_msgs.syn
-    cargo run -p synapse -- --lang rust -o generated synapse-integration-tests/syn/geometry_msgs.syn
+    cargo run -p cfs-synapse -- --lang c -o generated synapse-integration-tests/syn/geometry_msgs.syn
+    cargo run -p cfs-synapse -- --lang rust -o generated synapse-integration-tests/syn/geometry_msgs.syn
 
 vscode-syntax:
     code --extensionDevelopmentPath="$PWD/vscode-synapse" "$PWD"

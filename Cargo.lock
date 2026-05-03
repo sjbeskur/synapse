@@ -112,6 +112,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cfs-synapse"
+version = "0.1.0"
+dependencies = [
+ "cfs-synapse-codegen-cfs",
+ "cfs-synapse-parser",
+ "clap",
+ "pest",
+]
+
+[[package]]
+name = "cfs-synapse-codegen-cfs"
+version = "0.1.0"
+dependencies = [
+ "cfs-synapse-parser",
+]
+
+[[package]]
+name = "cfs-synapse-parser"
+version = "0.1.0"
+dependencies = [
+ "pest",
+ "pest_derive",
+]
+
+[[package]]
 name = "cfs-sys"
 version = "0.1.0"
 dependencies = [
@@ -438,35 +463,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "synapse"
-version = "0.1.0"
-dependencies = [
- "clap",
- "synapse-codegen-cfs",
- "synapse-parser",
-]
-
-[[package]]
-name = "synapse-codegen-cfs"
-version = "0.1.0"
-dependencies = [
- "synapse-parser",
-]
-
-[[package]]
 name = "synapse-integration-tests"
 version = "0.1.0"
 dependencies = [
- "synapse-codegen-cfs",
- "synapse-parser",
-]
-
-[[package]]
-name = "synapse-parser"
-version = "0.1.0"
-dependencies = [
- "pest",
- "pest_derive",
+ "cfs-synapse-codegen-cfs",
+ "cfs-synapse-parser",
 ]
 
 [[package]]

@@ -1,7 +1,17 @@
 [package]
-name    = "synapse-codegen-cfs"
+name    = "cfs-synapse-codegen-cfs"
 version = "0.1.0"
 edition = "2021"
+description = "cFS C and Rust code generator for Synapse IDL files"
+repository = "https://github.com/sjbeskur/synapse"
+readme = "../README.md"
+license = "MIT OR Apache-2.0"
+keywords = ["cfs", "nasa", "codegen", "idl"]
+categories = ["development-tools::build-utils"]
+
+[lib]
+name = "synapse_codegen_cfs"
+path = "src/lib.rs"
 
 [dependencies]
-synapse-parser = { path = "../synapse-parser" }
+synapse-parser = { package = "cfs-synapse-parser", version = "0.1.0", path = "../synapse-parser" }

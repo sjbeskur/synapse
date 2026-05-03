@@ -1,7 +1,17 @@
 [package]
-name = "synapse-parser"
+name = "cfs-synapse-parser"
 version = "0.1.0"
 edition = "2024"
+description = "Parser for the Synapse NASA cFS-friendly IDL"
+repository = "https://github.com/sjbeskur/synapse"
+readme = "../README.md"
+license = "MIT OR Apache-2.0"
+keywords = ["cfs", "nasa", "parser", "idl"]
+categories = ["parser-implementations", "development-tools::build-utils"]
+
+[lib]
+name = "synapse_parser"
+path = "src/lib.rs"
 
 [dependencies]
 pest = "2"

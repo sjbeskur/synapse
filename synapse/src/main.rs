@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process};
+use std::{path::PathBuf, process};
 
 use clap::{Parser, ValueEnum};
 
@@ -10,7 +10,7 @@ use clap::{Parser, ValueEnum};
 struct Args {
     /// Target language
     #[arg(long, value_enum)]
-    lang: Lang,
+    lang: CliLang,
 
     /// Write output to this directory instead of stdout.
     /// Output file is named after the input file with the appropriate extension.
@@ -22,50 +22,45 @@ struct Args {
 }
 
 #[derive(Clone, ValueEnum)]
-enum Lang {
+enum CliLang {
     /// NASA cFS C header (.h)
     C,
     /// Rust #[repr(C)] bindings (.rs)
     Rust,
 }
 
+impl From<CliLang> for cfs_synapse::Lang {
+    fn from(value: CliLang) -> Self {
+        match value {
+            CliLang::C => cfs_synapse::Lang::C,
+            CliLang::Rust => cfs_synapse::Lang::Rust,
+        }
+    }
+}
+
 fn main() {
     let args = Args::parse();
-
-    let path = &args.file;
-    let source = fs::read_to_string(path).unwrap_or_else(|e| {
-        eprintln!("Error reading {}: {e}", path.display());
-        process::exit(1);
-    });
-
-    let file = synapse_parser::ast::parse(&source).unwrap_or_else(|e| {
-        eprintln!("Parse error in {}:\n{e}", path.display());
-        process::exit(1);
-    });
-
-    let (output, ext) = match args.lang {
-        Lang::C    => (synapse_codegen_cfs::generate_c(&file),    "h"),
-        Lang::Rust => (synapse_codegen_cfs::generate_rust(&file, &Default::default()), "rs"),
-    };
+    let lang = cfs_synapse::Lang::from(args.lang);
 
     match args.out_dir {
-        None => print!("{output}"),
+        None => {
+            let source = std::fs::read_to_string(&args.file).unwrap_or_else(|e| {
+                eprintln!("Error reading {}: {e}", args.file.display());
+                process::exit(1);
+            });
+
+            let output = cfs_synapse::generate_str(&source, lang).unwrap_or_else(|e| {
+                eprintln!("Error generating {}:\n{e}", args.file.display());
+                process::exit(1);
+            });
+
+            print!("{output}");
+        }
         Some(dir) => {
-            fs::create_dir_all(&dir).unwrap_or_else(|e| {
-                eprintln!("Error creating output directory {}: {e}", dir.display());
+            let out_path = cfs_synapse::generate_file(&args.file, &dir, lang).unwrap_or_else(|e| {
+                eprintln!("Error generating {}: {e}", args.file.display());
                 process::exit(1);
             });
-
-            let stem = path.file_stem()
-                .expect("input file has no stem")
-                .to_string_lossy();
-            let out_path = dir.join(format!("{stem}.{ext}"));
-
-            fs::write(&out_path, &output).unwrap_or_else(|e| {
-                eprintln!("Error writing {}: {e}", out_path.display());
-                process::exit(1);
-            });
-
             eprintln!("wrote {}", out_path.display());
         }
     }

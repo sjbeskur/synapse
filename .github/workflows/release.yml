@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: synapse-linux-x86_64
+            archive: synapse-linux-x86_64.tar.gz
+          - os: macos-13
+            artifact: synapse-macos-x86_64
+            archive: synapse-macos-x86_64.tar.gz
+          - os: windows-latest
+            artifact: synapse-windows-x86_64.exe
+            archive: synapse-windows-x86_64.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release -p cfs-synapse --bin synapse
+
+      - name: Package Unix binary
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          cp target/release/synapse "dist/${{ matrix.artifact }}"
+          tar -C dist -czf "dist/${{ matrix.archive }}" "${{ matrix.artifact }}"
+
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target/release/synapse.exe "dist/${{ matrix.artifact }}"
+          Compress-Archive -Path "dist/${{ matrix.artifact }}" -DestinationPath "dist/${{ matrix.archive }}"
+
+      - name: Upload release archive
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.archive }}
+
+  publish-crate:
+    name: Publish crate
+    runs-on: ubuntu-latest
+    needs: archive
+    if: vars.PUBLISH_CRATE == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish crates
+        run: |
+          publish_crate() {
+            package="$1"
+            for attempt in 1 2 3 4 5; do
+              if cargo publish -p "$package" --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"; then
+                return 0
+              fi
+              echo "publish attempt ${attempt} failed for ${package}; waiting for registry/index propagation"
+              sleep 30
+            done
+            return 1
+          }
+
+          publish_crate cfs-synapse-parser
+          publish_crate cfs-synapse-codegen-cfs
+          publish_crate cfs-synapse
