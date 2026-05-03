@@ -173,20 +173,21 @@ Enums, field defaults, and optional field markers are parsed into the AST, but c
 
 See `docs/language.md` for the current language status and `0.1.x` review checklist.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.
+See `docs/roadmap-0.2.md` for planned `0.2.x` language review items.
 
 ## Documentation Comments
 
-Use `##` for comments that should attach to the next declaration or field and eventually feed generated documentation:
+Use `///` for comments that should attach to the next declaration or field and eventually feed generated documentation:
 
 ```syn
-## Stable identifier for one physical or logical camera.
+/// Stable identifier for one physical or logical camera.
 struct CameraId {
-    ## Mission-defined camera name.
+    /// Mission-defined camera name.
     name: string[<=32]
 }
 ```
 
-Use single `#` comments for ordinary notes that should not become API documentation.
+Use `//` comments for ordinary notes that should not become API documentation.
 
 ## UDP and Tables
 

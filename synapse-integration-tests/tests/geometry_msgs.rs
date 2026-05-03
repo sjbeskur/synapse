@@ -127,8 +127,8 @@ fn cfs_c_codegen_camera_msgs() {
     assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
     assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
 
-    let table_start = out.find("typedef struct {\n    camera_app_CameraId_t camera;").unwrap();
-    let table_end = out[table_start..].find("} camera_app_CameraCalibration_t;").unwrap() + table_start;
+    let table_end = out.find("} camera_app_CameraCalibration_t;").unwrap();
+    let table_start = out[..table_end].rfind("typedef struct {").unwrap();
     let table = &out[table_start..table_end];
     assert!(!table.contains("CFE_MSG_"));
 }

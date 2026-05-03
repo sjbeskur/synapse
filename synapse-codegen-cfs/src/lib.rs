@@ -116,6 +116,7 @@ fn emit_items(file: &SynFile, out: &mut String) {
 // ── Const ─────────────────────────────────────────────────────────────────────
 
 fn emit_const(out: &mut String, c: &ConstDecl) {
+    emit_doc_lines(out, &c.doc);
     let val = literal_str(&c.value);
     out.push_str(&format!("#define {}  {}\n\n", c.name, val));
 }
@@ -123,9 +124,7 @@ fn emit_const(out: &mut String, c: &ConstDecl) {
 // ── Struct (plain supporting type, no cFS header) ─────────────────────────────
 
 fn emit_struct(out: &mut String, s: &StructDef, namespace: &[String]) {
-    for line in &s.doc {
-        if line.is_empty() { out.push_str("///\n"); } else { out.push_str(&format!("/// {line}\n")); }
-    }
+    emit_doc_lines(out, &s.doc);
     out.push_str("typedef struct {\n");
     for f in &s.fields {
         emit_c_field(out, f, namespace);
@@ -142,13 +141,7 @@ fn emit_message(out: &mut String, m: &MessageDef, namespace: &[String]) {
         "CFE_MSG_TelemetryHeader_t"
     };
 
-    for line in &m.doc {
-        if line.is_empty() {
-            out.push_str("///\n");
-        } else {
-            out.push_str(&format!("/// {line}\n"));
-        }
-    }
+    emit_doc_lines(out, &m.doc);
 
     out.push_str(&format!("typedef struct {{\n"));
     out.push_str(&format!("    {} Header;\n", header_type));
@@ -190,18 +183,18 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
 }
 
 fn emit_rust_const(out: &mut String, c: &ConstDecl) {
+    emit_doc_lines(out, &c.doc);
     let val = rust_literal_str(&c.value);
     let ty = rust_field_type_str(&c.ty);
     out.push_str(&format!("pub const {}: {} = {};\n\n", c.name, ty, val));
 }
 
 fn emit_rust_struct(out: &mut String, s: &StructDef) {
-    for line in &s.doc {
-        if line.is_empty() { out.push_str("///\n"); } else { out.push_str(&format!("/// {line}\n")); }
-    }
+    emit_doc_lines(out, &s.doc);
     out.push_str("#[repr(C)]\n");
     out.push_str(&format!("pub struct {} {{\n", s.name));
     for f in &s.fields {
+        emit_indented_doc_lines(out, &f.doc);
         out.push_str(&format!("    pub {}: {},\n", f.name, rust_field_type_str(&f.ty)));
     }
     out.push_str("}\n\n");
@@ -215,18 +208,13 @@ fn emit_rust_message(out: &mut String, m: &MessageDef, opts: &RustOptions) {
         format!("{}::{}", opts.cfs_module, header_type)
     };
 
-    for line in &m.doc {
-        if line.is_empty() {
-            out.push_str("///\n");
-        } else {
-            out.push_str(&format!("/// {line}\n"));
-        }
-    }
+    emit_doc_lines(out, &m.doc);
 
     out.push_str("#[repr(C)]\n");
     out.push_str(&format!("pub struct {} {{\n", m.name));
     out.push_str(&format!("    pub cfs_header: {},\n", qualified));
     for f in &m.fields {
+        emit_indented_doc_lines(out, &f.doc);
         let ty = rust_field_type_str(&f.ty);
         out.push_str(&format!("    pub {}: {},\n", f.name, ty));
     }
@@ -342,6 +330,26 @@ fn literal_to_u64(lit: &Literal) -> Option<u64> {
     }
 }
 
+fn emit_doc_lines(out: &mut String, doc: &[String]) {
+    for line in doc {
+        if line.is_empty() {
+            out.push_str("///\n");
+        } else {
+            out.push_str(&format!("/// {line}\n"));
+        }
+    }
+}
+
+fn emit_indented_doc_lines(out: &mut String, doc: &[String]) {
+    for line in doc {
+        if line.is_empty() {
+            out.push_str("    ///\n");
+        } else {
+            out.push_str(&format!("    /// {line}\n"));
+        }
+    }
+}
+
 /// Format a MID literal for a `#define` line.
 fn literal_mid_str(lit: &Literal) -> String {
     match lit {
@@ -393,6 +401,7 @@ fn base_type_str(base: &BaseType, namespace: &[String]) -> String {
 }
 
 fn emit_c_field(out: &mut String, f: &synapse_parser::ast::FieldDef, namespace: &[String]) {
+    emit_indented_doc_lines(out, &f.doc);
     match (&f.ty.base, &f.ty.array) {
         (BaseType::String, Some(ArraySuffix::Fixed(n) | ArraySuffix::Bounded(n))) => {
             out.push_str(&format!("    char {}[{}];\n", f.name, n));
@@ -571,6 +580,13 @@ mod tests {
         assert!(out.contains("#include \"std_msgs.h\""));
     }
 
+    #[test]
+    fn c_doc_comments_emit_for_declarations_and_fields() {
+        let out = codegen("/// A point\nstruct Point {\n/// X axis\nx: f64\n}");
+        assert!(out.contains("/// A point\ntypedef struct {"));
+        assert!(out.contains("    /// X axis\n    double x;"));
+    }
+
     // ── Rust codegen ─────────────────────────────────────────
 
     fn rust_codegen(src: &str) -> String {
@@ -664,6 +680,13 @@ mod tests {
     fn rust_imports_emit_crate_uses() {
         let out = rust_codegen(r#"import "std_msgs.syn""#);
         assert!(out.contains("use crate::std_msgs;"));
+    }
+
+    #[test]
+    fn rust_doc_comments_emit_for_declarations_and_fields() {
+        let out = rust_codegen("/// A point\nstruct Point {\n/// X axis\nx: f64\n}");
+        assert!(out.contains("/// A point\n#[repr(C)]\npub struct Point {"));
+        assert!(out.contains("    /// X axis\n    pub x: f64,"));
     }
 
     #[test]

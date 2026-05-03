@@ -3,6 +3,7 @@
 This document records the current Synapse IDL surface before the soft `0.1.x` release. The goal for `0.1.x` is to publish a useful, honest tool while keeping room for intentional language improvements in `0.2.x`.
 
 See `docs/examples.md` for current `.syn` examples and generated output links.
+See `docs/roadmap-0.2.md` for the active `0.2.x` language review.
 
 ## Release Posture
 
@@ -133,14 +134,14 @@ Bounded strings generate inline `char[N]` storage in C and `[u8; N]` storage in 
 ### Documentation Comments
 
 ```syn
-## Stable identifier for one camera.
+/// Stable identifier for one camera.
 struct CameraId {
-    ## Mission-defined camera name.
+    /// Mission-defined camera name.
     name: string[<=32]
 }
 ```
 
-`##` doc comments are parsed and emitted as generated documentation comments for supported declarations and fields. Single `#` comments are ordinary comments and are not emitted.
+`///` doc comments are parsed and emitted as generated documentation comments for supported declarations and fields. `//` comments are ordinary comments and are not emitted.
 
 ## Supported With Caveats
 

@@ -6,9 +6,9 @@
 //
 //   namespace geometry
 //
-//   ## A 3-dimensional point.
+//   /// A 3-dimensional point.
 //   struct Point {
-//       ## X axis.
+//       /// X axis.
 //       x: f64 = 0.0
 //       y: f64 = 0.0
 //       z: f64 = 0.0
@@ -27,7 +27,7 @@
 //       position:     geometry::Point
 //       label:        string[<=64]       = "robot"
 //       sensor_data:  u8[]
-//       error_code?:  i32                # optional field
+//       error_code?:  i32                // optional field
 //   }
 //
 //   command SetMode {
@@ -44,11 +44,11 @@
 
 WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
 
-// Single '#' = silent comment (like TOML).
-// '##' = doc comment — captured and forwarded to generated code.
-COMMENT = _{ "#" ~ !"#" ~ (!("\n" | "\r") ~ ANY)* }
+// '//' = silent comment.
+// '///' = doc comment — captured and forwarded to generated code.
+COMMENT = _{ "//" ~ !"/" ~ (!("\n" | "\r") ~ ANY)* }
 
-doc_comment = @{ "##" ~ (!("\n" | "\r") ~ ANY)* }
+doc_comment = @{ "///" ~ (!("\n" | "\r") ~ ANY)* }
 doc_block   =  { doc_comment+ }
 
 // Attribute: @name(literal)  e.g. @mid(0x0801)  @mid(nav_app::NAV_TLM_MID)

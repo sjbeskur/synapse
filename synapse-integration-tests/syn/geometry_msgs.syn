@@ -2,7 +2,7 @@ namespace geometry_msgs
 
 import "std_msgs.syn"
 
-# ── Primitives ────────────────────────────────────────────────────────────────
+// ── Primitives ────────────────────────────────────────────────────────────────
 
 struct Vector3 {
     x: f64
@@ -29,7 +29,7 @@ struct Quaternion {
     w: f64
 }
 
-# ── Accel ─────────────────────────────────────────────────────────────────────
+// ── Accel ─────────────────────────────────────────────────────────────────────
 
 struct Accel {
     linear:  Vector3
@@ -53,7 +53,7 @@ telemetry AccelWithCovarianceStamped {
     accel:  AccelWithCovariance
 }
 
-# ── Inertia ───────────────────────────────────────────────────────────────────
+// ── Inertia ───────────────────────────────────────────────────────────────────
 
 struct Inertia {
     m:   f64
@@ -72,7 +72,7 @@ telemetry InertiaStamped {
     inertia: Inertia
 }
 
-# ── Point ─────────────────────────────────────────────────────────────────────
+// ── Point ─────────────────────────────────────────────────────────────────────
 
 @mid(0x0803)
 telemetry PointStamped {
@@ -80,7 +80,7 @@ telemetry PointStamped {
     point:  Point
 }
 
-# ── Polygon ───────────────────────────────────────────────────────────────────
+// ── Polygon ───────────────────────────────────────────────────────────────────
 
 struct Polygon {
     points: Point32[]
@@ -92,7 +92,7 @@ telemetry PolygonStamped {
     polygon: Polygon
 }
 
-# ── Pose ──────────────────────────────────────────────────────────────────────
+// ── Pose ──────────────────────────────────────────────────────────────────────
 
 struct Pose {
     position:    Point
@@ -128,7 +128,7 @@ telemetry PoseWithCovarianceStamped {
     pose:   PoseWithCovariance
 }
 
-# ── Quaternion ────────────────────────────────────────────────────────────────
+// ── Quaternion ────────────────────────────────────────────────────────────────
 
 @mid(0x0808)
 telemetry QuaternionStamped {
@@ -136,7 +136,7 @@ telemetry QuaternionStamped {
     quaternion: Quaternion
 }
 
-# ── Transform ─────────────────────────────────────────────────────────────────
+// ── Transform ─────────────────────────────────────────────────────────────────
 
 struct Transform {
     translation: Vector3
@@ -150,7 +150,7 @@ telemetry TransformStamped {
     transform:      Transform
 }
 
-# ── Twist ─────────────────────────────────────────────────────────────────────
+// ── Twist ─────────────────────────────────────────────────────────────────────
 
 struct Twist {
     linear:  Vector3
@@ -174,7 +174,7 @@ telemetry TwistWithCovarianceStamped {
     twist:  TwistWithCovariance
 }
 
-# ── Vector3 ───────────────────────────────────────────────────────────────────
+// ── Vector3 ───────────────────────────────────────────────────────────────────
 
 @mid(0x080C)
 telemetry Vector3Stamped {
@@ -182,7 +182,7 @@ telemetry Vector3Stamped {
     vector: Vector3
 }
 
-# ── Wrench ────────────────────────────────────────────────────────────────────
+// ── Wrench ────────────────────────────────────────────────────────────────────
 
 struct Wrench {
     force:  Vector3

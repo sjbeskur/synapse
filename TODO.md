@@ -1,5 +1,19 @@
 # TODO
 
+## v0.2.x Language Review
+
+See `docs/roadmap-0.2.md` for the decision tracker.
+
+- [ ] Comment syntax and generated documentation style.
+- [ ] Parsed-only ABI hazards: optional fields, field defaults, and enums.
+- [ ] Dynamic and bounded array policy for cFS packet/table ABI types.
+- [ ] MID validation: missing MIDs, duplicate MIDs, and command/telemetry ranges.
+- [ ] Command metadata, including possible `@cc(...)` command code support.
+- [ ] Enum ABI representation for C and Rust.
+- [ ] String semantics, especially bounded string null-termination expectations.
+- [ ] Import and namespace resolution across multiple files.
+- [ ] Generated file headers and documentation style.
+
 ## Explore MID Ownership and Validation
 
 Message IDs need a clearer ownership model before the DSL grows much further.

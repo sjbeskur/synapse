@@ -264,7 +264,7 @@ fn extract_doc<'i>(
             .next()
             .unwrap()
             .into_inner()
-            .map(|p| p.as_str().strip_prefix("##").unwrap_or("").trim().to_string())
+            .map(|p| p.as_str().strip_prefix("///").unwrap_or("").trim().to_string())
             .collect()
     } else {
         vec![]

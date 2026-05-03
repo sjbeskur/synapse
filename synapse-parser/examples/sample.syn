@@ -1,6 +1,6 @@
-# Synapse example — geometry and robot state definitions
+// Synapse example — geometry and robot state definitions
 
-# ── Geometry primitives ──────────────────────────────────────
+// ── Geometry primitives ──────────────────────────────────────
 
 namespace geometry
 
@@ -27,7 +27,7 @@ struct Twist {
     angular: Point
 }
 
-# ── Robot state ──────────────────────────────────────────────
+// ── Robot state ──────────────────────────────────────────────
 
 namespace robot
 
@@ -54,7 +54,7 @@ struct Odometry {
     header:   Header
     pose:     geometry::Pose
     velocity: geometry::Twist
-    # 6×6 covariance matrix (row-major)
+    // 6×6 covariance matrix (row-major)
     covariance: f64[36]
 }
 
@@ -67,7 +67,7 @@ telemetry RobotState {
     label:       string[<=64]     = "robot"
     sensor_data: u8[]
     waypoints:   geometry::Point[<=256]
-    error_code?: i32              # present only when mode == Error
+    error_code?: i32              // present only when mode == Error
 }
 
 @mid(0x1880)

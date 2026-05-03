@@ -338,15 +338,21 @@ mod synapse_tests {
     #[test]
     fn line_comments() {
         assert!(parses_file(
-            "# top comment\nstruct S { x: f64 # x coord\n}"
+            "// top comment\nstruct S { x: f64 // x coord\n}"
         ));
     }
 
     #[test]
     fn doc_comments() {
         assert!(parses_file(
-            "## A struct\nstruct S {\n## x field\nx: f64\n}"
+            "/// A struct\nstruct S {\n/// x field\nx: f64\n}"
         ));
+    }
+
+    #[test]
+    fn old_hash_comments_are_rejected() {
+        assert!(!parses_file("# top comment\nstruct S { x: f64 }"));
+        assert!(!parses_file("## A struct\nstruct S { x: f64 }"));
     }
 
     // =========================================================
