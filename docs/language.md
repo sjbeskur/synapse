@@ -243,7 +243,7 @@ struct Status {
 
 Optional markers parse into the AST, but generated ABI structs do not currently encode optionality. Avoid optional fields for generated cFS ABI payloads in `0.1.x`.
 
-Review question for `0.2.x`: should optional fields be represented by explicit validity flags, pointer-like fields, `Option<T>` in Rust only, or rejected for cFS ABI types?
+In `0.2.x`, cFS codegen rejects optional fields until a concrete ABI representation exists.
 
 ## Under Review For 0.2
 

@@ -49,11 +49,11 @@ Open questions:
 
 ## Parsed-Only ABI Hazards
 
-Status: Proposed
+Status: Accepted
 
 Features:
 
-- Optional fields: `field?: Type`
+- Optional fields: `field?: Type` - implemented as a cFS codegen error.
 - Field defaults: `field: Type = value`
 - Enums used as field types
 
@@ -65,7 +65,6 @@ Direction:
 Open questions:
 
 - Should defaults remain source-documentation-only?
-- Should optional fields be rejected for cFS ABI types until a concrete representation exists?
 - Should enum fields be rejected until enum codegen is implemented?
 
 ## Dynamic And Bounded Arrays

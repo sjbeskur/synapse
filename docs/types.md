@@ -159,4 +159,4 @@ field: Type = value
 field?: Type = value
 ```
 
-In `0.1.x`, optional markers and defaults are parsed but not reflected in generated cFS ABI structs. Avoid relying on them for generated packet/table payload behavior.
+In `0.2.x`, cFS codegen rejects optional markers until a concrete ABI representation exists. Defaults are still parsed but not reflected in generated cFS ABI structs.

@@ -169,7 +169,7 @@ The cFS generator currently emits:
 - `@mid(...)` attributes as message ID constants.
 - Fixed arrays, bounded strings, dynamic arrays, and namespaced type references.
 
-Enums, field defaults, and optional field markers are parsed into the AST, but cFS code generation for those pieces is still early. Prefer plain integer fields for generated packet payloads until enum emission and optional/default handling are completed.
+Enums and field defaults are parsed into the AST, but cFS code generation for those pieces is still early. Optional field markers are parsed but rejected by cFS codegen until a concrete ABI representation exists. Prefer plain integer fields for generated packet payloads until enum emission and default handling are completed.
 
 See `docs/language.md` for the current language status and `0.1.x` review checklist.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.

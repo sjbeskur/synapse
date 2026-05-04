@@ -28,6 +28,7 @@ impl Lang {
 pub enum Error {
     Io(std::io::Error),
     Parse(Box<pest::error::Error<synapse_parser::synapse::Rule>>),
+    Codegen(synapse_codegen_cfs::CodegenError),
 }
 
 impl fmt::Display for Error {
@@ -35,6 +36,7 @@ impl fmt::Display for Error {
         match self {
             Error::Io(e) => write!(f, "{e}"),
             Error::Parse(e) => write!(f, "{e}"),
+            Error::Codegen(e) => write!(f, "{e}"),
         }
     }
 }
@@ -44,6 +46,7 @@ impl StdError for Error {
         match self {
             Error::Io(e) => Some(e),
             Error::Parse(e) => Some(e),
+            Error::Codegen(e) => Some(e),
         }
     }
 }
@@ -60,12 +63,18 @@ impl From<pest::error::Error<synapse_parser::synapse::Rule>> for Error {
     }
 }
 
+impl From<synapse_codegen_cfs::CodegenError> for Error {
+    fn from(value: synapse_codegen_cfs::CodegenError) -> Self {
+        Error::Codegen(value)
+    }
+}
+
 /// Generate code from `.syn` source text.
 pub fn generate_str(source: &str, lang: Lang) -> Result<String, Error> {
     let file = synapse_parser::ast::parse(source)?;
     let output = match lang {
-        Lang::C => synapse_codegen_cfs::generate_c(&file),
-        Lang::Rust => synapse_codegen_cfs::generate_rust(&file, &Default::default()),
+        Lang::C => synapse_codegen_cfs::try_generate_c(&file)?,
+        Lang::Rust => synapse_codegen_cfs::try_generate_rust(&file, &Default::default())?,
     };
     Ok(output)
 }
@@ -129,5 +138,14 @@ mod tests {
         let out = generate_str("@mid(0x0801)\ntelemetry NavState { x: f64 }", Lang::Rust).unwrap();
         assert!(out.contains("pub const NAV_STATE_MID: u16 = 0x0801;"));
         assert!(out.contains("pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
+    }
+
+    #[test]
+    fn rejects_optional_fields() {
+        let err = generate_str("telemetry Status { error_code?: u32 }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "optional field `Status.error_code` is not supported by cFS codegen yet"
+        );
     }
 }

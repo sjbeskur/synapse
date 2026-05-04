@@ -1,6 +1,8 @@
+use std::{error::Error as StdError, fmt};
+
 use synapse_parser::ast::{
-    ArraySuffix, Attribute, BaseType, ConstDecl, Item, Literal, MessageDef, PrimitiveType,
-    PacketKind, StructDef, SynFile, TypeExpr,
+    ArraySuffix, Attribute, BaseType, ConstDecl, FieldDef, Item, Literal, MessageDef,
+    PrimitiveType, PacketKind, StructDef, SynFile, TypeExpr,
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -34,12 +36,41 @@ impl Default for RustOptions<'_> {
     }
 }
 
+/// Error returned when a parsed Synapse file cannot be emitted safely.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CodegenError {
+    /// Optional fields parse today, but cFS ABI codegen has no representation for them yet.
+    OptionalFieldUnsupported {
+        container: String,
+        field: String,
+    },
+}
+
+impl fmt::Display for CodegenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CodegenError::OptionalFieldUnsupported { container, field } => write!(
+                f,
+                "optional field `{container}.{field}` is not supported by cFS codegen yet"
+            ),
+        }
+    }
+}
+
+impl StdError for CodegenError {}
+
 /// Generate a NASA cFS C header (`*_msg.h` + MID `#define`s) from a parsed Synapse file.
 pub fn generate_c(file: &SynFile) -> String {
+    try_generate_c(file).expect("parsed Synapse file is not supported by cFS C codegen")
+}
+
+/// Try to generate a NASA cFS C header (`*_msg.h` + MID `#define`s`) from a parsed Synapse file.
+pub fn try_generate_c(file: &SynFile) -> Result<String, CodegenError> {
+    validate_supported(file)?;
     let mut out = String::from(PREAMBLE);
     emit_c_imports(file, &mut out);
     emit_items(file, &mut out);
-    out
+    Ok(out)
 }
 
 /// Generate `#[repr(C)]` Rust structs compatible with NASA cFS bindings.
@@ -48,13 +79,44 @@ pub fn generate_c(file: &SynFile) -> String {
 /// first field, matching the C ABI layout. `struct` and `table` items remain
 /// plain data structs. MID constants are emitted as `pub const`.
 pub fn generate_rust(file: &SynFile, opts: &RustOptions) -> String {
+    try_generate_rust(file, opts).expect("parsed Synapse file is not supported by cFS Rust codegen")
+}
+
+/// Try to generate `#[repr(C)]` Rust structs compatible with NASA cFS bindings.
+pub fn try_generate_rust(file: &SynFile, opts: &RustOptions) -> Result<String, CodegenError> {
+    validate_supported(file)?;
     let mut out = String::new();
     emit_rust_imports(file, &mut out);
     emit_rust_items(file, opts, &mut out);
-    out
+    Ok(out)
 }
 
 // ── Item emission ─────────────────────────────────────────────────────────────
+
+fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
+    for item in &file.items {
+        match item {
+            Item::Struct(s) | Item::Table(s) => validate_fields(&s.name, &s.fields)?,
+            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
+                validate_fields(&m.name, &m.fields)?
+            }
+            Item::Namespace(_) | Item::Import(_) | Item::Const(_) | Item::Enum(_) => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_fields(container: &str, fields: &[FieldDef]) -> Result<(), CodegenError> {
+    for field in fields {
+        if field.optional {
+            return Err(CodegenError::OptionalFieldUnsupported {
+                container: container.to_string(),
+                field: field.name.clone(),
+            });
+        }
+    }
+    Ok(())
+}
 
 fn emit_c_imports(file: &SynFile, out: &mut String) {
     let mut emitted = false;
@@ -544,6 +606,23 @@ mod tests {
     }
 
     #[test]
+    fn c_rejects_optional_fields() {
+        let file = parse("telemetry Status { error_code?: u32 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::OptionalFieldUnsupported {
+                container: "Status".to_string(),
+                field: "error_code".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "optional field `Status.error_code` is not supported by cFS codegen yet"
+        );
+    }
+
+    #[test]
     fn const_emits_define() {
         let out = codegen("const NAV_TLM_MID: u16 = 0x0801");
         assert!(out.contains("#define NAV_TLM_MID  0x801U"));
@@ -661,6 +740,19 @@ mod tests {
         let out = rust_codegen("@mid(0x0801)\nmessage Stamped { header: std_msgs::Header }");
         assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
         assert!(out.contains("    pub header: std_msgs::Header,"));
+    }
+
+    #[test]
+    fn rust_rejects_optional_fields() {
+        let file = parse("struct Status { error_code?: u32 }").unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::OptionalFieldUnsupported {
+                container: "Status".to_string(),
+                field: "error_code".to_string(),
+            }
+        );
     }
 
     #[test]
