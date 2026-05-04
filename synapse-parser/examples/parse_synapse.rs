@@ -1,7 +1,7 @@
 use std::{env, fs, process};
 
 use pest::Parser;
-use synapse_parser::synapse::{SynapseParser, Rule};
+use synapse_parser::synapse::{Rule, SynapseParser};
 
 fn main() {
     let path = env::args().nth(1).unwrap_or_else(|| {
@@ -40,9 +40,9 @@ fn print_pairs(pairs: pest::iterators::Pairs<Rule>, depth: usize) {
 
         println!(
             "{indent}{rule:?}  [{start}..{end}]  {preview:?}",
-            rule  = pair.as_rule(),
+            rule = pair.as_rule(),
             start = span.start(),
-            end   = span.end(),
+            end = span.end(),
         );
 
         print_pairs(pair.into_inner(), depth + 1);

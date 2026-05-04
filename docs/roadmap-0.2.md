@@ -54,17 +54,16 @@ Status: Accepted
 Features:
 
 - Optional fields: `field?: Type` - implemented as a cFS codegen error.
-- Field defaults: `field: Type = value`
+- Field defaults: `field: Type = value` - implemented as a cFS codegen error.
 - Enums used as field types
 
 Direction:
 
-- For cFS ABI codegen, reject or warn on constructs that parse but do not affect generated layout.
+- For cFS ABI codegen, reject constructs that parse but do not affect generated layout.
 - Prefer clear CLI errors over silently emitting misleading ABI structs.
 
 Open questions:
 
-- Should defaults remain source-documentation-only?
 - Should enum fields be rejected until enum codegen is implemented?
 
 ## Dynamic And Bounded Arrays

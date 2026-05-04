@@ -17,7 +17,10 @@ mod synapse_tests {
 
     fn parses(rule: Rule, input: &str) -> bool {
         SynapseParser::parse(rule, input)
-            .map(|mut p| p.next().map_or(false, |pair| pair.as_span().end() == input.len()))
+            .map(|mut p| {
+                p.next()
+                    .map_or(false, |pair| pair.as_span().end() == input.len())
+            })
             .unwrap_or(false)
     }
 
@@ -70,7 +73,7 @@ mod synapse_tests {
         assert!(parses(Rule::float_lit, "-2.5"));
         assert!(parses(Rule::float_lit, "1.5e-3"));
         assert!(parses(Rule::float_lit, "1e10"));
-        assert!(!parses(Rule::float_lit, "42"));   // bare int is not a float
+        assert!(!parses(Rule::float_lit, "42")); // bare int is not a float
     }
 
     #[test]
@@ -101,8 +104,9 @@ mod synapse_tests {
 
     #[test]
     fn primitive_types() {
-        for t in &["f32", "f64", "i8", "i16", "i32", "i64",
-                   "u8", "u16", "u32", "u64", "bool", "bytes"] {
+        for t in &[
+            "f32", "f64", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "bool", "bytes",
+        ] {
             assert!(parses(Rule::primitive_type, t), "failed: {t}");
         }
     }
@@ -145,7 +149,7 @@ mod synapse_tests {
     #[test]
     fn type_expr_bounded_array() {
         assert!(parses(Rule::type_expr, "u8[<=256]"));
-        assert!(parses(Rule::type_expr, "string[<=64]"));    // bounded string
+        assert!(parses(Rule::type_expr, "string[<=64]")); // bounded string
         assert!(parses(Rule::type_expr, "geometry::Point[<=100]"));
     }
 
@@ -162,9 +166,7 @@ mod synapse_tests {
 
     #[test]
     fn enum_without_values() {
-        assert!(parses_file(
-            "enum Direction { North South East West }"
-        ));
+        assert!(parses_file("enum Direction { North South East West }"));
     }
 
     #[test]
@@ -176,9 +178,7 @@ mod synapse_tests {
 
     #[test]
     fn enum_mixed_values() {
-        assert!(parses_file(
-            "enum Mixed { A  B = 5  C  D = 10 }"
-        ));
+        assert!(parses_file("enum Mixed { A  B = 5  C  D = 10 }"));
     }
 
     // =========================================================
@@ -187,9 +187,7 @@ mod synapse_tests {
 
     #[test]
     fn struct_basic() {
-        assert!(parses_file(
-            "struct Point { x: f64  y: f64  z: f64 }"
-        ));
+        assert!(parses_file("struct Point { x: f64  y: f64  z: f64 }"));
     }
 
     #[test]
@@ -217,16 +215,12 @@ mod synapse_tests {
 
     #[test]
     fn message_basic() {
-        assert!(parses_file(
-            "message Ping { seq: u32  stamp: u64 }"
-        ));
+        assert!(parses_file("message Ping { seq: u32  stamp: u64 }"));
     }
 
     #[test]
     fn command_basic() {
-        assert!(parses_file(
-            "@mid(0x1880)\ncommand SetMode { mode: u8 }"
-        ));
+        assert!(parses_file("@mid(0x1880)\ncommand SetMode { mode: u8 }"));
     }
 
     #[test]
@@ -317,7 +311,9 @@ mod synapse_tests {
 
     #[test]
     fn namespace_bare() {
-        assert!(parses_file("namespace geometry\nstruct Point { x: f64  y: f64 }"));
+        assert!(parses_file(
+            "namespace geometry\nstruct Point { x: f64  y: f64 }"
+        ));
     }
 
     #[test]

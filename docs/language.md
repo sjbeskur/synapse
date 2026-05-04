@@ -231,7 +231,7 @@ struct Point {
 
 Defaults parse into the AST, but generated C/Rust structs do not currently use them to create constructors, initializers, or validation metadata.
 
-Review question for `0.2.x`: are defaults source-documentation only, or should generators emit default constructors/helpers?
+In `0.2.x`, cFS codegen rejects field defaults until concrete initializer or defaulting semantics exist.
 
 ### Optional Fields
 

@@ -148,4 +148,13 @@ mod tests {
             "optional field `Status.error_code` is not supported by cFS codegen yet"
         );
     }
+
+    #[test]
+    fn rejects_default_values() {
+        let err = generate_str("table Config { exposure_us: u32 = 10000 }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "default value for field `Config.exposure_us` is not supported by cFS codegen yet"
+        );
+    }
 }

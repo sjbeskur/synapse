@@ -1,8 +1,8 @@
 use std::{error::Error as StdError, fmt};
 
 use synapse_parser::ast::{
-    ArraySuffix, Attribute, BaseType, ConstDecl, FieldDef, Item, Literal, MessageDef,
-    PrimitiveType, PacketKind, StructDef, SynFile, TypeExpr,
+    ArraySuffix, Attribute, BaseType, ConstDecl, FieldDef, Item, Literal, MessageDef, PacketKind,
+    PrimitiveType, StructDef, SynFile, TypeExpr,
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -40,10 +40,9 @@ impl Default for RustOptions<'_> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenError {
     /// Optional fields parse today, but cFS ABI codegen has no representation for them yet.
-    OptionalFieldUnsupported {
-        container: String,
-        field: String,
-    },
+    OptionalFieldUnsupported { container: String, field: String },
+    /// Field defaults parse today, but cFS ABI codegen does not generate initializers yet.
+    DefaultValueUnsupported { container: String, field: String },
 }
 
 impl fmt::Display for CodegenError {
@@ -52,6 +51,10 @@ impl fmt::Display for CodegenError {
             CodegenError::OptionalFieldUnsupported { container, field } => write!(
                 f,
                 "optional field `{container}.{field}` is not supported by cFS codegen yet"
+            ),
+            CodegenError::DefaultValueUnsupported { container, field } => write!(
+                f,
+                "default value for field `{container}.{field}` is not supported by cFS codegen yet"
             ),
         }
     }
@@ -114,6 +117,12 @@ fn validate_fields(container: &str, fields: &[FieldDef]) -> Result<(), CodegenEr
                 field: field.name.clone(),
             });
         }
+        if field.default.is_some() {
+            return Err(CodegenError::DefaultValueUnsupported {
+                container: container.to_string(),
+                field: field.name.clone(),
+            });
+        }
     }
     Ok(())
 }
@@ -135,7 +144,10 @@ fn emit_rust_imports(file: &SynFile, out: &mut String) {
     let mut emitted = false;
     for item in &file.items {
         if let Item::Import(import) = item {
-            out.push_str(&format!("use crate::{};\n", import_rust_module(&import.path)));
+            out.push_str(&format!(
+                "use crate::{};\n",
+                import_rust_module(&import.path)
+            ));
             emitted = true;
         }
     }
@@ -160,7 +172,9 @@ fn emit_items(file: &SynFile, out: &mut String) {
             }
         }
     }
-    if has_mids { out.push('\n'); }
+    if has_mids {
+        out.push('\n');
+    }
 
     // Second pass: emit const, struct, and message types
     let mut namespace = Vec::new();
@@ -168,9 +182,11 @@ fn emit_items(file: &SynFile, out: &mut String) {
         match item {
             Item::Namespace(ns) => namespace = ns.name.clone(),
             Item::Import(_) | Item::Enum(_) => {}
-            Item::Const(c)   => emit_const(out, c),
+            Item::Const(c) => emit_const(out, c),
             Item::Struct(s) | Item::Table(s) => emit_struct(out, s, &namespace),
-            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => emit_message(out, m, &namespace),
+            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
+                emit_message(out, m, &namespace)
+            }
         }
     }
 }
@@ -231,15 +247,19 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
             }
         }
     }
-    if has_mids { out.push('\n'); }
+    if has_mids {
+        out.push('\n');
+    }
 
     // Second pass: types
     for item in &file.items {
         match item {
             Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
-            Item::Const(c)   => emit_rust_const(out, c),
+            Item::Const(c) => emit_rust_const(out, c),
             Item::Struct(s) | Item::Table(s) => emit_rust_struct(out, s),
-            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => emit_rust_message(out, m, opts),
+            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
+                emit_rust_message(out, m, opts)
+            }
         }
     }
 }
@@ -257,13 +277,21 @@ fn emit_rust_struct(out: &mut String, s: &StructDef) {
     out.push_str(&format!("pub struct {} {{\n", s.name));
     for f in &s.fields {
         emit_indented_doc_lines(out, &f.doc);
-        out.push_str(&format!("    pub {}: {},\n", f.name, rust_field_type_str(&f.ty)));
+        out.push_str(&format!(
+            "    pub {}: {},\n",
+            f.name,
+            rust_field_type_str(&f.ty)
+        ));
     }
     out.push_str("}\n\n");
 }
 
 fn emit_rust_message(out: &mut String, m: &MessageDef, opts: &RustOptions) {
-    let header_type = if packet_is_command(m) { opts.cmd_header } else { opts.tlm_header };
+    let header_type = if packet_is_command(m) {
+        opts.cmd_header
+    } else {
+        opts.tlm_header
+    };
     let qualified = if opts.cfs_module.is_empty() {
         header_type.to_string()
     } else {
@@ -295,35 +323,35 @@ fn rust_field_type_str(ty: &TypeExpr) -> String {
 
     let base = rust_base_type_str(&ty.base);
     match &ty.array {
-        None                        => base,
+        None => base,
         Some(ArraySuffix::Fixed(n)) => format!("[{}; {}]", base, n),
         // Dynamic/bounded: use a raw slice pointer — no alloc in cFS context
-        Some(ArraySuffix::Dynamic)    => format!("*const {}", base),
+        Some(ArraySuffix::Dynamic) => format!("*const {}", base),
         Some(ArraySuffix::Bounded(n)) => format!("*const {}  /* max {} */", base, n),
     }
 }
 
 fn rust_base_type_str(base: &BaseType) -> String {
     match base {
-        BaseType::String        => "*const u8".to_string(),
-        BaseType::Primitive(p)  => rust_primitive_str(*p).to_string(),
+        BaseType::String => "*const u8".to_string(),
+        BaseType::Primitive(p) => rust_primitive_str(*p).to_string(),
         BaseType::Ref(segments) => segments.join("::"),
     }
 }
 
 fn rust_primitive_str(p: PrimitiveType) -> &'static str {
     match p {
-        PrimitiveType::F32   => "f32",
-        PrimitiveType::F64   => "f64",
-        PrimitiveType::I8    => "i8",
-        PrimitiveType::I16   => "i16",
-        PrimitiveType::I32   => "i32",
-        PrimitiveType::I64   => "i64",
-        PrimitiveType::U8    => "u8",
-        PrimitiveType::U16   => "u16",
-        PrimitiveType::U32   => "u32",
-        PrimitiveType::U64   => "u64",
-        PrimitiveType::Bool  => "bool",
+        PrimitiveType::F32 => "f32",
+        PrimitiveType::F64 => "f64",
+        PrimitiveType::I8 => "i8",
+        PrimitiveType::I16 => "i16",
+        PrimitiveType::I32 => "i32",
+        PrimitiveType::I64 => "i64",
+        PrimitiveType::U8 => "u8",
+        PrimitiveType::U16 => "u16",
+        PrimitiveType::U32 => "u32",
+        PrimitiveType::U64 => "u64",
+        PrimitiveType::Bool => "bool",
         PrimitiveType::Bytes => "*const u8",
     }
 }
@@ -339,14 +367,18 @@ fn rust_mid_str(lit: &Literal) -> String {
 
 fn rust_literal_str(lit: &Literal) -> String {
     match lit {
-        Literal::Hex(n)          => format!("0x{:X}", n),
-        Literal::Int(n)          => n.to_string(),
-        Literal::Bool(b)         => b.to_string(),
-        Literal::Float(f)        => {
+        Literal::Hex(n) => format!("0x{:X}", n),
+        Literal::Int(n) => n.to_string(),
+        Literal::Bool(b) => b.to_string(),
+        Literal::Float(f) => {
             let s = format!("{}", f);
-            if s.contains('.') || s.contains('e') { s } else { format!("{}.0", s) }
+            if s.contains('.') || s.contains('e') {
+                s
+            } else {
+                format!("{}.0", s)
+            }
         }
-        Literal::Str(s)          => format!("{:?}", s),
+        Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
     }
 }
@@ -373,7 +405,10 @@ fn packet_is_command(m: &MessageDef) -> bool {
         PacketKind::Message => {}
     }
 
-    if m.attrs.iter().any(|a| a.name == "cmd" && a.value != Literal::Bool(false)) {
+    if m.attrs
+        .iter()
+        .any(|a| a.name == "cmd" && a.value != Literal::Bool(false))
+    {
         return true;
     }
     if let Some(mid) = find_mid_attr(&m.attrs) {
@@ -426,12 +461,22 @@ fn literal_str(lit: &Literal) -> String {
     match lit {
         Literal::Float(f) => {
             let s = format!("{}", f);
-            if s.contains('.') || s.contains('e') { s } else { format!("{}.0", s) }
+            if s.contains('.') || s.contains('e') {
+                s
+            } else {
+                format!("{}.0", s)
+            }
         }
-        Literal::Int(n)          => n.to_string(),
-        Literal::Hex(n)          => format!("0x{:X}U", n),
-        Literal::Bool(b)         => if *b { "1".to_string() } else { "0".to_string() },
-        Literal::Str(s)          => format!("{:?}", s),
+        Literal::Int(n) => n.to_string(),
+        Literal::Hex(n) => format!("0x{:X}U", n),
+        Literal::Bool(b) => {
+            if *b {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
+        }
+        Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
     }
 }
@@ -447,17 +492,17 @@ fn non_fixed_type_str(ty: &TypeExpr, namespace: &[String]) -> String {
 
     let base = base_type_str(&ty.base, namespace);
     match &ty.array {
-        None                          => base,
-        Some(ArraySuffix::Fixed(_))   => unreachable!("handled by caller"),
-        Some(ArraySuffix::Dynamic)    => format!("CFE_Span_t /* {} */", base),
+        None => base,
+        Some(ArraySuffix::Fixed(_)) => unreachable!("handled by caller"),
+        Some(ArraySuffix::Dynamic) => format!("CFE_Span_t /* {} */", base),
         Some(ArraySuffix::Bounded(n)) => format!("CFE_Span_t /* {} max {} */", base, n),
     }
 }
 
 fn base_type_str(base: &BaseType, namespace: &[String]) -> String {
     match base {
-        BaseType::String        => "const char*".to_string(),
-        BaseType::Primitive(p)  => primitive_str(*p).to_string(),
+        BaseType::String => "const char*".to_string(),
+        BaseType::Primitive(p) => primitive_str(*p).to_string(),
         BaseType::Ref(segments) => c_ref_type_name(segments, namespace),
     }
 }
@@ -469,10 +514,19 @@ fn emit_c_field(out: &mut String, f: &synapse_parser::ast::FieldDef, namespace: 
             out.push_str(&format!("    char {}[{}];\n", f.name, n));
         }
         (_, Some(ArraySuffix::Fixed(n))) => {
-            out.push_str(&format!("    {} {}[{}];\n", base_type_str(&f.ty.base, namespace), f.name, n));
+            out.push_str(&format!(
+                "    {} {}[{}];\n",
+                base_type_str(&f.ty.base, namespace),
+                f.name,
+                n
+            ));
         }
         _ => {
-            out.push_str(&format!("    {} {};\n", non_fixed_type_str(&f.ty, namespace), f.name));
+            out.push_str(&format!(
+                "    {} {};\n",
+                non_fixed_type_str(&f.ty, namespace),
+                f.name
+            ));
         }
     }
 }
@@ -517,17 +571,17 @@ fn replace_extension(path: &str, ext: &str) -> String {
 
 fn primitive_str(p: PrimitiveType) -> &'static str {
     match p {
-        PrimitiveType::F32   => "float",
-        PrimitiveType::F64   => "double",
-        PrimitiveType::I8    => "int8_t",
-        PrimitiveType::I16   => "int16_t",
-        PrimitiveType::I32   => "int32_t",
-        PrimitiveType::I64   => "int64_t",
-        PrimitiveType::U8    => "uint8_t",
-        PrimitiveType::U16   => "uint16_t",
-        PrimitiveType::U32   => "uint32_t",
-        PrimitiveType::U64   => "uint64_t",
-        PrimitiveType::Bool  => "bool",
+        PrimitiveType::F32 => "float",
+        PrimitiveType::F64 => "double",
+        PrimitiveType::I8 => "int8_t",
+        PrimitiveType::I16 => "int16_t",
+        PrimitiveType::I32 => "int32_t",
+        PrimitiveType::I64 => "int64_t",
+        PrimitiveType::U8 => "uint8_t",
+        PrimitiveType::U16 => "uint16_t",
+        PrimitiveType::U32 => "uint32_t",
+        PrimitiveType::U64 => "uint64_t",
+        PrimitiveType::Bool => "bool",
         PrimitiveType::Bytes => "uint8_t*",
     }
 }
@@ -551,7 +605,9 @@ mod tests {
     use super::*;
     use synapse_parser::ast::parse;
 
-    fn codegen(src: &str) -> String { generate_c(&parse(src).unwrap()) }
+    fn codegen(src: &str) -> String {
+        generate_c(&parse(src).unwrap())
+    }
 
     #[test]
     fn tlm_message_with_hex_mid() {
@@ -619,6 +675,23 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "optional field `Status.error_code` is not supported by cFS codegen yet"
+        );
+    }
+
+    #[test]
+    fn c_rejects_default_values() {
+        let file = parse("table Config { exposure_us: u32 = 10000 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::DefaultValueUnsupported {
+                container: "Config".to_string(),
+                field: "exposure_us".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "default value for field `Config.exposure_us` is not supported by cFS codegen yet"
         );
     }
 
@@ -722,14 +795,20 @@ mod tests {
 
     #[test]
     fn rust_custom_module() {
-        let opts = RustOptions { cfs_module: "my_cfs", ..Default::default() };
+        let opts = RustOptions {
+            cfs_module: "my_cfs",
+            ..Default::default()
+        };
         let out = generate_rust(&parse("@mid(0x0801)\nmessage T { x: f32 }").unwrap(), &opts);
         assert!(out.contains("my_cfs::CFE_MSG_TelemetryHeader_t"));
     }
 
     #[test]
     fn rust_bare_module() {
-        let opts = RustOptions { cfs_module: "", ..Default::default() };
+        let opts = RustOptions {
+            cfs_module: "",
+            ..Default::default()
+        };
         let out = generate_rust(&parse("@mid(0x0801)\nmessage T { x: f32 }").unwrap(), &opts);
         assert!(out.contains("    pub cfs_header: CFE_MSG_TelemetryHeader_t,"));
         assert!(!out.contains("::CFE_MSG_TelemetryHeader_t"));
@@ -751,6 +830,19 @@ mod tests {
             CodegenError::OptionalFieldUnsupported {
                 container: "Status".to_string(),
                 field: "error_code".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rust_rejects_default_values() {
+        let file = parse("struct Config { gain: f32 = 1.0 }").unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::DefaultValueUnsupported {
+                container: "Config".to_string(),
+                field: "gain".to_string(),
             }
         );
     }

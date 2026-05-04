@@ -9,8 +9,8 @@ fn syn_dir() -> std::path::PathBuf {
 }
 
 fn read_and_parse(name: &str) -> synapse_parser::ast::SynFile {
-    let src = fs::read_to_string(syn_dir().join(name))
-        .unwrap_or_else(|e| panic!("read {name}: {e}"));
+    let src =
+        fs::read_to_string(syn_dir().join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"));
     parse(&src).unwrap_or_else(|e| panic!("parse {name}:\n{e}"))
 }
 
@@ -276,7 +276,8 @@ fn cfs_rust_codegen_camera_msgs() {
 fn generated_rust_geometry_msgs_compiles() {
     let opts = RustOptions::default();
     let std_msgs = synapse_codegen_cfs::generate_rust(&read_and_parse("std_msgs.syn"), &opts);
-    let geometry_msgs = synapse_codegen_cfs::generate_rust(&read_and_parse("geometry_msgs.syn"), &opts);
+    let geometry_msgs =
+        synapse_codegen_cfs::generate_rust(&read_and_parse("geometry_msgs.syn"), &opts);
 
     let src = format!(
         r#"
@@ -331,7 +332,9 @@ pub mod geometry_msgs {{
 fn to_screaming_snake(name: &str) -> String {
     let mut out = String::new();
     for (i, ch) in name.chars().enumerate() {
-        if ch.is_uppercase() && i > 0 { out.push('_'); }
+        if ch.is_uppercase() && i > 0 {
+            out.push('_');
+        }
         out.push(ch.to_ascii_uppercase());
     }
     out
@@ -339,36 +342,36 @@ fn to_screaming_snake(name: &str) -> String {
 
 /// All 14 stamped messages with their C MID strings (U suffix).
 const STAMPED_MIDS: &[(&str, &str)] = &[
-    ("AccelStamped",               "0x0800U"),
+    ("AccelStamped", "0x0800U"),
     ("AccelWithCovarianceStamped", "0x0801U"),
-    ("InertiaStamped",             "0x0802U"),
-    ("PointStamped",               "0x0803U"),
-    ("PolygonStamped",             "0x0804U"),
-    ("PoseArray",                  "0x0805U"),
-    ("PoseStamped",                "0x0806U"),
-    ("PoseWithCovarianceStamped",  "0x0807U"),
-    ("QuaternionStamped",          "0x0808U"),
-    ("TransformStamped",           "0x0809U"),
-    ("TwistStamped",               "0x080AU"),
+    ("InertiaStamped", "0x0802U"),
+    ("PointStamped", "0x0803U"),
+    ("PolygonStamped", "0x0804U"),
+    ("PoseArray", "0x0805U"),
+    ("PoseStamped", "0x0806U"),
+    ("PoseWithCovarianceStamped", "0x0807U"),
+    ("QuaternionStamped", "0x0808U"),
+    ("TransformStamped", "0x0809U"),
+    ("TwistStamped", "0x080AU"),
     ("TwistWithCovarianceStamped", "0x080BU"),
-    ("Vector3Stamped",             "0x080CU"),
-    ("WrenchStamped",              "0x080DU"),
+    ("Vector3Stamped", "0x080CU"),
+    ("WrenchStamped", "0x080DU"),
 ];
 
 /// Same messages with Rust hex literals (no U suffix).
 const STAMPED_HEX: &[(&str, &str)] = &[
-    ("AccelStamped",               "0x0800"),
+    ("AccelStamped", "0x0800"),
     ("AccelWithCovarianceStamped", "0x0801"),
-    ("InertiaStamped",             "0x0802"),
-    ("PointStamped",               "0x0803"),
-    ("PolygonStamped",             "0x0804"),
-    ("PoseArray",                  "0x0805"),
-    ("PoseStamped",                "0x0806"),
-    ("PoseWithCovarianceStamped",  "0x0807"),
-    ("QuaternionStamped",          "0x0808"),
-    ("TransformStamped",           "0x0809"),
-    ("TwistStamped",               "0x080A"),
+    ("InertiaStamped", "0x0802"),
+    ("PointStamped", "0x0803"),
+    ("PolygonStamped", "0x0804"),
+    ("PoseArray", "0x0805"),
+    ("PoseStamped", "0x0806"),
+    ("PoseWithCovarianceStamped", "0x0807"),
+    ("QuaternionStamped", "0x0808"),
+    ("TransformStamped", "0x0809"),
+    ("TwistStamped", "0x080A"),
     ("TwistWithCovarianceStamped", "0x080B"),
-    ("Vector3Stamped",             "0x080C"),
-    ("WrenchStamped",              "0x080D"),
+    ("Vector3Stamped", "0x080C"),
+    ("WrenchStamped", "0x080D"),
 ];

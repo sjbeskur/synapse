@@ -4,9 +4,10 @@
 
 See `docs/roadmap-0.2.md` for the decision tracker.
 
-- [ ] Comment syntax and generated documentation style.
-- [ ] Parsed-only ABI hazards: field defaults and enums.
+- [x] Comment syntax and generated documentation style.
+- [ ] Parsed-only ABI hazards: enums.
 - [x] Reject optional fields in cFS codegen until an ABI representation exists.
+- [x] Reject field defaults in cFS codegen until initializer semantics exist.
 - [ ] Dynamic and bounded array policy for cFS packet/table ABI types.
 - [ ] MID validation: missing MIDs, duplicate MIDs, and command/telemetry ranges.
 - [ ] Command metadata, including possible `@cc(...)` command code support.
