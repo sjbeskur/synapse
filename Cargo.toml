@@ -6,4 +6,10 @@ members = [
     "synapse-integration-tests",
     "cfs-sys",
 ]
+default-members = [
+    "synapse-parser",
+    "synapse-codegen-cfs",
+    "synapse",
+    "synapse-integration-tests",
+]
 resolver = "2"
