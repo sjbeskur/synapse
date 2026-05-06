@@ -35,7 +35,9 @@ Namespaces are used by C codegen to prefix generated type names, such as `camera
 import "std_msgs.syn"
 ```
 
-Imports generate C `#include` lines and Rust `use crate::...` lines. The compiler does not currently perform full multi-file resolution or validation; build systems should generate imported files consistently.
+Imports generate C `#include` lines and Rust `use crate::...` lines. Path-based generation through the CLI or `generate_file` validates direct imports relative to the input file: imported files must exist, parse, and provide any referenced qualified types such as `std_msgs::Header`.
+
+This first pass is intentionally shallow. Imports are not resolved transitively, imported files are not generated automatically, and symbolic constants in attributes are not resolved through imports yet.
 
 ### `struct`
 
@@ -255,7 +257,7 @@ These are likely areas for intentional language work after `0.1.x`.
 - Dynamic and bounded array representation for cFS packet/table structs.
 - More explicit table metadata.
 - Better generated documentation style for C headers.
-- Multi-file import resolution and dependency graph validation.
+- Transitive import resolution and dependency graph validation.
 
 ## 0.1 Release Checklist
 

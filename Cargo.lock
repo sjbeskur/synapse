@@ -466,6 +466,7 @@ dependencies = [
 name = "synapse-integration-tests"
 version = "0.1.0"
 dependencies = [
+ "cfs-synapse",
  "cfs-synapse-codegen-cfs",
  "cfs-synapse-parser",
 ]

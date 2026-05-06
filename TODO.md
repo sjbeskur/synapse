@@ -18,7 +18,8 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [x] Emit command-code constants for commands.
 - [ ] Enum ABI representation for C and Rust.
 - [x] Document bounded string storage and null-termination semantics.
-- [ ] Import and namespace resolution across multiple files.
+- [x] Validate direct imports and qualified type references for path-based generation.
+- [ ] Transitive import resolution and dependency graph validation.
 - [x] Add deterministic generated file headers.
 
 ## Explore MID Ownership and Validation

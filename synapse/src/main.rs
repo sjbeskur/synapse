@@ -44,12 +44,7 @@ fn main() {
 
     match args.out_dir {
         None => {
-            let source = std::fs::read_to_string(&args.file).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {e}", args.file.display());
-                process::exit(1);
-            });
-
-            let output = cfs_synapse::generate_str(&source, lang).unwrap_or_else(|e| {
+            let output = cfs_synapse::generate_path(&args.file, lang).unwrap_or_else(|e| {
                 eprintln!("Error generating {}:\n{e}", args.file.display());
                 process::exit(1);
             });

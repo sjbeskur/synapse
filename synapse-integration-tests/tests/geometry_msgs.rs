@@ -44,6 +44,14 @@ fn camera_msgs_parse() {
     assert_eq!(f.items.len(), 16);
 }
 
+#[test]
+fn facade_validates_camera_imports_for_path_generation() {
+    let out = cfs_synapse::generate_path(syn_dir().join("camera_msgs.syn"), cfs_synapse::Lang::C)
+        .unwrap();
+    assert!(out.contains("#include \"std_msgs.h\""));
+    assert!(out.contains("std_msgs_Header_t header;"));
+}
+
 // ── cFS C codegen ──────────────────────────────────────────────────────────────
 
 #[test]

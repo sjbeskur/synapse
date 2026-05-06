@@ -173,11 +173,13 @@ Open questions:
 
 ## Imports And Namespaces
 
-Status: Proposed
+Status: Accepted
 
 Direction:
 
-- Move from textual include/use emission toward real multi-file resolution.
+- Validate direct imports for path-based generation - implemented.
+- Validate local and directly imported qualified type references - implemented.
+- Keep import validation shallow for now: no transitive graph, no automatic generation of imported files, and no imported constant resolution yet.
 
 Open questions:
 

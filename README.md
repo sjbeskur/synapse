@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The library facade also exposes `generate_rust_file`, `generate_file`, and `generate_str` for custom build flows.
+The library facade also exposes `generate_rust_file`, `generate_file`, `generate_path`, and `generate_str` for custom build flows. Path-based generation validates direct imports relative to the input file.
 
 ## Mental Model
 

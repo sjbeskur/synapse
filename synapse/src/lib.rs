@@ -1,8 +1,11 @@
 use std::{
+    collections::HashSet,
     error::Error as StdError,
     fmt, fs,
     path::{Path, PathBuf},
 };
+
+use synapse_parser::ast::{BaseType, FieldDef, Item, SynFile};
 
 /// Target language for Synapse code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +32,7 @@ pub enum Error {
     Io(std::io::Error),
     Parse(Box<pest::error::Error<synapse_parser::synapse::Rule>>),
     Codegen(synapse_codegen_cfs::CodegenError),
+    Import(String),
 }
 
 impl fmt::Display for Error {
@@ -37,6 +41,7 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "{e}"),
             Error::Parse(e) => write!(f, "{e}"),
             Error::Codegen(e) => write!(f, "{e}"),
+            Error::Import(e) => write!(f, "{e}"),
         }
     }
 }
@@ -47,6 +52,7 @@ impl StdError for Error {
             Error::Io(e) => Some(e),
             Error::Parse(e) => Some(e),
             Error::Codegen(e) => Some(e),
+            Error::Import(_) => None,
         }
     }
 }
@@ -72,9 +78,22 @@ impl From<synapse_codegen_cfs::CodegenError> for Error {
 /// Generate code from `.syn` source text.
 pub fn generate_str(source: &str, lang: Lang) -> Result<String, Error> {
     let file = synapse_parser::ast::parse(source)?;
+    generate_parsed(&file, lang)
+}
+
+/// Generate code from a `.syn` input path, validating direct imports relative to that file.
+pub fn generate_path(input: impl AsRef<Path>, lang: Lang) -> Result<String, Error> {
+    let input = input.as_ref();
+    let source = fs::read_to_string(input)?;
+    let file = synapse_parser::ast::parse(&source)?;
+    validate_imports(input, &file)?;
+    generate_parsed(&file, lang)
+}
+
+fn generate_parsed(file: &SynFile, lang: Lang) -> Result<String, Error> {
     let output = match lang {
-        Lang::C => synapse_codegen_cfs::try_generate_c(&file)?,
-        Lang::Rust => synapse_codegen_cfs::try_generate_rust(&file, &Default::default())?,
+        Lang::C => synapse_codegen_cfs::try_generate_c(file)?,
+        Lang::Rust => synapse_codegen_cfs::try_generate_rust(file, &Default::default())?,
     };
     Ok(output)
 }
@@ -89,8 +108,7 @@ pub fn generate_file(
     lang: Lang,
 ) -> Result<PathBuf, Error> {
     let input = input.as_ref();
-    let source = fs::read_to_string(input)?;
-    let output = generate_str(&source, lang)?;
+    let output = generate_path(input, lang)?;
 
     let out_dir = out_dir.as_ref();
     fs::create_dir_all(out_dir)?;
@@ -104,6 +122,128 @@ pub fn generate_file(
     let out_path = out_dir.join(format!("{}.{}", stem.to_string_lossy(), lang.extension()));
     fs::write(&out_path, output)?;
     Ok(out_path)
+}
+
+fn validate_imports(input: &Path, file: &SynFile) -> Result<(), Error> {
+    let base_dir = input.parent().unwrap_or_else(|| Path::new(""));
+    let local_namespace = namespace(file);
+    let mut symbols = local_symbols(file, &local_namespace);
+
+    for item in &file.items {
+        let Item::Import(import) = item else {
+            continue;
+        };
+
+        let import_path = base_dir.join(&import.path);
+        let source = fs::read_to_string(&import_path).map_err(|e| {
+            Error::Import(format!(
+                "error reading import `{}`: {e}",
+                import_path.display()
+            ))
+        })?;
+        let imported = synapse_parser::ast::parse(&source).map_err(|e| {
+            Error::Import(format!(
+                "error parsing import `{}`:\n{e}",
+                import_path.display()
+            ))
+        })?;
+        let imported_namespace = namespace(&imported);
+        symbols.extend(qualified_symbols(&imported, &imported_namespace));
+    }
+
+    validate_type_refs(file, &symbols)
+}
+
+fn namespace(file: &SynFile) -> Vec<String> {
+    file.items
+        .iter()
+        .find_map(|item| match item {
+            Item::Namespace(ns) => Some(ns.name.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn local_symbols(file: &SynFile, namespace: &[String]) -> HashSet<Vec<String>> {
+    let mut symbols = HashSet::new();
+    for name in declared_names(file) {
+        symbols.insert(vec![name.clone()]);
+        if !namespace.is_empty() {
+            let mut qualified = namespace.to_vec();
+            qualified.push(name);
+            symbols.insert(qualified);
+        }
+    }
+    symbols
+}
+
+fn qualified_symbols(file: &SynFile, namespace: &[String]) -> HashSet<Vec<String>> {
+    let mut symbols = HashSet::new();
+    for name in declared_names(file) {
+        let mut qualified = namespace.to_vec();
+        qualified.push(name);
+        symbols.insert(qualified);
+    }
+    symbols
+}
+
+fn declared_names(file: &SynFile) -> Vec<String> {
+    file.items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Const(c) => Some(c.name.clone()),
+            Item::Enum(e) => Some(e.name.clone()),
+            Item::Struct(s) | Item::Table(s) => Some(s.name.clone()),
+            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => Some(m.name.clone()),
+            Item::Namespace(_) | Item::Import(_) => None,
+        })
+        .collect()
+}
+
+fn validate_type_refs(file: &SynFile, symbols: &HashSet<Vec<String>>) -> Result<(), Error> {
+    for item in &file.items {
+        match item {
+            Item::Const(c) => validate_type_ref(&c.name, &c.ty.base, symbols)?,
+            Item::Struct(s) | Item::Table(s) => validate_field_refs(&s.name, &s.fields, symbols)?,
+            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
+                validate_field_refs(&m.name, &m.fields, symbols)?
+            }
+            Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_field_refs(
+    container: &str,
+    fields: &[FieldDef],
+    symbols: &HashSet<Vec<String>>,
+) -> Result<(), Error> {
+    for field in fields {
+        validate_type_ref(
+            &format!("{container}.{}", field.name),
+            &field.ty.base,
+            symbols,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_type_ref(
+    owner: &str,
+    base: &BaseType,
+    symbols: &HashSet<Vec<String>>,
+) -> Result<(), Error> {
+    let BaseType::Ref(segments) = base else {
+        return Ok(());
+    };
+    if symbols.contains(segments) {
+        return Ok(());
+    }
+    Err(Error::Import(format!(
+        "unresolved type reference `{}` in `{owner}`",
+        segments.join("::")
+    )))
 }
 
 /// Generate a cFS C header from an input file.
@@ -125,6 +265,7 @@ pub fn generate_rust_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn generate_c_from_string() {
@@ -237,5 +378,70 @@ mod tests {
             err.to_string(),
             "bounded array field `Buffer.bytes` with type `u8[<=256]` is not supported by cFS codegen yet"
         );
+    }
+
+    #[test]
+    fn generate_path_validates_imported_type_refs() {
+        let dir = test_dir("validates-imported-type-refs");
+        fs::write(
+            dir.join("std_msgs.syn"),
+            "namespace std_msgs\nstruct Header { seq: u32 }",
+        )
+        .unwrap();
+        let input = dir.join("camera.syn");
+        fs::write(
+            &input,
+            r#"namespace camera_app
+import "std_msgs.syn"
+@mid(0x0881)
+telemetry CameraStatus {
+    header: std_msgs::Header
+}
+"#,
+        )
+        .unwrap();
+
+        let out = generate_path(&input, Lang::C).unwrap();
+        assert!(out.contains("#include \"std_msgs.h\""));
+        assert!(out.contains("std_msgs_Header_t header;"));
+    }
+
+    #[test]
+    fn generate_path_rejects_missing_import_file() {
+        let dir = test_dir("missing-import");
+        let input = dir.join("camera.syn");
+        fs::write(&input, r#"import "missing.syn""#).unwrap();
+
+        let err = generate_path(&input, Lang::C).unwrap_err();
+        assert!(err.to_string().contains("error reading import"));
+        assert!(err.to_string().contains("missing.syn"));
+    }
+
+    #[test]
+    fn generate_path_rejects_unresolved_type_ref() {
+        let dir = test_dir("unresolved-type-ref");
+        let input = dir.join("camera.syn");
+        fs::write(
+            &input,
+            "@mid(0x0881)\ntelemetry CameraStatus { header: std_msgs::Header }",
+        )
+        .unwrap();
+
+        let err = generate_path(&input, Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "unresolved type reference `std_msgs::Header` in `CameraStatus.header`"
+        );
+    }
+
+    fn test_dir(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("synapse-{name}-{}-{stamp}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
     }
 }
