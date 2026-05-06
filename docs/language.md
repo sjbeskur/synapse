@@ -91,9 +91,9 @@ command SetMode {
 }
 ```
 
-The cFS generator emits message ID constants for `command`, `telemetry`, and legacy `message` items with `@mid`.
+The cFS generator requires `@mid(...)` on `command` and `telemetry` items and emits message ID constants for those packets.
 
-Current limitation: missing, duplicate, or range-inappropriate MIDs are not yet validated.
+Missing MIDs and duplicate literal MIDs are cFS codegen errors. Range-inappropriate command or telemetry MIDs are not yet validated.
 
 ### Primitive Types
 
@@ -198,11 +198,9 @@ message NavState {
 }
 ```
 
-`message` remains supported for older files and generic Software Bus packets. cFS codegen infers command vs telemetry from attributes or MID bit patterns.
+`message` remains accepted by the parser for older files and possible non-cFS backends, but cFS codegen rejects it.
 
-New files should prefer explicit `command` or `telemetry`.
-
-Review question for `0.2.x`: keep `message`, deprecate it, or reserve it for non-cFS backends?
+Use explicit `command` or `telemetry` for generated cFS packets.
 
 ## Parsed But Not Fully Generated
 
@@ -252,7 +250,7 @@ In `0.2.x`, cFS codegen rejects optional fields until a concrete ABI representat
 These are likely areas for intentional language work after `0.1.x`.
 
 - Command code metadata, probably with an attribute such as `@cc(2)`.
-- MID validation for missing, duplicate, and command/telemetry range mismatches.
+- MID range validation for command/telemetry bit-pattern mismatches.
 - Namespace-scoped MID constants and constant resolution.
 - Enum codegen and ABI representation.
 - Optional/default semantics.

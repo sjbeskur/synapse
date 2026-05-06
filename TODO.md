@@ -9,7 +9,10 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [x] Reject optional fields in cFS codegen until an ABI representation exists.
 - [x] Reject field defaults in cFS codegen until initializer semantics exist.
 - [ ] Dynamic and bounded array policy for cFS packet/table ABI types.
-- [ ] MID validation: missing MIDs, duplicate MIDs, and command/telemetry ranges.
+- [x] Reject legacy `message` in cFS codegen; use `command` or `telemetry`.
+- [x] Require `@mid(...)` for `command` and `telemetry`.
+- [x] Reject duplicate literal MIDs in one generated file.
+- [ ] MID validation: command/telemetry ranges.
 - [ ] Command metadata, including possible `@cc(...)` command code support.
 - [ ] Enum ABI representation for C and Rust.
 - [ ] String semantics, especially bounded string null-termination expectations.

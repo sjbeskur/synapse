@@ -142,7 +142,11 @@ mod tests {
 
     #[test]
     fn rejects_optional_fields() {
-        let err = generate_str("telemetry Status { error_code?: u32 }", Lang::C).unwrap_err();
+        let err = generate_str(
+            "@mid(0x0801)\ntelemetry Status { error_code?: u32 }",
+            Lang::C,
+        )
+        .unwrap_err();
         assert_eq!(
             err.to_string(),
             "optional field `Status.error_code` is not supported by cFS codegen yet"
@@ -161,13 +165,31 @@ mod tests {
     #[test]
     fn rejects_enum_fields() {
         let err = generate_str(
-            "enum CameraMode { Idle = 0 Streaming = 1 }\ntelemetry Status { mode: CameraMode }",
+            "enum CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
             Lang::C,
         )
         .unwrap_err();
         assert_eq!(
             err.to_string(),
             "enum field `Status.mode` with type `CameraMode` is not supported by cFS codegen yet"
+        );
+    }
+
+    #[test]
+    fn rejects_legacy_message() {
+        let err = generate_str("@mid(0x0801)\nmessage Status { x: f32 }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "legacy message `Status` is not supported by cFS codegen; use `command` or `telemetry`"
+        );
+    }
+
+    #[test]
+    fn rejects_packet_without_mid() {
+        let err = generate_str("command SetMode { mode: u8 }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "packet `SetMode` is missing required `@mid(...)`"
         );
     }
 }

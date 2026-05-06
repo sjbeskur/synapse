@@ -1,4 +1,8 @@
-use std::{collections::HashSet, error::Error as StdError, fmt};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error as StdError,
+    fmt,
+};
 
 use synapse_parser::ast::{
     ArraySuffix, Attribute, BaseType, ConstDecl, FieldDef, Item, Literal, MessageDef, PacketKind,
@@ -49,6 +53,16 @@ pub enum CodegenError {
         field: String,
         ty: String,
     },
+    /// The legacy `message` keyword is parsed for migration, but cFS codegen requires intent.
+    LegacyMessageUnsupported { packet: String },
+    /// cFS Software Bus command and telemetry packets require explicit message IDs.
+    MissingMid { packet: String },
+    /// Literal MIDs must be unique within one generated file.
+    DuplicateMid {
+        mid: String,
+        first_packet: String,
+        second_packet: String,
+    },
 }
 
 impl fmt::Display for CodegenError {
@@ -69,6 +83,21 @@ impl fmt::Display for CodegenError {
             } => write!(
                 f,
                 "enum field `{container}.{field}` with type `{ty}` is not supported by cFS codegen yet"
+            ),
+            CodegenError::LegacyMessageUnsupported { packet } => write!(
+                f,
+                "legacy message `{packet}` is not supported by cFS codegen; use `command` or `telemetry`"
+            ),
+            CodegenError::MissingMid { packet } => {
+                write!(f, "packet `{packet}` is missing required `@mid(...)`")
+            }
+            CodegenError::DuplicateMid {
+                mid,
+                first_packet,
+                second_packet,
+            } => write!(
+                f,
+                "duplicate MID `{mid}` used by packets `{first_packet}` and `{second_packet}`"
             ),
         }
     }
@@ -112,11 +141,18 @@ pub fn try_generate_rust(file: &SynFile, opts: &RustOptions) -> Result<String, C
 
 fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
     let enum_names = enum_names(file);
+    let mut literal_mids = HashMap::new();
     for item in &file.items {
         match item {
             Item::Struct(s) | Item::Table(s) => validate_fields(&s.name, &s.fields, &enum_names)?,
-            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
+            Item::Command(m) | Item::Telemetry(m) => {
+                validate_packet(m, &mut literal_mids)?;
                 validate_fields(&m.name, &m.fields, &enum_names)?
+            }
+            Item::Message(m) => {
+                return Err(CodegenError::LegacyMessageUnsupported {
+                    packet: m.name.clone(),
+                });
             }
             Item::Namespace(_) | Item::Import(_) | Item::Const(_) | Item::Enum(_) => {}
         }
@@ -132,6 +168,29 @@ fn enum_names(file: &SynFile) -> HashSet<String> {
             _ => None,
         })
         .collect()
+}
+
+fn validate_packet(
+    packet: &MessageDef,
+    literal_mids: &mut HashMap<u64, String>,
+) -> Result<(), CodegenError> {
+    let Some(mid) = find_mid_attr(&packet.attrs) else {
+        return Err(CodegenError::MissingMid {
+            packet: packet.name.clone(),
+        });
+    };
+
+    if let Some(value) = literal_to_u64(mid) {
+        if let Some(first_packet) = literal_mids.insert(value, packet.name.clone()) {
+            return Err(CodegenError::DuplicateMid {
+                mid: literal_mid_str(mid),
+                first_packet,
+                second_packet: packet.name.clone(),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_fields(
@@ -433,31 +492,16 @@ fn find_mid_attr(attrs: &[Attribute]) -> Option<&Literal> {
 
 fn packet_item(item: &Item) -> Option<&MessageDef> {
     match item {
-        Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => Some(m),
+        Item::Command(m) | Item::Telemetry(m) => Some(m),
         _ => None,
     }
 }
 
-/// A legacy message is a command if its MID has bit 12 (0x1000) set, or if it has `@cmd`.
 fn packet_is_command(m: &MessageDef) -> bool {
     match m.kind {
-        PacketKind::Command => return true,
-        PacketKind::Telemetry => return false,
-        PacketKind::Message => {}
+        PacketKind::Command => true,
+        PacketKind::Telemetry | PacketKind::Message => false,
     }
-
-    if m.attrs
-        .iter()
-        .any(|a| a.name == "cmd" && a.value != Literal::Bool(false))
-    {
-        return true;
-    }
-    if let Some(mid) = find_mid_attr(&m.attrs) {
-        if let Some(n) = literal_to_u64(mid) {
-            return (n & 0x1000) != 0;
-        }
-    }
-    false
 }
 
 fn literal_to_u64(lit: &Literal) -> Option<u64> {
@@ -651,8 +695,8 @@ mod tests {
     }
 
     #[test]
-    fn tlm_message_with_hex_mid() {
-        let out = codegen("@mid(0x0801)\nmessage NavTlm { x: f64  y: f64 }");
+    fn telemetry_with_hex_mid() {
+        let out = codegen("@mid(0x0801)\ntelemetry NavTlm { x: f64  y: f64 }");
         assert!(out.contains("#define NAV_TLM_MID  0x0801U"));
         assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
         assert!(out.contains("typedef struct {"));
@@ -662,25 +706,25 @@ mod tests {
     }
 
     #[test]
-    fn cmd_message_detected_by_mid_bit12() {
-        let out = codegen("@mid(0x1880)\nmessage NavCmd { seq: u16 }");
-        assert!(out.contains("#define NAV_CMD_MID  0x1880U"));
+    fn command_uses_declared_packet_kind() {
+        let out = codegen("@mid(0x0801)\ncommand NavCmd { seq: u16 }");
+        assert!(out.contains("#define NAV_CMD_MID  0x0801U"));
         assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
         assert!(out.contains("} NavCmd_t;"));
     }
 
     #[test]
     fn command_uses_command_header() {
-        let out = codegen("@mid(0x0801)\ncommand SetMode { mode: u8 }");
-        assert!(out.contains("#define SET_MODE_MID  0x0801U"));
+        let out = codegen("@mid(0x1880)\ncommand SetMode { mode: u8 }");
+        assert!(out.contains("#define SET_MODE_MID  0x1880U"));
         assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
         assert!(!out.contains("CFE_MSG_TelemetryHeader_t Header;"));
     }
 
     #[test]
     fn telemetry_uses_telemetry_header() {
-        let out = codegen("@mid(0x1880)\ntelemetry NavState { x: f64 }");
-        assert!(out.contains("#define NAV_STATE_MID  0x1880U"));
+        let out = codegen("@mid(0x0801)\ntelemetry NavState { x: f64 }");
+        assert!(out.contains("#define NAV_STATE_MID  0x0801U"));
         assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
         assert!(!out.contains("CFE_MSG_CommandHeader_t Header;"));
     }
@@ -695,16 +739,59 @@ mod tests {
     }
 
     #[test]
-    fn message_without_mid_no_define() {
-        let out = codegen("message Bare { x: f32 }");
-        assert!(!out.contains("#define"));
-        assert!(out.contains("typedef struct {"));
-        assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
+    fn c_rejects_legacy_message() {
+        let file = parse("message Bare { x: f32 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::LegacyMessageUnsupported {
+                packet: "Bare".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "legacy message `Bare` is not supported by cFS codegen; use `command` or `telemetry`"
+        );
+    }
+
+    #[test]
+    fn c_rejects_command_without_mid() {
+        let file = parse("command SetMode { mode: u8 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::MissingMid {
+                packet: "SetMode".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "packet `SetMode` is missing required `@mid(...)`"
+        );
+    }
+
+    #[test]
+    fn c_rejects_duplicate_literal_mids() {
+        let file =
+            parse("@mid(0x1880)\ncommand A { x: u8 }\n@mid(0x1880)\ncommand B { x: u8 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::DuplicateMid {
+                mid: "0x1880U".to_string(),
+                first_packet: "A".to_string(),
+                second_packet: "B".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "duplicate MID `0x1880U` used by packets `A` and `B`"
+        );
     }
 
     #[test]
     fn c_rejects_optional_fields() {
-        let file = parse("telemetry Status { error_code?: u32 }").unwrap();
+        let file = parse("@mid(0x0801)\ntelemetry Status { error_code?: u32 }").unwrap();
         let err = try_generate_c(&file).unwrap_err();
         assert_eq!(
             err,
@@ -739,7 +826,7 @@ mod tests {
     #[test]
     fn c_rejects_enum_fields() {
         let file = parse(
-            "enum CameraMode { Idle = 0 Streaming = 1 }\ntelemetry Status { mode: CameraMode }",
+            "enum CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
         )
         .unwrap();
         let err = try_generate_c(&file).unwrap_err();
@@ -765,20 +852,20 @@ mod tests {
 
     #[test]
     fn fixed_array_field() {
-        let out = codegen("@mid(0x0802)\nmessage Imu { covariance: f64[9] }");
+        let out = codegen("@mid(0x0802)\ntelemetry Imu { covariance: f64[9] }");
         assert!(out.contains("    double covariance[9];"));
     }
 
     #[test]
     fn c_refs_use_declared_typedef_names() {
-        let out = codegen("struct Point { x: f64 }\nmessage Pose { point: Point }");
+        let out = codegen("struct Point { x: f64 }\n@mid(0x0801)\ntelemetry Pose { point: Point }");
         assert!(out.contains("} Point_t;"));
         assert!(out.contains("    Point_t point;"));
     }
 
     #[test]
     fn c_qualified_refs_use_declared_typedef_names() {
-        let out = codegen("message Stamped { header: std_msgs::Header }");
+        let out = codegen("@mid(0x0801)\ntelemetry Stamped { header: std_msgs::Header }");
         assert!(out.contains("    std_msgs_Header_t header;"));
     }
 
@@ -809,7 +896,7 @@ mod tests {
 
     #[test]
     fn rust_tlm_struct() {
-        let out = rust_codegen("@mid(0x0801)\nmessage NavTlm { x: f64  y: f64 }");
+        let out = rust_codegen("@mid(0x0801)\ntelemetry NavTlm { x: f64  y: f64 }");
         assert!(out.contains("pub const NAV_TLM_MID: u16 = 0x0801;"));
         assert!(out.contains("#[repr(C)]"));
         assert!(out.contains("pub struct NavTlm {"));
@@ -820,7 +907,7 @@ mod tests {
 
     #[test]
     fn rust_cmd_struct() {
-        let out = rust_codegen("@mid(0x1880)\nmessage NavCmd { seq: u16 }");
+        let out = rust_codegen("@mid(0x1880)\ncommand NavCmd { seq: u16 }");
         assert!(out.contains("pub const NAV_CMD_MID: u16 = 0x1880;"));
         assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
     }
@@ -851,7 +938,7 @@ mod tests {
 
     #[test]
     fn rust_fixed_array() {
-        let out = rust_codegen("@mid(0x0802)\nmessage Imu { covariance: f64[9] }");
+        let out = rust_codegen("@mid(0x0802)\ntelemetry Imu { covariance: f64[9] }");
         assert!(out.contains("    pub covariance: [f64; 9],"));
     }
 
@@ -861,7 +948,10 @@ mod tests {
             cfs_module: "my_cfs",
             ..Default::default()
         };
-        let out = generate_rust(&parse("@mid(0x0801)\nmessage T { x: f32 }").unwrap(), &opts);
+        let out = generate_rust(
+            &parse("@mid(0x0801)\ntelemetry T { x: f32 }").unwrap(),
+            &opts,
+        );
         assert!(out.contains("my_cfs::CFE_MSG_TelemetryHeader_t"));
     }
 
@@ -871,16 +961,43 @@ mod tests {
             cfs_module: "",
             ..Default::default()
         };
-        let out = generate_rust(&parse("@mid(0x0801)\nmessage T { x: f32 }").unwrap(), &opts);
+        let out = generate_rust(
+            &parse("@mid(0x0801)\ntelemetry T { x: f32 }").unwrap(),
+            &opts,
+        );
         assert!(out.contains("    pub cfs_header: CFE_MSG_TelemetryHeader_t,"));
         assert!(!out.contains("::CFE_MSG_TelemetryHeader_t"));
     }
 
     #[test]
     fn rust_message_can_have_payload_header_field() {
-        let out = rust_codegen("@mid(0x0801)\nmessage Stamped { header: std_msgs::Header }");
+        let out = rust_codegen("@mid(0x0801)\ntelemetry Stamped { header: std_msgs::Header }");
         assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
         assert!(out.contains("    pub header: std_msgs::Header,"));
+    }
+
+    #[test]
+    fn rust_rejects_legacy_message() {
+        let file = parse("@mid(0x0801)\nmessage Bare { x: f32 }").unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::LegacyMessageUnsupported {
+                packet: "Bare".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rust_rejects_telemetry_without_mid() {
+        let file = parse("telemetry Status { x: f32 }").unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::MissingMid {
+                packet: "Status".to_string(),
+            }
+        );
     }
 
     #[test]

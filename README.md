@@ -155,7 +155,7 @@ table NavConfig {
 }
 ```
 
-Generated tables do not include a Software Bus header. They are plain table data. The legacy `message` keyword still works for generic Software Bus packets, but new files should prefer `command` or `telemetry`.
+Generated tables do not include a Software Bus header. They are plain table data. The legacy `message` keyword still parses for older files, but cFS codegen rejects it. Use explicit `command` or `telemetry` packets.
 
 ## Language Surface
 
@@ -165,8 +165,8 @@ The cFS generator currently emits:
 - `import` declarations as C `#include` lines or Rust `use crate::...` lines.
 - `const` declarations as C `#define`s or Rust `pub const`s.
 - `struct` and `table` definitions as plain data structs.
-- `command`, `telemetry`, and legacy `message` definitions as Software Bus packet structs with cFS headers.
-- `@mid(...)` attributes as message ID constants.
+- `command` and `telemetry` definitions as Software Bus packet structs with cFS headers.
+- Required `@mid(...)` attributes as message ID constants, with duplicate literal MID validation.
 - Fixed arrays, bounded strings, dynamic arrays, and namespaced type references.
 
 Enums are parsed into the AST, but enum fields are rejected by cFS codegen until a concrete ABI representation exists. Optional field markers and field defaults are also parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer plain integer fields for generated packet payloads until enum emission is completed.

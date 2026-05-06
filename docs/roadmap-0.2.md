@@ -90,12 +90,12 @@ Open questions:
 
 ## MID Validation
 
-Status: Proposed
+Status: Accepted
 
 Direction:
 
-- Require `@mid(...)` for `command` and `telemetry`.
-- Detect duplicate literal MIDs in a generated file.
+- Require `@mid(...)` for `command` and `telemetry` - implemented as a cFS codegen error.
+- Detect duplicate literal MIDs in a generated file - implemented as a cFS codegen error.
 - Validate command/telemetry MID bit patterns when the MID is a literal.
 
 Open questions:
