@@ -167,9 +167,9 @@ The cFS generator currently emits:
 - `struct` and `table` definitions as plain data structs.
 - `command` and `telemetry` definitions as Software Bus packet structs with cFS headers.
 - Required `@mid(...)` attributes as message ID constants, with duplicate literal MID validation.
-- Fixed arrays, bounded strings, dynamic arrays, and namespaced type references.
+- Fixed arrays, bounded strings, and namespaced type references.
 
-Enums are parsed into the AST, but enum fields are rejected by cFS codegen until a concrete ABI representation exists. Optional field markers and field defaults are also parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer plain integer fields for generated packet payloads until enum emission is completed.
+Enums are parsed into the AST, but enum fields are rejected by cFS codegen until a concrete ABI representation exists. Optional field markers, field defaults, dynamic arrays, and non-string bounded arrays are also parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer plain integer fields, fixed arrays, and bounded strings for generated packet payloads.
 
 See `docs/language.md` for the current language status and `0.1.x` review checklist.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.

@@ -63,6 +63,18 @@ pub enum CodegenError {
         first_packet: String,
         second_packet: String,
     },
+    /// Dynamic arrays parse today, but cFS ABI codegen has no ownership/length model yet.
+    DynamicArrayUnsupported {
+        container: String,
+        field: String,
+        ty: String,
+    },
+    /// Non-string bounded arrays parse today, but cFS ABI codegen has no inline representation yet.
+    BoundedArrayUnsupported {
+        container: String,
+        field: String,
+        ty: String,
+    },
 }
 
 impl fmt::Display for CodegenError {
@@ -98,6 +110,22 @@ impl fmt::Display for CodegenError {
             } => write!(
                 f,
                 "duplicate MID `{mid}` used by packets `{first_packet}` and `{second_packet}`"
+            ),
+            CodegenError::DynamicArrayUnsupported {
+                container,
+                field,
+                ty,
+            } => write!(
+                f,
+                "dynamic array field `{container}.{field}` with type `{ty}` is not supported by cFS codegen yet"
+            ),
+            CodegenError::BoundedArrayUnsupported {
+                container,
+                field,
+                ty,
+            } => write!(
+                f,
+                "bounded array field `{container}.{field}` with type `{ty}` is not supported by cFS codegen yet"
             ),
         }
     }
@@ -222,6 +250,23 @@ fn validate_fields(
                     ty: segments.join("::"),
                 });
             }
+        }
+        match &field.ty.array {
+            Some(ArraySuffix::Dynamic) => {
+                return Err(CodegenError::DynamicArrayUnsupported {
+                    container: container.to_string(),
+                    field: field.name.clone(),
+                    ty: type_expr_display(&field.ty),
+                });
+            }
+            Some(ArraySuffix::Bounded(_)) if field.ty.base != BaseType::String => {
+                return Err(CodegenError::BoundedArrayUnsupported {
+                    container: container.to_string(),
+                    field: field.name.clone(),
+                    ty: type_expr_display(&field.ty),
+                });
+            }
+            Some(ArraySuffix::Bounded(_)) | Some(ArraySuffix::Fixed(_)) | None => {}
         }
     }
     Ok(())
@@ -509,6 +554,42 @@ fn literal_to_u64(lit: &Literal) -> Option<u64> {
         Literal::Hex(n) => Some(*n),
         Literal::Int(n) if *n >= 0 => Some(*n as u64),
         _ => None,
+    }
+}
+
+fn type_expr_display(ty: &TypeExpr) -> String {
+    let mut out = base_type_display(&ty.base);
+    match &ty.array {
+        None => {}
+        Some(ArraySuffix::Dynamic) => out.push_str("[]"),
+        Some(ArraySuffix::Fixed(n)) => out.push_str(&format!("[{n}]")),
+        Some(ArraySuffix::Bounded(n)) => out.push_str(&format!("[<={n}]")),
+    }
+    out
+}
+
+fn base_type_display(base: &BaseType) -> String {
+    match base {
+        BaseType::String => "string".to_string(),
+        BaseType::Primitive(p) => primitive_name(*p).to_string(),
+        BaseType::Ref(segments) => segments.join("::"),
+    }
+}
+
+fn primitive_name(p: PrimitiveType) -> &'static str {
+    match p {
+        PrimitiveType::F32 => "f32",
+        PrimitiveType::F64 => "f64",
+        PrimitiveType::I8 => "i8",
+        PrimitiveType::I16 => "i16",
+        PrimitiveType::I32 => "i32",
+        PrimitiveType::I64 => "i64",
+        PrimitiveType::U8 => "u8",
+        PrimitiveType::U16 => "u16",
+        PrimitiveType::U32 => "u32",
+        PrimitiveType::U64 => "u64",
+        PrimitiveType::Bool => "bool",
+        PrimitiveType::Bytes => "bytes",
     }
 }
 
@@ -845,6 +926,42 @@ mod tests {
     }
 
     #[test]
+    fn c_rejects_dynamic_arrays() {
+        let file = parse("@mid(0x0801)\ntelemetry Samples { values: f32[] }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::DynamicArrayUnsupported {
+                container: "Samples".to_string(),
+                field: "values".to_string(),
+                ty: "f32[]".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "dynamic array field `Samples.values` with type `f32[]` is not supported by cFS codegen yet"
+        );
+    }
+
+    #[test]
+    fn c_rejects_non_string_bounded_arrays() {
+        let file = parse("table Buffer { bytes: u8[<=256] }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::BoundedArrayUnsupported {
+                container: "Buffer".to_string(),
+                field: "bytes".to_string(),
+                ty: "u8[<=256]".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "bounded array field `Buffer.bytes` with type `u8[<=256]` is not supported by cFS codegen yet"
+        );
+    }
+
+    #[test]
     fn const_emits_define() {
         let out = codegen("const NAV_TLM_MID: u16 = 0x0801");
         assert!(out.contains("#define NAV_TLM_MID  0x801U"));
@@ -1037,6 +1154,34 @@ mod tests {
                 container: "Status".to_string(),
                 field: "mode".to_string(),
                 ty: "CameraMode".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rust_rejects_dynamic_arrays() {
+        let file = parse("struct Samples { values: Point[] }").unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::DynamicArrayUnsupported {
+                container: "Samples".to_string(),
+                field: "values".to_string(),
+                ty: "Point[]".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rust_rejects_non_string_bounded_arrays() {
+        let file = parse("struct Buffer { bytes: bytes[<=256] }").unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::BoundedArrayUnsupported {
+                container: "Buffer".to_string(),
+                field: "bytes".to_string(),
+                ty: "bytes[<=256]".to_string(),
             }
         );
     }

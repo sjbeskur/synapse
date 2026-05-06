@@ -145,7 +145,7 @@ struct CameraId {
 
 ## Supported With Caveats
 
-These features work enough to use carefully, but they have semantics that should be revisited before declaring them stable.
+These features are accepted by the parser, but cFS codegen rejects some forms until their ABI behavior is explicit.
 
 ### Dynamic Arrays
 
@@ -155,9 +155,7 @@ struct Polygon {
 }
 ```
 
-Current C codegen represents dynamic arrays as `CFE_Span_t` with an element-type comment. Current Rust codegen represents them as raw pointers. This avoids allocation in cFS contexts, but it does not include a complete length/ownership model in the IDL.
-
-Review question for `0.2.x`: should dynamic arrays be allowed in Software Bus packet payloads, or restricted to non-packet helper structs?
+Dynamic arrays parse into the AST, but cFS codegen rejects them because the IDL does not yet define an ownership or length model.
 
 ### Bounded Dynamic Arrays
 
@@ -167,9 +165,7 @@ struct Samples {
 }
 ```
 
-Bounded dynamic arrays parse and generate span/pointer-style representations for non-string element types. The maximum bound is emitted as a comment, not enforced by generated types.
-
-Review question for `0.2.x`: should bounded arrays generate inline storage plus an explicit length field, or remain pointer/span based?
+Bounded arrays parse into the AST. `string[<=N]` is supported as inline storage, but cFS codegen rejects non-string bounded arrays until an inline storage plus length-field policy exists.
 
 ### Unbounded Strings
 
@@ -254,7 +250,7 @@ These are likely areas for intentional language work after `0.1.x`.
 - Namespace-scoped MID constants and constant resolution.
 - Enum codegen and ABI representation.
 - Optional/default semantics.
-- Dynamic array policy for cFS packet structs.
+- Dynamic and bounded array representation for cFS packet/table structs.
 - More explicit table metadata.
 - Better generated documentation style for C headers.
 - Multi-file import resolution and dependency graph validation.

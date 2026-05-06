@@ -83,7 +83,8 @@ telemetry PointStamped {
 // ── Polygon ───────────────────────────────────────────────────────────────────
 
 struct Polygon {
-    points: Point32[]
+    point_count: u16
+    points: Point32[16]
 }
 
 @mid(0x0804)
@@ -108,7 +109,8 @@ struct Pose2D {
 @mid(0x0805)
 telemetry PoseArray {
     header: std_msgs::Header
-    poses:  Pose[]
+    pose_count: u16
+    poses:  Pose[16]
 }
 
 @mid(0x0806)

@@ -70,23 +70,7 @@ struct CameraIntrinsics {
 
 ## Dynamic Arrays
 
-Dynamic arrays use `[]`. They parse for all base types, but generated cFS ABI semantics are intentionally conservative and pointer/span based.
-
-| Synapse | C | Rust |
-| --- | --- | --- |
-| `f32[]` | `CFE_Span_t /* float */` | `*const f32` |
-| `f64[]` | `CFE_Span_t /* double */` | `*const f64` |
-| `i8[]` | `CFE_Span_t /* int8_t */` | `*const i8` |
-| `i16[]` | `CFE_Span_t /* int16_t */` | `*const i16` |
-| `i32[]` | `CFE_Span_t /* int32_t */` | `*const i32` |
-| `i64[]` | `CFE_Span_t /* int64_t */` | `*const i64` |
-| `u8[]` | `CFE_Span_t /* uint8_t */` | `*const u8` |
-| `u16[]` | `CFE_Span_t /* uint16_t */` | `*const u16` |
-| `u32[]` | `CFE_Span_t /* uint32_t */` | `*const u32` |
-| `u64[]` | `CFE_Span_t /* uint64_t */` | `*const u64` |
-| `bool[]` | `CFE_Span_t /* bool */` | `*const bool` |
-| `SomeType[]` | `CFE_Span_t /* some_namespace_SomeType_t */` | `*const SomeType` |
-| `string[]` | `const char*` | `*const u8` |
+Dynamic arrays use `[]`. They parse for all base types, but cFS codegen rejects them until the IDL defines an ownership and length model.
 
 Example:
 
@@ -96,26 +80,11 @@ struct Polygon {
 }
 ```
 
-For `0.1.x`, prefer fixed arrays or bounded strings for cFS packet and table ABI data. Dynamic arrays need an external length/ownership convention.
+Prefer fixed arrays or bounded strings for cFS packet and table ABI data.
 
 ## Bounded Arrays
 
-Bounded arrays use `[<=N]`. For non-string element types, current codegen emits pointer/span-style representations and preserves the maximum as a comment.
-
-| Synapse | C | Rust |
-| --- | --- | --- |
-| `f32[<=N]` | `CFE_Span_t /* float max N */` | `*const f32 /* max N */` |
-| `f64[<=N]` | `CFE_Span_t /* double max N */` | `*const f64 /* max N */` |
-| `i8[<=N]` | `CFE_Span_t /* int8_t max N */` | `*const i8 /* max N */` |
-| `i16[<=N]` | `CFE_Span_t /* int16_t max N */` | `*const i16 /* max N */` |
-| `i32[<=N]` | `CFE_Span_t /* int32_t max N */` | `*const i32 /* max N */` |
-| `i64[<=N]` | `CFE_Span_t /* int64_t max N */` | `*const i64 /* max N */` |
-| `u8[<=N]` | `CFE_Span_t /* uint8_t max N */` | `*const u8 /* max N */` |
-| `u16[<=N]` | `CFE_Span_t /* uint16_t max N */` | `*const u16 /* max N */` |
-| `u32[<=N]` | `CFE_Span_t /* uint32_t max N */` | `*const u32 /* max N */` |
-| `u64[<=N]` | `CFE_Span_t /* uint64_t max N */` | `*const u64 /* max N */` |
-| `bool[<=N]` | `CFE_Span_t /* bool max N */` | `*const bool /* max N */` |
-| `SomeType[<=N]` | `CFE_Span_t /* some_namespace_SomeType_t max N */` | `*const SomeType /* max N */` |
+Bounded arrays use `[<=N]`. `string[<=N]` is supported as inline storage. Non-string bounded arrays parse, but cFS codegen rejects them until the IDL defines whether they should generate inline storage plus an explicit length field.
 
 Example:
 
@@ -125,7 +94,7 @@ struct Samples {
 }
 ```
 
-The maximum bound is not currently enforced by generated types.
+For now, use fixed arrays such as `f32[128]` when the generated cFS packet/table layout needs inline numeric storage.
 
 ## Strings
 
@@ -134,7 +103,7 @@ Strings are special-cased because cFS packets and tables often need inline chara
 | Synapse | C | Rust | Recommended for cFS ABI |
 | --- | --- | --- | --- |
 | `string` | `const char*` | `*const u8` | No |
-| `string[]` | `const char*` | `*const u8` | No |
+| `string[]` | cFS codegen error | cFS codegen error | No |
 | `string[N]` | `char field[N];` | `[u8; N]` | Yes, if fixed length is desired |
 | `string[<=N]` | `char field[N];` | `[u8; N]` | Yes |
 
@@ -159,4 +128,4 @@ field: Type = value
 field?: Type = value
 ```
 
-In `0.2.x`, cFS codegen rejects optional markers and defaults until concrete ABI and initializer semantics exist.
+In `0.2.x`, cFS codegen rejects optional markers, defaults, dynamic arrays, and non-string bounded arrays until concrete ABI and initializer semantics exist.

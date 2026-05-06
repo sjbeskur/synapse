@@ -192,4 +192,23 @@ mod tests {
             "packet `SetMode` is missing required `@mid(...)`"
         );
     }
+
+    #[test]
+    fn rejects_dynamic_arrays() {
+        let err =
+            generate_str("@mid(0x0801)\ntelemetry Samples { values: f32[] }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "dynamic array field `Samples.values` with type `f32[]` is not supported by cFS codegen yet"
+        );
+    }
+
+    #[test]
+    fn rejects_non_string_bounded_arrays() {
+        let err = generate_str("table Buffer { bytes: u8[<=256] }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "bounded array field `Buffer.bytes` with type `u8[<=256]` is not supported by cFS codegen yet"
+        );
+    }
 }

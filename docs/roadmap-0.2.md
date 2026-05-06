@@ -68,7 +68,7 @@ Open questions:
 
 ## Dynamic And Bounded Arrays
 
-Status: Proposed
+Status: Accepted
 
 Current syntax:
 
@@ -80,11 +80,12 @@ samples: u8[<=256]
 Direction:
 
 - Keep fixed arrays as the recommended packet/table ABI form.
-- Revisit dynamic and bounded dynamic arrays before declaring them stable for packet/table payloads.
+- Keep bounded strings as inline storage.
+- Reject dynamic arrays in cFS codegen until an ownership/length model exists - implemented as a cFS codegen error.
+- Reject non-string bounded arrays in cFS codegen until an inline storage plus length-field policy exists - implemented as a cFS codegen error.
 
 Open questions:
 
-- Should dynamic arrays be forbidden inside `command`, `telemetry`, and `table` payloads?
 - Should bounded arrays generate inline storage plus an explicit length field?
 - Should `bytes[<=N]` be a special inline byte-buffer form?
 

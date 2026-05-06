@@ -8,7 +8,8 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [x] Reject enum fields in cFS codegen until an ABI representation exists.
 - [x] Reject optional fields in cFS codegen until an ABI representation exists.
 - [x] Reject field defaults in cFS codegen until initializer semantics exist.
-- [ ] Dynamic and bounded array policy for cFS packet/table ABI types.
+- [x] Reject dynamic arrays in cFS codegen until an ownership/length model exists.
+- [x] Reject non-string bounded arrays in cFS codegen until an inline representation exists.
 - [x] Reject legacy `message` in cFS codegen; use `command` or `telemetry`.
 - [x] Require `@mid(...)` for `command` and `telemetry`.
 - [x] Reject duplicate literal MIDs in one generated file.
