@@ -127,12 +127,13 @@ Use `command` for Software Bus packets sent to an app:
 
 ```syn
 @mid(0x1880)
+@cc(1)
 command SetMode {
     mode: u8
 }
 ```
 
-Generated commands place `CFE_MSG_CommandHeader_t` first.
+Generated commands place `CFE_MSG_CommandHeader_t` first and emit both `_MID` and `_CC` constants. Commands may share a command MID when their literal command codes differ.
 
 Use `telemetry` for Software Bus packets published by an app:
 

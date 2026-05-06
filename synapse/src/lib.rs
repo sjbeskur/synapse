@@ -128,8 +128,13 @@ mod tests {
 
     #[test]
     fn generate_c_from_string() {
-        let out = generate_str("@mid(0x1880)\ncommand SetMode { mode: u8 }", Lang::C).unwrap();
+        let out = generate_str(
+            "@mid(0x1880)\n@cc(1)\ncommand SetMode { mode: u8 }",
+            Lang::C,
+        )
+        .unwrap();
         assert!(out.contains("#define SET_MODE_MID  0x1880U"));
+        assert!(out.contains("#define SET_MODE_CC   1U"));
         assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
     }
 
@@ -194,8 +199,21 @@ mod tests {
     }
 
     #[test]
+    fn rejects_command_without_cc() {
+        let err = generate_str("@mid(0x1880)\ncommand SetMode { mode: u8 }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "command `SetMode` is missing required `@cc(...)`"
+        );
+    }
+
+    #[test]
     fn rejects_mid_range_mismatch() {
-        let err = generate_str("@mid(0x0801)\ncommand SetMode { mode: u8 }", Lang::C).unwrap_err();
+        let err = generate_str(
+            "@mid(0x0801)\n@cc(1)\ncommand SetMode { mode: u8 }",
+            Lang::C,
+        )
+        .unwrap_err();
         assert_eq!(
             err.to_string(),
             "packet `SetMode` has MID `0x0801U`, expected command MID with bit 0x1000 set"

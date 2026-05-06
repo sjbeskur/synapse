@@ -96,7 +96,8 @@ Status: Accepted
 Direction:
 
 - Require `@mid(...)` for `command` and `telemetry` - implemented as a cFS codegen error.
-- Detect duplicate literal MIDs in a generated file - implemented as a cFS codegen error.
+- Detect duplicate telemetry literal MIDs in a generated file - implemented as a cFS codegen error.
+- Allow commands to share a literal MID when literal command codes differ.
 - Validate command/telemetry MID bit patterns when the MID is a literal - implemented as a cFS codegen error.
 
 Open questions:
@@ -106,7 +107,7 @@ Open questions:
 
 ## Command Codes
 
-Status: Proposed
+Status: Implemented
 
 Possible syntax:
 
@@ -120,13 +121,15 @@ command SetMode {
 
 Direction:
 
-- Add command code metadata only after deciding how generated C/Rust should expose it.
+- Require `@cc(...)` on every `command`.
+- Emit `_CC` constants beside command `_MID` constants.
+- Reject `@cc(...)` on telemetry, struct, and table items.
+- Reject duplicate literal command MID/CC pairs.
 
 Open questions:
 
-- Should every `command` require `@cc(...)`?
-- Should command code constants be emitted beside MID constants?
-- Should command codes be grouped by app/namespace?
+- Should symbolic command codes be allowed after constant resolution exists?
+- Should command codes be grouped by app/namespace in generated output?
 
 ## Enum ABI Representation
 
@@ -184,14 +187,14 @@ Open questions:
 
 ## Generated File Headers
 
-Status: Proposed
+Status: Implemented
 
 Direction:
 
-- Add a generated-file header comment.
-- Include source filename and Synapse version if practical.
+- Add a deterministic generated-file header comment.
+- Avoid timestamps and source paths so generated output stays reproducible.
 
 Open questions:
 
-- Should generated headers include timestamps? Probably not, to preserve reproducible output.
+- Should generated headers eventually include the Synapse package version?
 - Should generated C headers include include guards in addition to `#pragma once`?

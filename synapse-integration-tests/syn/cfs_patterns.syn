@@ -7,6 +7,7 @@ table NavConfig {
 }
 
 @mid(0x1880)
+@cc(1)
 command SetMode {
     mode: u8
 }

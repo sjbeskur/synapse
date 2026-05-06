@@ -50,7 +50,8 @@ table CameraCalibration {
 }
 
 /// Set a camera's operating mode.
-@mid(0x1881)
+@mid(0x1880)
+@cc(1)
 command SetCameraMode {
     /// Camera to control.
     camera: CameraId
@@ -59,7 +60,8 @@ command SetCameraMode {
 }
 
 /// Set exposure parameters for a camera.
-@mid(0x1882)
+@mid(0x1880)
+@cc(2)
 command SetExposure {
     /// Camera to control.
     camera: CameraId
@@ -70,7 +72,8 @@ command SetExposure {
 }
 
 /// Send a new intrinsic calibration matrix directly over the Software Bus.
-@mid(0x1883)
+@mid(0x1880)
+@cc(3)
 command UpdateIntrinsics {
     /// Camera to update.
     camera: CameraId

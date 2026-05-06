@@ -75,7 +75,7 @@ pub struct MessageDef {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PacketKind {
-    /// Legacy generic Software Bus packet. cFS generators infer command vs telemetry.
+    /// Legacy generic Software Bus packet. cFS codegen rejects this in favor of explicit packet kinds.
     Message,
     /// cFS Software Bus command packet.
     Command,

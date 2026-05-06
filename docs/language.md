@@ -52,12 +52,13 @@ Plain structs generate ABI-compatible C structs and Rust `#[repr(C)]` structs wi
 
 ```syn
 @mid(0x1880)
+@cc(1)
 command SetMode {
     mode: u8
 }
 ```
 
-Commands generate Software Bus packet structs with `CFE_MSG_CommandHeader_t` as the first C field and `cfs_sys::CFE_MSG_CommandHeader_t` as the first Rust field.
+Commands generate Software Bus packet structs with `CFE_MSG_CommandHeader_t` as the first C field and `cfs_sys::CFE_MSG_CommandHeader_t` as the first Rust field. They also emit command-code constants from `@cc(...)`.
 
 ### `telemetry`
 
@@ -86,14 +87,15 @@ Tables generate plain data structs without cFS Software Bus headers. They are in
 
 ```syn
 @mid(0x1880)
+@cc(1)
 command SetMode {
     mode: u8
 }
 ```
 
-The cFS generator requires `@mid(...)` on `command` and `telemetry` items and emits message ID constants for those packets.
+The cFS generator requires `@mid(...)` on `command` and `telemetry` items and requires `@cc(...)` on `command` items. It emits message ID constants for both packet kinds and command-code constants for commands.
 
-Missing MIDs, duplicate literal MIDs, and literal command/telemetry bit-pattern mismatches are cFS codegen errors. Symbolic MIDs such as `@mid(NAV_TLM_MID)` are not range-validated until constant resolution is implemented.
+Missing MIDs, missing command codes, duplicate telemetry literal MIDs, duplicate command literal MID/CC pairs, and literal command/telemetry bit-pattern mismatches are cFS codegen errors. Symbolic MIDs such as `@mid(NAV_TLM_MID)` are not range-validated until constant resolution is implemented.
 
 ### Primitive Types
 
@@ -245,7 +247,7 @@ In `0.2.x`, cFS codegen rejects optional fields until a concrete ABI representat
 
 These are likely areas for intentional language work after `0.1.x`.
 
-- Command code metadata, probably with an attribute such as `@cc(2)`.
+- Symbolic command-code resolution.
 - MID range validation for command/telemetry bit-pattern mismatches.
 - Namespace-scoped MID constants and constant resolution.
 - Enum codegen and ABI representation.
