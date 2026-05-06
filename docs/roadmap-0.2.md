@@ -151,7 +151,7 @@ Open questions:
 
 ## Strings
 
-Status: Proposed
+Status: Implemented
 
 Current recommended form:
 
@@ -162,11 +162,11 @@ name: string[<=32]
 Direction:
 
 - Keep bounded strings as inline storage.
-- Document null-termination expectations clearly.
+- Treat `string[<=N]` and `string[N]` as exactly `N` bytes.
+- Do not guarantee null termination, text encoding, or C-string semantics.
 
 Open questions:
 
-- Is `string[<=N]` a byte buffer of length `N`, a C string with capacity `N`, or a string with at most `N - 1` non-null bytes?
 - Should a future `cstring[<=N]` distinguish null-terminated strings from byte arrays?
 
 ## Imports And Namespaces

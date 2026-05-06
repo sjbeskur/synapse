@@ -16,7 +16,7 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [ ] MID validation: command/telemetry ranges.
 - [ ] Command metadata, including possible `@cc(...)` command code support.
 - [ ] Enum ABI representation for C and Rust.
-- [ ] String semantics, especially bounded string null-termination expectations.
+- [x] Document bounded string storage and null-termination semantics.
 - [ ] Import and namespace resolution across multiple files.
 - [ ] Generated file headers and documentation style.
 

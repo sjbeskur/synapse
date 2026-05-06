@@ -98,7 +98,7 @@ For now, use fixed arrays such as `f32[128]` when the generated cFS packet/table
 
 ## Strings
 
-Strings are special-cased because cFS packets and tables often need inline character buffers.
+Strings are special-cased because cFS packets and tables often need inline byte storage for identifiers, frame names, labels, and similar values.
 
 | Synapse | C | Rust | Recommended for cFS ABI |
 | --- | --- | --- | --- |
@@ -115,7 +115,9 @@ struct CameraId {
 }
 ```
 
-`string[<=N]` currently generates the same inline representation as `string[N]`. The `<=` form documents that the logical string length is bounded by `N`.
+`string[N]` and `string[<=N]` both generate exactly `N` bytes of inline storage. Synapse does not guarantee null termination, text encoding, UTF-8 validity, or that the buffer contains a C string. Treat the generated field as an inline byte buffer whose interpretation belongs to the mission/application code.
+
+If a future release needs strict C-string semantics, it should use explicit syntax such as `cstring[<=N]` rather than changing `string[<=N]` silently.
 
 ## Field Forms
 

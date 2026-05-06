@@ -129,7 +129,7 @@ struct CameraId {
 }
 ```
 
-Bounded strings generate inline `char[N]` storage in C and `[u8; N]` storage in Rust.
+Bounded strings generate inline `char[N]` storage in C and `[u8; N]` storage in Rust. The bound is the exact storage size in bytes. Synapse does not guarantee null termination, text encoding, or that one byte equals one character.
 
 ### Documentation Comments
 
@@ -175,7 +175,7 @@ struct Frame {
 }
 ```
 
-Unbounded strings generate pointer-like representations. Prefer `string[<=N]` for ABI-stable cFS packet and table payloads.
+Unbounded strings generate pointer-like representations. Prefer `string[<=N]` for ABI-stable cFS packet and table payloads, and define the mission/application encoding and termination policy outside the generated type.
 
 ### `const`
 
