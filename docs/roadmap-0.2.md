@@ -97,11 +97,10 @@ Direction:
 
 - Require `@mid(...)` for `command` and `telemetry` - implemented as a cFS codegen error.
 - Detect duplicate literal MIDs in a generated file - implemented as a cFS codegen error.
-- Validate command/telemetry MID bit patterns when the MID is a literal.
+- Validate command/telemetry MID bit patterns when the MID is a literal - implemented as a cFS codegen error.
 
 Open questions:
 
-- Should invalid MID ranges be errors or warnings?
 - How should validation work for symbolic MIDs such as `@mid(nav_app::NAV_TLM_MID)`?
 - Should validation be per-file for `0.2.x` and mission-wide later?
 

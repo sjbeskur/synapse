@@ -13,7 +13,7 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [x] Reject legacy `message` in cFS codegen; use `command` or `telemetry`.
 - [x] Require `@mid(...)` for `command` and `telemetry`.
 - [x] Reject duplicate literal MIDs in one generated file.
-- [ ] MID validation: command/telemetry ranges.
+- [x] Validate literal MID command/telemetry bit patterns.
 - [ ] Command metadata, including possible `@cc(...)` command code support.
 - [ ] Enum ABI representation for C and Rust.
 - [x] Document bounded string storage and null-termination semantics.

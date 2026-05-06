@@ -194,6 +194,15 @@ mod tests {
     }
 
     #[test]
+    fn rejects_mid_range_mismatch() {
+        let err = generate_str("@mid(0x0801)\ncommand SetMode { mode: u8 }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "packet `SetMode` has MID `0x0801U`, expected command MID with bit 0x1000 set"
+        );
+    }
+
+    #[test]
     fn rejects_dynamic_arrays() {
         let err =
             generate_str("@mid(0x0801)\ntelemetry Samples { values: f32[] }", Lang::C).unwrap_err();

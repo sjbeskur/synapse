@@ -93,7 +93,7 @@ command SetMode {
 
 The cFS generator requires `@mid(...)` on `command` and `telemetry` items and emits message ID constants for those packets.
 
-Missing MIDs and duplicate literal MIDs are cFS codegen errors. Range-inappropriate command or telemetry MIDs are not yet validated.
+Missing MIDs, duplicate literal MIDs, and literal command/telemetry bit-pattern mismatches are cFS codegen errors. Symbolic MIDs such as `@mid(NAV_TLM_MID)` are not range-validated until constant resolution is implemented.
 
 ### Primitive Types
 

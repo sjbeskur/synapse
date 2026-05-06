@@ -63,6 +63,12 @@ pub enum CodegenError {
         first_packet: String,
         second_packet: String,
     },
+    /// Literal command/telemetry MIDs must match the expected cFS command bit pattern.
+    MidRangeMismatch {
+        packet: String,
+        mid: String,
+        expected: &'static str,
+    },
     /// Dynamic arrays parse today, but cFS ABI codegen has no ownership/length model yet.
     DynamicArrayUnsupported {
         container: String,
@@ -110,6 +116,14 @@ impl fmt::Display for CodegenError {
             } => write!(
                 f,
                 "duplicate MID `{mid}` used by packets `{first_packet}` and `{second_packet}`"
+            ),
+            CodegenError::MidRangeMismatch {
+                packet,
+                mid,
+                expected,
+            } => write!(
+                f,
+                "packet `{packet}` has MID `{mid}`, expected {expected}"
             ),
             CodegenError::DynamicArrayUnsupported {
                 container,
@@ -209,6 +223,7 @@ fn validate_packet(
     };
 
     if let Some(value) = literal_to_u64(mid) {
+        validate_mid_range(packet, value, mid)?;
         if let Some(first_packet) = literal_mids.insert(value, packet.name.clone()) {
             return Err(CodegenError::DuplicateMid {
                 mid: literal_mid_str(mid),
@@ -216,6 +231,25 @@ fn validate_packet(
                 second_packet: packet.name.clone(),
             });
         }
+    }
+
+    Ok(())
+}
+
+fn validate_mid_range(packet: &MessageDef, value: u64, mid: &Literal) -> Result<(), CodegenError> {
+    let command_bit_set = (value & 0x1000) != 0;
+    let expected = match packet.kind {
+        PacketKind::Command if !command_bit_set => Some("command MID with bit 0x1000 set"),
+        PacketKind::Telemetry if command_bit_set => Some("telemetry MID with bit 0x1000 clear"),
+        PacketKind::Command | PacketKind::Telemetry | PacketKind::Message => None,
+    };
+
+    if let Some(expected) = expected {
+        return Err(CodegenError::MidRangeMismatch {
+            packet: packet.name.clone(),
+            mid: literal_mid_str(mid),
+            expected,
+        });
     }
 
     Ok(())
@@ -788,8 +822,8 @@ mod tests {
 
     #[test]
     fn command_uses_declared_packet_kind() {
-        let out = codegen("@mid(0x0801)\ncommand NavCmd { seq: u16 }");
-        assert!(out.contains("#define NAV_CMD_MID  0x0801U"));
+        let out = codegen("@mid(0x1881)\ncommand NavCmd { seq: u16 }");
+        assert!(out.contains("#define NAV_CMD_MID  0x1881U"));
         assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
         assert!(out.contains("} NavCmd_t;"));
     }
@@ -867,6 +901,38 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "duplicate MID `0x1880U` used by packets `A` and `B`"
+        );
+    }
+
+    #[test]
+    fn c_rejects_command_mid_without_command_bit() {
+        let file = parse("@mid(0x0801)\ncommand SetMode { mode: u8 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::MidRangeMismatch {
+                packet: "SetMode".to_string(),
+                mid: "0x0801U".to_string(),
+                expected: "command MID with bit 0x1000 set",
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "packet `SetMode` has MID `0x0801U`, expected command MID with bit 0x1000 set"
+        );
+    }
+
+    #[test]
+    fn c_rejects_telemetry_mid_with_command_bit() {
+        let file = parse("@mid(0x1880)\ntelemetry Status { x: f32 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::MidRangeMismatch {
+                packet: "Status".to_string(),
+                mid: "0x1880U".to_string(),
+                expected: "telemetry MID with bit 0x1000 clear",
+            }
         );
     }
 
@@ -1031,16 +1097,16 @@ mod tests {
 
     #[test]
     fn rust_command_uses_command_header() {
-        let out = rust_codegen("@mid(0x0801)\ncommand SetMode { mode: u8 }");
-        assert!(out.contains("pub const SET_MODE_MID: u16 = 0x0801;"));
+        let out = rust_codegen("@mid(0x1881)\ncommand SetMode { mode: u8 }");
+        assert!(out.contains("pub const SET_MODE_MID: u16 = 0x1881;"));
         assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
         assert!(!out.contains("CFE_MSG_TelemetryHeader_t"));
     }
 
     #[test]
     fn rust_telemetry_uses_telemetry_header() {
-        let out = rust_codegen("@mid(0x1880)\ntelemetry NavState { x: f64 }");
-        assert!(out.contains("pub const NAV_STATE_MID: u16 = 0x1880;"));
+        let out = rust_codegen("@mid(0x0801)\ntelemetry NavState { x: f64 }");
+        assert!(out.contains("pub const NAV_STATE_MID: u16 = 0x0801;"));
         assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
         assert!(!out.contains("CFE_MSG_CommandHeader_t"));
     }
@@ -1113,6 +1179,20 @@ mod tests {
             err,
             CodegenError::MissingMid {
                 packet: "Status".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rust_rejects_mid_range_mismatch() {
+        let file = parse("@mid(0x1880)\ntelemetry Status { x: f32 }").unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::MidRangeMismatch {
+                packet: "Status".to_string(),
+                mid: "0x1880U".to_string(),
+                expected: "telemetry MID with bit 0x1000 clear",
             }
         );
     }
