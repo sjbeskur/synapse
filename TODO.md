@@ -5,7 +5,7 @@
 See `docs/roadmap-0.2.md` for the decision tracker.
 
 - [x] Comment syntax and generated documentation style.
-- [ ] Parsed-only ABI hazards: enums.
+- [x] Reject enum fields in cFS codegen until an ABI representation exists.
 - [x] Reject optional fields in cFS codegen until an ABI representation exists.
 - [x] Reject field defaults in cFS codegen until initializer semantics exist.
 - [ ] Dynamic and bounded array policy for cFS packet/table ABI types.

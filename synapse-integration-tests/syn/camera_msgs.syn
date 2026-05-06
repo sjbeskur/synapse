@@ -2,19 +2,16 @@ namespace camera_app
 
 import "std_msgs.syn"
 
-/// Operating modes for an onboard camera.
-enum CameraMode {
-    /// Powered and configured, but not streaming or capturing.
-    Standby = 0
-    /// Producing preview frames.
-    Preview = 1
-    /// Capturing science or inspection imagery.
-    Capture = 2
-    /// Running calibration workflows.
-    Calibrate = 3
-    /// Camera has detected a fault condition.
-    Fault = 4
-}
+/// Powered and configured, but not streaming or capturing.
+const CAMERA_MODE_STANDBY: u8 = 0
+/// Producing preview frames.
+const CAMERA_MODE_PREVIEW: u8 = 1
+/// Capturing science or inspection imagery.
+const CAMERA_MODE_CAPTURE: u8 = 2
+/// Running calibration workflows.
+const CAMERA_MODE_CALIBRATE: u8 = 3
+/// Camera has detected a fault condition.
+const CAMERA_MODE_FAULT: u8 = 4
 
 /// Stable identifier for one physical or logical camera.
 struct CameraId {
@@ -58,7 +55,7 @@ command SetCameraMode {
     /// Camera to control.
     camera: CameraId
     /// Requested operating mode.
-    mode: CameraMode
+    mode: u8
 }
 
 /// Set exposure parameters for a camera.
@@ -89,7 +86,7 @@ telemetry CameraStatus {
     /// Camera this status describes.
     camera: CameraId
     /// Current operating mode.
-    mode: CameraMode
+    mode: u8
     /// Current exposure time in microseconds.
     exposure_us: u32
     /// Current sensor gain multiplier.

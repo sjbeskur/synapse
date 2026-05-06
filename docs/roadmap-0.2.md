@@ -55,7 +55,7 @@ Features:
 
 - Optional fields: `field?: Type` - implemented as a cFS codegen error.
 - Field defaults: `field: Type = value` - implemented as a cFS codegen error.
-- Enums used as field types
+- Enums used as field types - implemented as a cFS codegen error.
 
 Direction:
 
@@ -64,7 +64,7 @@ Direction:
 
 Open questions:
 
-- Should enum fields be rejected until enum codegen is implemented?
+- What explicit enum representation should cFS codegen support later?
 
 ## Dynamic And Bounded Arrays
 

@@ -157,4 +157,17 @@ mod tests {
             "default value for field `Config.exposure_us` is not supported by cFS codegen yet"
         );
     }
+
+    #[test]
+    fn rejects_enum_fields() {
+        let err = generate_str(
+            "enum CameraMode { Idle = 0 Streaming = 1 }\ntelemetry Status { mode: CameraMode }",
+            Lang::C,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "enum field `Status.mode` with type `CameraMode` is not supported by cFS codegen yet"
+        );
+    }
 }

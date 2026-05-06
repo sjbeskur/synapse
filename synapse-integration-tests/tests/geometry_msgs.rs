@@ -40,8 +40,8 @@ fn cfs_patterns_parse() {
 #[test]
 fn camera_msgs_parse() {
     let f = read_and_parse("camera_msgs.syn");
-    // namespace + import + enum + 3 structs + table + 3 commands + 2 telemetry
-    assert_eq!(f.items.len(), 12);
+    // namespace + import + 5 mode constants + 3 structs + table + 3 commands + 2 telemetry
+    assert_eq!(f.items.len(), 16);
 }
 
 // ── cFS C codegen ──────────────────────────────────────────────────────────────

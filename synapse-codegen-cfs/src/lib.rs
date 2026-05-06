@@ -1,4 +1,4 @@
-use std::{error::Error as StdError, fmt};
+use std::{collections::HashSet, error::Error as StdError, fmt};
 
 use synapse_parser::ast::{
     ArraySuffix, Attribute, BaseType, ConstDecl, FieldDef, Item, Literal, MessageDef, PacketKind,
@@ -43,6 +43,12 @@ pub enum CodegenError {
     OptionalFieldUnsupported { container: String, field: String },
     /// Field defaults parse today, but cFS ABI codegen does not generate initializers yet.
     DefaultValueUnsupported { container: String, field: String },
+    /// Enum fields parse today, but cFS ABI codegen has no explicit representation for them yet.
+    EnumFieldUnsupported {
+        container: String,
+        field: String,
+        ty: String,
+    },
 }
 
 impl fmt::Display for CodegenError {
@@ -55,6 +61,14 @@ impl fmt::Display for CodegenError {
             CodegenError::DefaultValueUnsupported { container, field } => write!(
                 f,
                 "default value for field `{container}.{field}` is not supported by cFS codegen yet"
+            ),
+            CodegenError::EnumFieldUnsupported {
+                container,
+                field,
+                ty,
+            } => write!(
+                f,
+                "enum field `{container}.{field}` with type `{ty}` is not supported by cFS codegen yet"
             ),
         }
     }
@@ -97,11 +111,12 @@ pub fn try_generate_rust(file: &SynFile, opts: &RustOptions) -> Result<String, C
 // ── Item emission ─────────────────────────────────────────────────────────────
 
 fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
+    let enum_names = enum_names(file);
     for item in &file.items {
         match item {
-            Item::Struct(s) | Item::Table(s) => validate_fields(&s.name, &s.fields)?,
+            Item::Struct(s) | Item::Table(s) => validate_fields(&s.name, &s.fields, &enum_names)?,
             Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
-                validate_fields(&m.name, &m.fields)?
+                validate_fields(&m.name, &m.fields, &enum_names)?
             }
             Item::Namespace(_) | Item::Import(_) | Item::Const(_) | Item::Enum(_) => {}
         }
@@ -109,7 +124,21 @@ fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
     Ok(())
 }
 
-fn validate_fields(container: &str, fields: &[FieldDef]) -> Result<(), CodegenError> {
+fn enum_names(file: &SynFile) -> HashSet<String> {
+    file.items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Enum(e) => Some(e.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn validate_fields(
+    container: &str,
+    fields: &[FieldDef],
+    enum_names: &HashSet<String>,
+) -> Result<(), CodegenError> {
     for field in fields {
         if field.optional {
             return Err(CodegenError::OptionalFieldUnsupported {
@@ -122,6 +151,18 @@ fn validate_fields(container: &str, fields: &[FieldDef]) -> Result<(), CodegenEr
                 container: container.to_string(),
                 field: field.name.clone(),
             });
+        }
+        if let BaseType::Ref(segments) = &field.ty.base {
+            if segments
+                .last()
+                .is_some_and(|name| enum_names.contains(name.as_str()))
+            {
+                return Err(CodegenError::EnumFieldUnsupported {
+                    container: container.to_string(),
+                    field: field.name.clone(),
+                    ty: segments.join("::"),
+                });
+            }
         }
     }
     Ok(())
@@ -696,6 +737,27 @@ mod tests {
     }
 
     #[test]
+    fn c_rejects_enum_fields() {
+        let file = parse(
+            "enum CameraMode { Idle = 0 Streaming = 1 }\ntelemetry Status { mode: CameraMode }",
+        )
+        .unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::EnumFieldUnsupported {
+                container: "Status".to_string(),
+                field: "mode".to_string(),
+                ty: "CameraMode".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "enum field `Status.mode` with type `CameraMode` is not supported by cFS codegen yet"
+        );
+    }
+
+    #[test]
     fn const_emits_define() {
         let out = codegen("const NAV_TLM_MID: u16 = 0x0801");
         assert!(out.contains("#define NAV_TLM_MID  0x801U"));
@@ -843,6 +905,21 @@ mod tests {
             CodegenError::DefaultValueUnsupported {
                 container: "Config".to_string(),
                 field: "gain".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rust_rejects_enum_fields() {
+        let file = parse("enum CameraMode { Idle Streaming }\nstruct Status { mode: CameraMode }")
+            .unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::EnumFieldUnsupported {
+                container: "Status".to_string(),
+                field: "mode".to_string(),
+                ty: "CameraMode".to_string(),
             }
         );
     }

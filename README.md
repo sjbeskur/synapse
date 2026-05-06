@@ -169,7 +169,7 @@ The cFS generator currently emits:
 - `@mid(...)` attributes as message ID constants.
 - Fixed arrays, bounded strings, dynamic arrays, and namespaced type references.
 
-Enums are parsed into the AST, but cFS code generation for enums is still early. Optional field markers and field defaults are parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer plain integer fields for generated packet payloads until enum emission is completed.
+Enums are parsed into the AST, but enum fields are rejected by cFS codegen until a concrete ABI representation exists. Optional field markers and field defaults are also parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer plain integer fields for generated packet payloads until enum emission is completed.
 
 See `docs/language.md` for the current language status and `0.1.x` review checklist.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.
@@ -201,7 +201,7 @@ Sample `.syn` files live in `synapse-integration-tests/syn`.
 
 - `geometry_msgs.syn`: ROS-like geometry telemetry packets.
 - `cfs_patterns.syn`: minimal command, telemetry, and table examples.
-- `camera_msgs.syn`: camera control syntax coverage, including commands to set mode/exposure, a command to send updated intrinsics, telemetry for camera status, and a `CameraCalibration` table containing persistent calibration data. It also exercises parsed enum and doc-comment support.
+- `camera_msgs.syn`: camera control syntax coverage, including commands to set mode/exposure, a command to send updated intrinsics, telemetry for camera status, and a `CameraCalibration` table containing persistent calibration data. It also exercises mode constants and doc-comment support.
 
 See `docs/examples.md` for links to all sample `.syn` files and checked-in generated output.
 

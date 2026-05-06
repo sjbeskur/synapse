@@ -217,7 +217,9 @@ enum CameraMode {
 }
 ```
 
-Enums parse into the AST, but cFS C/Rust enum code generation is not yet complete. Avoid enum fields in generated packet/table payloads unless you have reviewed the generated output.
+Enums parse into the AST, but cFS C/Rust enum code generation is not yet complete.
+
+In `0.2.x`, cFS codegen rejects enum fields until a concrete ABI representation exists. Prefer explicit integer constants and integer payload fields for now.
 
 Review question for `0.2.x`: should enums generate C `typedef enum`, integer constants, or fixed-width integer aliases?
 
