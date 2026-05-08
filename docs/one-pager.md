@@ -66,6 +66,22 @@ That makes Synapse useful for:
 - Cleaner ownership of mission IDs and packet contracts.
 - Safer evolution of commands and telemetry across releases.
 
+## Why Not CSV?
+
+CSV can work for a narrow packet registry: packet name, MID, command code, and maybe a few flat fields. It is familiar, easy to edit, and can be useful as an export format.
+
+But CSV becomes strained when it is used as the source of truth for message definitions:
+
+- Nested structs and reusable types are awkward to represent.
+- Imports, namespaces, and ownership boundaries are implicit instead of modeled.
+- Constants and aliases are hard to type-check and resolve safely.
+- Enums, fixed arrays, bounded strings, and ABI details need extra conventions outside the table.
+- Field documentation and generated-code comments become bolted-on metadata.
+- Cross-language generation usually requires custom interpretation of loosely typed columns.
+- Mission-wide validation depends on conventions that are easy to drift across files.
+
+Synapse uses an IDL because cFS messages are structured contracts, not just rows of data. A `.syn` file can still generate tabular reports later, but the source model preserves the relationships and type information needed for safe C/Rust codegen and mission-level checks.
+
 ## Near-Term Direction
 
 The current `0.2.x` work focuses on safety and clarity:
@@ -76,4 +92,3 @@ The current `0.2.x` work focuses on safety and clarity:
 - Future mission manifests for repeatable roots and MID range ownership.
 
 The long-term goal is simple: make cFS message contracts easier to define, safer to generate, and harder to accidentally break.
-
