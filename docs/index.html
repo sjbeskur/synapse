@@ -5,7 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Synapse Message Documentation</title>
 <style>
-:root{color-scheme:light;--bg:#f7f8fa;--panel:#fff;--ink:#18202a;--muted:#657287;--line:#d8dee8;--accent:#0f766e;--code:#eef4f3;--mark:#fff4bc;--sidebar:#f0f4f7}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.45}a{color:#0f766e;text-decoration:none}a:hover{text-decoration:underline}header{padding:34px 36px 22px;background:#10212b;color:#fff}header p{max-width:900px;color:#c9d4dd}.layout{display:grid;grid-template-columns:300px minmax(0,1fr);max-width:1480px;margin:0 auto}aside{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;background:var(--sidebar);border-right:1px solid var(--line);padding:18px 14px}main{min-width:0;padding:24px 32px 48px}h1,h2,h3{line-height:1.15}h1{margin:0 0 10px;font-size:2.1rem}h2{margin:32px 0 12px;font-size:1.55rem}h3{margin:0 0 8px;font-size:1.12rem}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:22px;max-width:900px}.metric{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:10px 12px}.metric strong{display:block;font-size:1.35rem;color:#fff}.metric span{font-size:.82rem;color:#c9d4dd;text-transform:uppercase;letter-spacing:.04em}.sidebar-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:0 0 10px}.search input{box-sizing:border-box;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;background:#fff;color:var(--ink)}.search p{margin:6px 0 0;color:var(--muted);font-size:.86rem}.toc{display:grid;gap:2px;margin-top:18px}.toc a{display:block;border-radius:6px;padding:6px 8px;font-size:.9rem;color:#24313f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toc a:hover{background:#fff;text-decoration:none}.toc .kind{margin-right:6px;padding:1px 6px;font-size:.66rem}.unit{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:18px 0;padding:20px;box-shadow:0 1px 2px rgba(16,33,43,.04)}.unit-header{display:flex;gap:12px;justify-content:space-between;align-items:start}.unit-header h2{margin-top:0}.item-title{display:flex;gap:12px;justify-content:space-between;align-items:start}.top-link{font-size:.85rem;color:var(--muted);white-space:nowrap}.source-link{font-size:.82rem;color:var(--muted);white-space:nowrap}.meta{color:var(--muted);font-size:.92rem;margin:4px 0 14px}.items{display:grid;gap:14px}.item{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fbfcfd}.item:target{outline:2px solid var(--accent);background:#fff}.kind{display:inline-block;margin-right:8px;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em}.doc{color:#344052;margin:8px 0 12px}table{border-collapse:collapse;width:100%;margin-top:10px;font-size:.93rem}th,td{border-top:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{color:#526072;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;background:#f3f6f8}code{background:var(--code);border-radius:4px;padding:1px 5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.92em}dl{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 12px}dt{color:var(--muted);font-weight:700}dd{margin:0}ul{margin:8px 0 0;padding-left:20px}.empty{color:var(--muted)}.hidden{display:none!important}mark{background:var(--mark);border-radius:3px;padding:0 2px}@media(max-width:900px){header{padding:30px 20px 20px}.layout{display:block}aside{position:static;height:auto;max-height:48vh;border-right:0;border-bottom:1px solid var(--line)}main{padding:20px 16px 40px}.toc{max-height:260px;overflow:auto}}
+:root{color-scheme:light;--bg:#f7f8fa;--panel:#fff;--ink:#18202a;--muted:#657287;--line:#d8dee8;--accent:#0f766e;--code:#eef4f3;--mark:#fff4bc;--sidebar:#f0f4f7}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.45}
+a{color:#0f766e;text-decoration:none}
+a:hover{text-decoration:underline}
+header{padding:34px 36px 22px;background:#10212b;color:#fff}
+header p{max-width:900px;color:#c9d4dd}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);max-width:1480px;margin:0 auto}
+aside{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;background:var(--sidebar);border-right:1px solid var(--line);padding:18px 14px}
+main{min-width:0;padding:24px 32px 48px}
+h1,h2,h3{line-height:1.15}
+h1{margin:0 0 10px;font-size:2.1rem}
+h2{margin:32px 0 12px;font-size:1.55rem}
+h3{margin:0 0 8px;font-size:1.12rem}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:22px;max-width:900px}
+.metric{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:10px 12px}
+.metric strong{display:block;font-size:1.35rem;color:#fff}
+.metric span{font-size:.82rem;color:#c9d4dd;text-transform:uppercase;letter-spacing:.04em}
+.sidebar-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:0 0 10px}
+.search input{box-sizing:border-box;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;background:#fff;color:var(--ink)}
+.search p{margin:6px 0 0;color:var(--muted);font-size:.86rem}
+.toc{display:grid;gap:2px;margin-top:18px}
+.toc a{display:block;border-radius:6px;padding:6px 8px;font-size:.9rem;color:#24313f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toc a:hover{background:#fff;text-decoration:none}
+.toc .kind{margin-right:6px;padding:1px 6px;font-size:.66rem}
+.unit{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:18px 0;padding:20px;box-shadow:0 1px 2px rgba(16,33,43,.04)}
+.unit-header{display:flex;gap:12px;justify-content:space-between;align-items:start}
+.unit-header h2{margin-top:0}
+.item-title{display:flex;gap:12px;justify-content:space-between;align-items:start}
+.top-link{font-size:.85rem;color:var(--muted);white-space:nowrap}
+.source-link{font-size:.82rem;color:var(--muted);white-space:nowrap}
+.meta{color:var(--muted);font-size:.92rem;margin:4px 0 14px}
+.items{display:grid;gap:14px}
+.item{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fbfcfd}
+.item:target{outline:2px solid var(--accent);background:#fff}
+.kind{display:inline-block;margin-right:8px;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em}
+.doc{color:#344052;margin:8px 0 12px}
+table{border-collapse:collapse;width:100%;margin-top:10px;font-size:.93rem}
+th,td{border-top:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
+th{color:#526072;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;background:#f3f6f8}
+code{background:var(--code);border-radius:4px;padding:1px 5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.92em}
+dl{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 12px}
+dt{color:var(--muted);font-weight:700}
+dd{margin:0}
+ul{margin:8px 0 0;padding-left:20px}
+.empty{color:var(--muted)}
+.hidden{display:none!important}
+mark{background:var(--mark);border-radius:3px;padding:0 2px}
+@media(max-width:900px){header{padding:30px 20px 20px}.layout{display:block}aside{position:static;height:auto;max-height:48vh;border-right:0;border-bottom:1px solid var(--line)}main{padding:20px 16px 40px}.toc{max-height:260px;overflow:auto}}
+
 </style>
 </head>
 <body>
@@ -20,6 +69,7 @@
 <div class="metric"><strong>1</strong><span>tables</span></div>
 <div class="metric"><strong>1</strong><span>enums</span></div>
 <div class="metric"><strong>0</strong><span>constants</span></div>
+
 </div>
 </header>
 <div id="top" class="layout">
@@ -43,6 +93,7 @@
 <a href="#-home-sbeskur-repos-csfsdk-synapse-integration-tests-syn-camera-msgs-syn-telemetry-camerastatus"><span class="kind">telemetry</span>camera_app::CameraStatus</a>
 <a href="#-home-sbeskur-repos-csfsdk-synapse-integration-tests-syn-camera-msgs-syn-telemetry-cameracalibrationstatus"><span class="kind">telemetry</span>camera_app::CameraCalibrationStatus</a>
 </nav>
+
 </aside>
 <main>
 <section id="file-home-sbeskur-repos-csfsdk-synapse-integration-tests-syn-std-msgs-syn-std-msgs" class="unit" data-search="std_msgs /home/sbeskur/repos/csfsdk/synapse-integration-tests/syn/std_msgs.syn struct Time struct Header">
@@ -217,6 +268,7 @@
 </article>
 </div>
 </section>
+
 <script>
 const searchInput = document.getElementById('doc-search');
 const searchCount = document.getElementById('search-count');
@@ -247,6 +299,7 @@ function applySearch() {
 }
 
 searchInput.addEventListener('input', applySearch);
+
 </script>
 </main>
 </div>

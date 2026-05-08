@@ -58,10 +58,10 @@ pub(crate) fn render_html_docs(
 fn render_page_template(summary_html: &str, toc_html: &str, content_html: &str) -> String {
     DOC_PAGE_TEMPLATE
         .replace("{{style}}", DOC_STYLE)
+        .replace("{{script}}", DOC_SEARCH_SCRIPT)
         .replace("{{summary}}", summary_html)
         .replace("{{toc}}", toc_html)
         .replace("{{content}}", content_html)
-        .replace("{{script}}", DOC_SEARCH_SCRIPT)
 }
 
 fn doc_summary(graph: &ImportGraph) -> DocSummary {
