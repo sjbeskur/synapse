@@ -18,7 +18,7 @@ name = "synapse"
 path = "src/main.rs"
 
 [dependencies]
-synapse-parser      = { package = "cfs-synapse-parser", path = "../synapse-parser" }
-synapse-codegen-cfs = { package = "cfs-synapse-codegen-cfs", path = "../synapse-codegen-cfs" }
+synapse-parser      = { workspace = true }
+synapse-codegen-cfs = { workspace = true }
 clap                = { version = "4", features = ["derive"] }
 pest                = "2"

@@ -14,4 +14,4 @@ name = "synapse_codegen_cfs"
 path = "src/lib.rs"
 
 [dependencies]
-synapse-parser = { package = "cfs-synapse-parser", path = "../synapse-parser" }
+synapse-parser = { workspace = true }
