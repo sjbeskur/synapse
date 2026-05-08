@@ -541,6 +541,7 @@ fn render_html_docs(
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
 ) -> Result<String, Error> {
     let summary = doc_summary(graph);
+    let nav = doc_nav(graph);
     let mut out = String::new();
 
     out.push_str("<!doctype html>\n<html lang=\"en\">\n<head>\n");
@@ -549,11 +550,15 @@ fn render_html_docs(
     out.push_str("<title>Synapse Message Documentation</title>\n");
     out.push_str("<style>\n");
     out.push_str(
-        ":root{color-scheme:light;--bg:#f7f8fa;--panel:#fff;--ink:#18202a;--muted:#657287;--line:#d8dee8;--accent:#0f766e;--code:#eef4f3}\
+        ":root{color-scheme:light;--bg:#f7f8fa;--panel:#fff;--ink:#18202a;--muted:#657287;--line:#d8dee8;--accent:#0f766e;--code:#eef4f3;--mark:#fff4bc;--sidebar:#f0f4f7}\
+         *{box-sizing:border-box}\
          body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.45}\
-         header{padding:40px 32px 24px;background:#10212b;color:#fff}\
+         a{color:#0f766e;text-decoration:none}a:hover{text-decoration:underline}\
+         header{padding:34px 36px 22px;background:#10212b;color:#fff}\
          header p{max-width:900px;color:#c9d4dd}\
-         main{max-width:1120px;margin:0 auto;padding:24px 24px 48px}\
+         .layout{display:grid;grid-template-columns:300px minmax(0,1fr);max-width:1480px;margin:0 auto}\
+         aside{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;background:var(--sidebar);border-right:1px solid var(--line);padding:18px 14px}\
+         main{min-width:0;padding:24px 32px 48px}\
          h1,h2,h3{line-height:1.15}\
          h1{margin:0 0 10px;font-size:2.1rem}\
          h2{margin:32px 0 12px;font-size:1.55rem}\
@@ -562,10 +567,23 @@ fn render_html_docs(
          .metric{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:10px 12px}\
          .metric strong{display:block;font-size:1.35rem;color:#fff}\
          .metric span{font-size:.82rem;color:#c9d4dd;text-transform:uppercase;letter-spacing:.04em}\
+         .sidebar-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:0 0 10px}\
+         .search input{box-sizing:border-box;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;background:#fff;color:var(--ink)}\
+         .search p{margin:6px 0 0;color:var(--muted);font-size:.86rem}\
+         .toc{display:grid;gap:2px;margin-top:18px}\
+         .toc a{display:block;border-radius:6px;padding:6px 8px;font-size:.9rem;color:#24313f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
+         .toc a:hover{background:#fff;text-decoration:none}\
+         .toc .kind{margin-right:6px;padding:1px 6px;font-size:.66rem}\
          .unit{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:18px 0;padding:20px;box-shadow:0 1px 2px rgba(16,33,43,.04)}\
+         .unit-header{display:flex;gap:12px;justify-content:space-between;align-items:start}\
+         .unit-header h2{margin-top:0}\
+         .item-title{display:flex;gap:12px;justify-content:space-between;align-items:start}\
+         .top-link{font-size:.85rem;color:var(--muted);white-space:nowrap}\
+         .source-link{font-size:.82rem;color:var(--muted);white-space:nowrap}\
          .meta{color:var(--muted);font-size:.92rem;margin:4px 0 14px}\
          .items{display:grid;gap:14px}\
          .item{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fbfcfd}\
+         .item:target{outline:2px solid var(--accent);background:#fff}\
          .kind{display:inline-block;margin-right:8px;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em}\
          .doc{color:#344052;margin:8px 0 12px}\
          table{border-collapse:collapse;width:100%;margin-top:10px;font-size:.93rem}\
@@ -576,7 +594,10 @@ fn render_html_docs(
          dt{color:var(--muted);font-weight:700}\
          dd{margin:0}\
          ul{margin:8px 0 0;padding-left:20px}\
-         .empty{color:var(--muted)}\n",
+         .empty{color:var(--muted)}\
+         .hidden{display:none!important}\
+         mark{background:var(--mark);border-radius:3px;padding:0 2px}\
+         @media(max-width:900px){header{padding:30px 20px 20px}.layout{display:block}aside{position:static;height:auto;max-height:48vh;border-right:0;border-bottom:1px solid var(--line)}main{padding:20px 16px 40px}.toc{max-height:260px;overflow:auto}}\n",
     );
     out.push_str("</style>\n</head>\n<body>\n");
     out.push_str("<header>\n");
@@ -590,13 +611,19 @@ fn render_html_docs(
     render_metric(&mut out, summary.tables, "tables");
     render_metric(&mut out, summary.enums, "enums");
     render_metric(&mut out, summary.constants, "constants");
-    out.push_str("</div>\n</header>\n<main>\n");
+    out.push_str("</div>\n</header>\n<div id=\"top\" class=\"layout\">\n<aside>\n");
+    out.push_str("<p class=\"sidebar-title\">Search</p>\n");
+    out.push_str("<div class=\"search\"><input id=\"doc-search\" type=\"search\" placeholder=\"Search packets, fields, MIDs, CCs...\" aria-label=\"Search documentation\"><p id=\"search-count\">Showing all declarations.</p></div>\n");
+    out.push_str("<p class=\"sidebar-title\" style=\"margin-top:22px\">Contents</p>\n");
+    render_toc(&mut out, &nav);
+    out.push_str("</aside>\n<main>\n");
 
     for unit in &graph.units {
         render_doc_unit(&mut out, unit, units_by_path)?;
     }
 
-    out.push_str("</main>\n</body>\n</html>\n");
+    render_search_script(&mut out);
+    out.push_str("</main>\n</div>\n</body>\n</html>\n");
     Ok(out)
 }
 
@@ -625,25 +652,71 @@ fn render_metric(out: &mut String, value: usize, label: &str) {
     ));
 }
 
+struct DocNavEntry {
+    id: String,
+    label: String,
+    kind: String,
+}
+
+fn doc_nav(graph: &ImportGraph) -> Vec<DocNavEntry> {
+    let mut entries = Vec::new();
+    for unit in &graph.units {
+        let namespace = namespace(&unit.file);
+        let namespace_label = namespace_label(&namespace);
+        entries.push(DocNavEntry {
+            id: unit_id(&unit.path, &namespace_label),
+            label: namespace_label.clone(),
+            kind: "file".to_string(),
+        });
+        for item in &unit.file.items {
+            if let Some((kind, name)) = item_kind_name(item) {
+                entries.push(DocNavEntry {
+                    id: item_id(&unit.path, kind, name),
+                    label: format!("{namespace_label}::{name}"),
+                    kind: kind.to_string(),
+                });
+            }
+        }
+    }
+    entries
+}
+
+fn render_toc(out: &mut String, entries: &[DocNavEntry]) {
+    out.push_str("<nav class=\"toc\" aria-label=\"Documentation contents\">\n");
+    for entry in entries {
+        out.push_str(&format!(
+            "<a href=\"#{}\"><span class=\"kind\">{}</span>{}</a>\n",
+            escape_attr(&entry.id),
+            escape_html(&entry.kind),
+            escape_html(&entry.label)
+        ));
+    }
+    out.push_str("</nav>\n");
+}
+
 fn render_doc_unit(
     out: &mut String,
     unit: &ParsedUnit,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
 ) -> Result<(), Error> {
     let namespace = namespace(&unit.file);
-    let namespace_label = if namespace.is_empty() {
-        "(none)".to_string()
-    } else {
-        namespace.join("::")
-    };
+    let namespace_label = namespace_label(&namespace);
     let packet_facts = packet_facts_for_unit(unit, units_by_path)?;
+    let unit_id = unit_id(&unit.path, &namespace_label);
+    let unit_search = unit_search_text(unit, &namespace_label);
 
-    out.push_str("<section class=\"unit\">\n");
-    out.push_str(&format!("<h2>{}</h2>\n", escape_html(&namespace_label)));
     out.push_str(&format!(
-        "<p class=\"meta\">source: <code>{}</code></p>\n",
-        escape_html(&unit.path.display().to_string())
+        "<section id=\"{}\" class=\"unit\" data-search=\"{}\">\n",
+        escape_attr(&unit_id),
+        escape_attr(&unit_search)
     ));
+    out.push_str("<div class=\"unit-header\">\n");
+    out.push_str(&format!("<h2>{}</h2>\n", escape_html(&namespace_label)));
+    out.push_str("<a class=\"top-link\" href=\"#top\">Back to top</a>\n");
+    out.push_str("</div>\n");
+    out.push_str("<p class=\"meta\">source: ");
+    render_source_link(out, &unit.path);
+    out.push_str("</p>\n");
     render_imports(out, &unit.file);
     out.push_str("<div class=\"items\">\n");
 
@@ -652,11 +725,8 @@ fn render_doc_unit(
         match item {
             Item::Const(c) => {
                 rendered += 1;
-                out.push_str("<article class=\"item\">\n");
-                out.push_str(&format!(
-                    "<h3><span class=\"kind\">const</span>{}</h3>\n",
-                    escape_html(&c.name)
-                ));
+                render_item_open(out, unit, "const", &c.name, &const_search_text(c));
+                render_item_title(out, unit, "const", &c.name);
                 render_doc_lines_html(out, &c.doc);
                 out.push_str(&format!(
                     "<dl><dt>Type</dt><dd><code>{}</code></dd><dt>Value</dt><dd><code>{}</code></dd></dl>\n",
@@ -667,11 +737,8 @@ fn render_doc_unit(
             }
             Item::Enum(e) => {
                 rendered += 1;
-                out.push_str("<article class=\"item\">\n");
-                out.push_str(&format!(
-                    "<h3><span class=\"kind\">enum</span>{}</h3>\n",
-                    escape_html(&e.name)
-                ));
+                render_item_open(out, unit, "enum", &e.name, &enum_search_text(e));
+                render_item_title(out, unit, "enum", &e.name);
                 render_doc_lines_html(out, &e.doc);
                 if let Some(repr) = e.repr {
                     out.push_str(&format!(
@@ -696,15 +763,15 @@ fn render_doc_unit(
             }
             Item::Struct(s) => {
                 rendered += 1;
-                render_struct_doc(out, "struct", s);
+                render_struct_doc(out, unit, "struct", s);
             }
             Item::Table(s) => {
                 rendered += 1;
-                render_struct_doc(out, "table", s);
+                render_struct_doc(out, unit, "table", s);
             }
             Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
                 rendered += 1;
-                render_packet_doc(out, m, &packet_facts);
+                render_packet_doc(out, unit, m, &packet_facts);
             }
             Item::Namespace(_) | Item::Import(_) => {}
         }
@@ -750,13 +817,9 @@ fn render_imports(out: &mut String, file: &SynFile) {
     out.push_str("</ul>\n");
 }
 
-fn render_struct_doc(out: &mut String, kind: &str, s: &StructDef) {
-    out.push_str("<article class=\"item\">\n");
-    out.push_str(&format!(
-        "<h3><span class=\"kind\">{}</span>{}</h3>\n",
-        escape_html(kind),
-        escape_html(&s.name)
-    ));
+fn render_struct_doc(out: &mut String, unit: &ParsedUnit, kind: &str, s: &StructDef) {
+    render_item_open(out, unit, kind, &s.name, &struct_search_text(kind, s));
+    render_item_title(out, unit, kind, &s.name);
     render_doc_lines_html(out, &s.doc);
     render_fields(out, &s.fields);
     out.push_str("</article>\n");
@@ -764,31 +827,46 @@ fn render_struct_doc(out: &mut String, kind: &str, s: &StructDef) {
 
 fn render_packet_doc(
     out: &mut String,
+    unit: &ParsedUnit,
     packet: &MessageDef,
     packet_facts: &HashMap<String, synapse_codegen_cfs::CfsPacket>,
 ) {
     let kind = packet_kind_label(packet.kind);
-    out.push_str("<article class=\"item\">\n");
-    out.push_str(&format!(
-        "<h3><span class=\"kind\">{}</span>{}</h3>\n",
-        escape_html(kind),
-        escape_html(&packet.name)
-    ));
+    let fact = cfs_packet_fact_key(packet).and_then(|key| packet_facts.get(&key));
+    render_item_open(
+        out,
+        unit,
+        kind,
+        &packet.name,
+        &packet_search_text(packet, fact),
+    );
+    render_item_title(out, unit, kind, &packet.name);
     render_doc_lines_html(out, &packet.doc);
-    if let Some(fact_key) = cfs_packet_fact_key(packet) {
-        if let Some(packet) = packet_facts.get(&fact_key) {
-            out.push_str(&format!(
-                "<dl><dt>MID</dt><dd><code>{}</code></dd>",
-                escape_html(&format_mid(packet.mid))
-            ));
-            if let Some(cc) = packet.cc {
-                out.push_str(&format!("<dt>CC</dt><dd><code>{cc}</code></dd>"));
-            }
-            out.push_str("</dl>\n");
+    if let Some(fact) = fact {
+        out.push_str(&format!(
+            "<dl><dt>MID</dt><dd><code>{}</code></dd>",
+            escape_html(&format_mid(fact.mid))
+        ));
+        if let Some(cc) = fact.cc {
+            out.push_str(&format!("<dt>CC</dt><dd><code>{cc}</code></dd>"));
         }
+        out.push_str("</dl>\n");
     }
     render_fields(out, &packet.fields);
     out.push_str("</article>\n");
+}
+
+fn render_item_title(out: &mut String, unit: &ParsedUnit, kind: &str, name: &str) {
+    out.push_str("<div class=\"item-title\">\n");
+    out.push_str(&format!(
+        "<h3><span class=\"kind\">{}</span>{}</h3>\n",
+        escape_html(kind),
+        escape_html(name)
+    ));
+    out.push_str("<a class=\"source-link\" href=\"");
+    out.push_str(&escape_attr(&source_href(&unit.path)));
+    out.push_str("\">Source</a>\n");
+    out.push_str("</div>\n");
 }
 
 fn render_fields(out: &mut String, fields: &[FieldDef]) {
@@ -823,6 +901,158 @@ fn render_doc_lines_html(out: &mut String, doc: &[String]) {
         out.push_str(&escape_html(line));
     }
     out.push_str("</p>\n");
+}
+
+fn render_item_open(out: &mut String, unit: &ParsedUnit, kind: &str, name: &str, search: &str) {
+    out.push_str(&format!(
+        "<article id=\"{}\" class=\"item\" data-search=\"{}\">\n",
+        escape_attr(&item_id(&unit.path, kind, name)),
+        escape_attr(search)
+    ));
+}
+
+fn render_source_link(out: &mut String, path: &Path) {
+    out.push_str("<a href=\"");
+    out.push_str(&escape_attr(&source_href(path)));
+    out.push_str("\"><code>");
+    out.push_str(&escape_html(&path.display().to_string()));
+    out.push_str("</code></a>");
+}
+
+fn item_kind_name(item: &Item) -> Option<(&'static str, &str)> {
+    match item {
+        Item::Const(c) => Some(("const", &c.name)),
+        Item::Enum(e) => Some(("enum", &e.name)),
+        Item::Struct(s) => Some(("struct", &s.name)),
+        Item::Table(s) => Some(("table", &s.name)),
+        Item::Command(m) => Some(("command", &m.name)),
+        Item::Telemetry(m) => Some(("telemetry", &m.name)),
+        Item::Message(m) => Some(("message", &m.name)),
+        Item::Namespace(_) | Item::Import(_) => None,
+    }
+}
+
+fn namespace_label(namespace: &[String]) -> String {
+    if namespace.is_empty() {
+        "(none)".to_string()
+    } else {
+        namespace.join("::")
+    }
+}
+
+fn unit_id(path: &Path, namespace_label: &str) -> String {
+    slug(&format!("file-{}-{namespace_label}", path.display()))
+}
+
+fn item_id(path: &Path, kind: &str, name: &str) -> String {
+    slug(&format!("{}-{kind}-{name}", path.display()))
+}
+
+fn unit_search_text(unit: &ParsedUnit, namespace_label: &str) -> String {
+    let mut parts = vec![namespace_label.to_string(), unit.path.display().to_string()];
+    for item in &unit.file.items {
+        if let Some((kind, name)) = item_kind_name(item) {
+            parts.push(kind.to_string());
+            parts.push(name.to_string());
+        }
+    }
+    parts.join(" ")
+}
+
+fn const_search_text(c: &synapse_parser::ast::ConstDecl) -> String {
+    [
+        "const".to_string(),
+        c.name.clone(),
+        type_expr_display(&c.ty),
+        literal_display(&c.value),
+        c.doc.join(" "),
+    ]
+    .join(" ")
+}
+
+fn enum_search_text(e: &synapse_parser::ast::EnumDef) -> String {
+    let mut parts = vec!["enum".to_string(), e.name.clone(), e.doc.join(" ")];
+    if let Some(repr) = e.repr {
+        parts.push(primitive_name(repr).to_string());
+    }
+    for variant in &e.variants {
+        parts.push(variant.name.clone());
+        if let Some(value) = variant.value {
+            parts.push(value.to_string());
+        }
+        parts.push(variant.doc.join(" "));
+    }
+    parts.join(" ")
+}
+
+fn struct_search_text(kind: &str, s: &StructDef) -> String {
+    let mut parts = vec![kind.to_string(), s.name.clone(), s.doc.join(" ")];
+    for field in &s.fields {
+        parts.push(field.name.clone());
+        parts.push(type_expr_display(&field.ty));
+        parts.push(field.doc.join(" "));
+    }
+    parts.join(" ")
+}
+
+fn packet_search_text(
+    packet: &MessageDef,
+    fact: Option<&synapse_codegen_cfs::CfsPacket>,
+) -> String {
+    let mut parts = vec![
+        packet_kind_label(packet.kind).to_string(),
+        packet.name.clone(),
+        packet.doc.join(" "),
+    ];
+    if let Some(fact) = fact {
+        parts.push(format_mid(fact.mid));
+        parts.push(fact.mid.to_string());
+        if let Some(cc) = fact.cc {
+            parts.push(cc.to_string());
+        }
+    }
+    for field in &packet.fields {
+        parts.push(field.name.clone());
+        parts.push(type_expr_display(&field.ty));
+        parts.push(field.doc.join(" "));
+    }
+    parts.join(" ")
+}
+
+fn render_search_script(out: &mut String) {
+    out.push_str(
+        "<script>
+const searchInput = document.getElementById('doc-search');
+const searchCount = document.getElementById('search-count');
+const items = Array.from(document.querySelectorAll('.item'));
+const units = Array.from(document.querySelectorAll('.unit'));
+
+function normalize(value) {
+  return value.toLowerCase().trim();
+}
+
+function applySearch() {
+  const query = normalize(searchInput.value);
+  let shown = 0;
+  for (const item of items) {
+    const haystack = normalize(item.dataset.search || item.textContent);
+    const match = query === '' || haystack.includes(query);
+    item.classList.toggle('hidden', !match);
+    if (match) shown += 1;
+  }
+  for (const unit of units) {
+    const hasVisibleItem = Array.from(unit.querySelectorAll('.item')).some((item) => !item.classList.contains('hidden'));
+    const unitMatch = query !== '' && normalize(unit.dataset.search || '').includes(query);
+    unit.classList.toggle('hidden', query !== '' && !hasVisibleItem && !unitMatch);
+  }
+  searchCount.textContent = query === ''
+    ? 'Showing all declarations.'
+    : `Showing ${shown} matching declaration${shown === 1 ? '' : 's'}.`;
+}
+
+searchInput.addEventListener('input', applySearch);
+</script>\n",
+    );
 }
 
 fn cfs_packet_fact_key(packet: &MessageDef) -> Option<String> {
@@ -904,6 +1134,43 @@ fn escape_html(value: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+fn escape_attr(value: &str) -> String {
+    escape_html(value)
+}
+
+fn source_href(path: &Path) -> String {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
+    };
+    format!("file://{}", absolute.display())
+}
+
+fn slug(value: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    if out.is_empty() {
+        "item".to_string()
+    } else {
+        out
+    }
 }
 
 fn output_path_for(input: &Path, out_dir: &Path, lang: Lang) -> Result<PathBuf, Error> {
@@ -1333,6 +1600,11 @@ telemetry NavState {
         assert!(html.contains("0x0801"));
         assert!(html.contains("Current mode."));
         assert!(html.contains("NavMode"));
+        assert!(html.contains("id=\"doc-search\""));
+        assert!(html.contains("data-search="));
+        assert!(html.contains("href=\"#"));
+        assert!(html.contains("href=\"file://"));
+        assert!(html.contains(">Source</a>"));
     }
 
     #[test]
