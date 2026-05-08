@@ -181,6 +181,7 @@ Direction:
 
 - Validate direct imports for path-based generation - implemented.
 - Validate local and directly imported qualified type references - implemented.
+- Reject unqualified references to imported types with a namespace-qualified suggestion - implemented.
 - Keep import validation shallow for now: no transitive graph, no automatic generation of imported files, and no imported constant resolution yet.
 
 Open questions:

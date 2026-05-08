@@ -37,6 +37,8 @@ import "std_msgs.syn"
 
 Imports generate C `#include` lines and Rust `use crate::...` lines. Path-based generation through the CLI or `generate_file` validates direct imports relative to the input file: imported files must exist, parse, and provide any referenced qualified types such as `std_msgs::Header`.
 
+Imported type references should be namespace-qualified. For example, after `import "std_msgs.syn"`, use `std_msgs::Header` rather than bare `Header`. Bare type references are reserved for declarations in the current file.
+
 This first pass is intentionally shallow. Imports are not resolved transitively, imported files are not generated automatically, and symbolic constants in attributes are not resolved through imports yet.
 
 ### `struct`

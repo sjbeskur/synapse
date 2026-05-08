@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     error::Error as StdError,
     fmt, fs,
     path::{Path, PathBuf},
@@ -128,6 +128,7 @@ fn validate_imports(input: &Path, file: &SynFile) -> Result<(), Error> {
     let base_dir = input.parent().unwrap_or_else(|| Path::new(""));
     let local_namespace = namespace(file);
     let mut symbols = local_symbols(file, &local_namespace);
+    let mut imported_type_suggestions = HashMap::new();
 
     for item in &file.items {
         let Item::Import(import) = item else {
@@ -148,10 +149,18 @@ fn validate_imports(input: &Path, file: &SynFile) -> Result<(), Error> {
             ))
         })?;
         let imported_namespace = namespace(&imported);
-        symbols.extend(qualified_symbols(&imported, &imported_namespace));
+        let imported_names = declared_names(&imported);
+        for name in &imported_names {
+            if !imported_namespace.is_empty() {
+                let mut qualified = imported_namespace.clone();
+                qualified.push(name.clone());
+                imported_type_suggestions.insert(name.clone(), qualified.join("::"));
+            }
+        }
+        symbols.extend(qualified_symbols(&imported_names, &imported_namespace));
     }
 
-    validate_type_refs(file, &symbols)
+    validate_type_refs(file, &symbols, &imported_type_suggestions)
 }
 
 fn namespace(file: &SynFile) -> Vec<String> {
@@ -177,11 +186,14 @@ fn local_symbols(file: &SynFile, namespace: &[String]) -> HashSet<Vec<String>> {
     symbols
 }
 
-fn qualified_symbols(file: &SynFile, namespace: &[String]) -> HashSet<Vec<String>> {
+fn qualified_symbols(names: &[String], namespace: &[String]) -> HashSet<Vec<String>> {
     let mut symbols = HashSet::new();
-    for name in declared_names(file) {
+    if namespace.is_empty() {
+        return symbols;
+    }
+    for name in names {
         let mut qualified = namespace.to_vec();
-        qualified.push(name);
+        qualified.push(name.clone());
         symbols.insert(qualified);
     }
     symbols
@@ -200,13 +212,21 @@ fn declared_names(file: &SynFile) -> Vec<String> {
         .collect()
 }
 
-fn validate_type_refs(file: &SynFile, symbols: &HashSet<Vec<String>>) -> Result<(), Error> {
+fn validate_type_refs(
+    file: &SynFile,
+    symbols: &HashSet<Vec<String>>,
+    imported_type_suggestions: &HashMap<String, String>,
+) -> Result<(), Error> {
     for item in &file.items {
         match item {
-            Item::Const(c) => validate_type_ref(&c.name, &c.ty.base, symbols)?,
-            Item::Struct(s) | Item::Table(s) => validate_field_refs(&s.name, &s.fields, symbols)?,
+            Item::Const(c) => {
+                validate_type_ref(&c.name, &c.ty.base, symbols, imported_type_suggestions)?
+            }
+            Item::Struct(s) | Item::Table(s) => {
+                validate_field_refs(&s.name, &s.fields, symbols, imported_type_suggestions)?
+            }
             Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
-                validate_field_refs(&m.name, &m.fields, symbols)?
+                validate_field_refs(&m.name, &m.fields, symbols, imported_type_suggestions)?
             }
             Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
         }
@@ -218,12 +238,14 @@ fn validate_field_refs(
     container: &str,
     fields: &[FieldDef],
     symbols: &HashSet<Vec<String>>,
+    imported_type_suggestions: &HashMap<String, String>,
 ) -> Result<(), Error> {
     for field in fields {
         validate_type_ref(
             &format!("{container}.{}", field.name),
             &field.ty.base,
             symbols,
+            imported_type_suggestions,
         )?;
     }
     Ok(())
@@ -233,12 +255,21 @@ fn validate_type_ref(
     owner: &str,
     base: &BaseType,
     symbols: &HashSet<Vec<String>>,
+    imported_type_suggestions: &HashMap<String, String>,
 ) -> Result<(), Error> {
     let BaseType::Ref(segments) = base else {
         return Ok(());
     };
     if symbols.contains(segments) {
         return Ok(());
+    }
+    if segments.len() == 1 {
+        if let Some(suggestion) = imported_type_suggestions.get(&segments[0]) {
+            return Err(Error::Import(format!(
+                "imported type reference `{}` in `{owner}` must be namespace-qualified as `{suggestion}`",
+                segments[0]
+            )));
+        }
     }
     Err(Error::Import(format!(
         "unresolved type reference `{}` in `{owner}`",
@@ -413,6 +444,34 @@ telemetry CameraStatus {
         let out = generate_path(&input, Lang::C).unwrap();
         assert!(out.contains("#include \"std_msgs.h\""));
         assert!(out.contains("std_msgs_Header_t header;"));
+    }
+
+    #[test]
+    fn generate_path_rejects_unqualified_imported_type_refs() {
+        let dir = test_dir("rejects-unqualified-imported-type-refs");
+        fs::write(
+            dir.join("std_msgs.syn"),
+            "namespace std_msgs\nstruct Header { seq: u32 }",
+        )
+        .unwrap();
+        let input = dir.join("camera.syn");
+        fs::write(
+            &input,
+            r#"namespace camera_app
+import "std_msgs.syn"
+@mid(0x0881)
+telemetry CameraStatus {
+    header: Header
+}
+"#,
+        )
+        .unwrap();
+
+        let err = generate_path(&input, Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "imported type reference `Header` in `CameraStatus.header` must be namespace-qualified as `std_msgs::Header`"
+        );
     }
 
     #[test]
