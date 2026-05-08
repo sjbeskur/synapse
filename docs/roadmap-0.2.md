@@ -165,10 +165,12 @@ Direction:
 - Keep bounded strings as inline storage.
 - Treat `string[<=N]` and `string[N]` as exactly `N` bytes.
 - Do not guarantee null termination, text encoding, or C-string semantics.
+- Document the optional project-level C-string convention: `N` includes the null terminator, length is found by scanning for the first null byte, and support-library helpers can provide Rust/C++ ergonomics without changing the ABI.
 
 Open questions:
 
 - Should a future `cstring[<=N]` distinguish null-terminated strings from byte arrays?
+- Should Rust/C++ string helpers live in a small runtime/support crate and header, or be emitted beside generated code?
 
 ## Imports And Namespaces
 

@@ -1,0 +1,5 @@
+
+struct FrameDescriptor{
+    gamma: f32
+    gain: f32
+}

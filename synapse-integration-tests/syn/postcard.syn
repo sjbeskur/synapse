@@ -1,0 +1,13 @@
+
+namespace camara
+
+import "frame_descriptor.syn"
+
+struct Postcard{
+    image: u8[10000]
+    width: u32
+    height: u32
+
+    fd: FrameDescriptor
+    
+}

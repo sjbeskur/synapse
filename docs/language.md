@@ -148,6 +148,8 @@ struct CameraId {
 
 Bounded strings generate inline `char[N]` storage in C and `[u8; N]` storage in Rust. The bound is the exact storage size in bytes. Synapse does not guarantee null termination, text encoding, or that one byte equals one character.
 
+Projects may adopt a C-string convention for these buffers. If they do, the bound includes the null terminator, the usable text capacity is `N - 1`, and readers should scan for the first null byte with an upper bound of `N`. Helper functions for Rust and C++ string views are a good fit for a support library rather than generated packet fields.
+
 ### Documentation Comments
 
 ```syn

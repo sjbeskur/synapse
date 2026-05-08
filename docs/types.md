@@ -133,6 +133,23 @@ struct CameraId {
 
 `string[N]` and `string[<=N]` both generate exactly `N` bytes of inline storage. Synapse does not guarantee null termination, text encoding, UTF-8 validity, or that the buffer contains a C string. Treat the generated field as an inline byte buffer whose interpretation belongs to the mission/application code.
 
+Many cFS projects will still choose to use these inline buffers with a C-string convention. Under that convention, `N` is the total byte capacity including the null terminator, so `string[<=32]` can hold at most 31 non-null bytes plus `\0`. Readers find the actual length by scanning for the first null byte, bounded by `N`; if no null byte is present, the buffer should be treated as a full `N` bytes and not passed to APIs that require null termination.
+
+Rust code can convert such a buffer by slicing to the first null byte and then validating UTF-8:
+
+```rust
+fn c_string_bytes(buf: &[u8]) -> &[u8] {
+    let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+    &buf[..end]
+}
+
+fn c_string_str(buf: &[u8]) -> Result<&str, core::str::Utf8Error> {
+    core::str::from_utf8(c_string_bytes(buf))
+}
+```
+
+C++ code can use a bounded scan such as `strnlen` and expose the result as `std::string_view`. Future Synapse support libraries may provide these Rust and C++ helpers, but the generated packet/table layout should remain plain inline storage.
+
 If a future release needs strict C-string semantics, it should use explicit syntax such as `cstring[<=N]` rather than changing `string[<=N]` silently.
 
 ## Field Forms
