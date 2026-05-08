@@ -27,9 +27,10 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 
 ### Codegen output quality
 
-- [ ] Emit `///` doc comments into generated C (`/* ... */`) and Rust (`/// ...`) output. The AST already captures them; they just aren't wired to the emitters.
+- [x] Emit parsed `///` doc comments into generated C and Rust output.
+- [ ] Decide whether generated C docs should stay as `///` or switch to Doxygen block comments.
 - [ ] Add schema hash or generation timestamp to the file banner so stale headers are detectable.
-- [ ] Normalize hex formatting: C MID defines use `0x{:04X}U`, but Rust uses `0x{:04X}` for MID and `0x{:X}` for CC. Pick one convention per target.
+- [x] Normalize hex formatting for typed integer constants and packet MID constants.
 
 ### CFE_Span_t for arrays
 

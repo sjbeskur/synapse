@@ -694,7 +694,7 @@ fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
 
 fn emit_const(out: &mut String, c: &ConstDecl) {
     emit_doc_lines(out, &c.doc);
-    let val = literal_str(&c.value);
+    let val = typed_literal_str(&c.value, &c.ty);
     out.push_str(&format!("#define {}  {}\n\n", c.name, val));
 }
 
@@ -817,7 +817,7 @@ fn emit_rust_items(
 
 fn emit_rust_const(out: &mut String, c: &ConstDecl) {
     emit_doc_lines(out, &c.doc);
-    let val = rust_literal_str(&c.value);
+    let val = rust_typed_literal_str(&c.value, &c.ty);
     let ty = rust_field_type_str(&c.ty);
     out.push_str(&format!("pub const {}: {} = {};\n\n", c.name, ty, val));
 }
@@ -975,6 +975,25 @@ fn rust_literal_str(lit: &Literal) -> String {
         }
         Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
+    }
+}
+
+fn rust_typed_literal_str(lit: &Literal, ty: &TypeExpr) -> String {
+    match (lit, &ty.base) {
+        (Literal::Hex(n), BaseType::Primitive(p)) => rust_hex_str(*n, *p),
+        _ => rust_literal_str(lit),
+    }
+}
+
+fn rust_hex_str(value: u64, ty: PrimitiveType) -> String {
+    match ty {
+        PrimitiveType::U8 | PrimitiveType::I8 => format!("0x{:02X}", value),
+        PrimitiveType::U16 | PrimitiveType::I16 => format!("0x{:04X}", value),
+        PrimitiveType::U32 | PrimitiveType::I32 => format!("0x{:08X}", value),
+        PrimitiveType::U64 | PrimitiveType::I64 => format!("0x{:016X}", value),
+        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Bytes => {
+            format!("0x{:X}", value)
+        }
     }
 }
 
@@ -1151,6 +1170,25 @@ fn literal_str(lit: &Literal) -> String {
         }
         Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
+    }
+}
+
+fn typed_literal_str(lit: &Literal, ty: &TypeExpr) -> String {
+    match (lit, &ty.base) {
+        (Literal::Hex(n), BaseType::Primitive(p)) => c_hex_str(*n, *p),
+        _ => literal_str(lit),
+    }
+}
+
+fn c_hex_str(value: u64, ty: PrimitiveType) -> String {
+    match ty {
+        PrimitiveType::U8 | PrimitiveType::I8 => format!("0x{:02X}U", value),
+        PrimitiveType::U16 | PrimitiveType::I16 => format!("0x{:04X}U", value),
+        PrimitiveType::U32 | PrimitiveType::I32 => format!("0x{:08X}U", value),
+        PrimitiveType::U64 | PrimitiveType::I64 => format!("0x{:016X}U", value),
+        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Bytes => {
+            format!("0x{:X}U", value)
+        }
     }
 }
 
@@ -1736,7 +1774,7 @@ mod tests {
     #[test]
     fn const_emits_define() {
         let out = codegen("const NAV_TLM_MID: u16 = 0x0801");
-        assert!(out.contains("#define NAV_TLM_MID  0x801U"));
+        assert!(out.contains("#define NAV_TLM_MID  0x0801U"));
     }
 
     #[test]
@@ -2026,9 +2064,12 @@ mod tests {
 
     #[test]
     fn rust_const_uses_declared_type() {
-        let out = rust_codegen("const PI: f64 = 3.14\nconst ENABLED: bool = true");
+        let out = rust_codegen(
+            "const PI: f64 = 3.14\nconst ENABLED: bool = true\nconst NAV_TLM_MID: u16 = 0x0801",
+        );
         assert!(out.contains("pub const PI: f64 = 3.14;"));
         assert!(out.contains("pub const ENABLED: bool = true;"));
+        assert!(out.contains("pub const NAV_TLM_MID: u16 = 0x0801;"));
     }
 
     #[test]
