@@ -192,6 +192,7 @@ Enums need an explicit integer representation when used in generated cFS fields,
 
 See `docs/language.md` for the current language status and `0.1.x` review checklist.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.
+See `docs/one-pager.md` for a short explanation of why Synapse is relevant.
 See `docs/mission.md` for the mission-wide validation and registry concept.
 See `docs/roadmap-0.2.md` for planned `0.2.x` language review items.
 
