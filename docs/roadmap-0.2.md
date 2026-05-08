@@ -182,12 +182,13 @@ Direction:
 - Validate direct imports for path-based generation - implemented.
 - Validate local and directly imported qualified type references - implemented.
 - Reject unqualified references to imported types with a namespace-qualified suggestion - implemented.
-- Keep import validation shallow for now: no transitive graph, no automatic generation of imported files, and no imported constant resolution yet.
+- Load and validate transitive import graphs - implemented.
+- Generate the root file plus transitive imports in dependency order through CLI `-o` or library `generate_files` - implemented.
+- Keep imported constant resolution deferred.
 
 Open questions:
 
 - Should the CLI accept multiple input files as one generation unit?
-- Should imports be resolved transitively?
 - How should output directories mirror namespace/import structure?
 
 ## Generated File Headers

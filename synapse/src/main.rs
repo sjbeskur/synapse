@@ -13,9 +13,13 @@ struct Args {
     lang: CliLang,
 
     /// Write output to this directory instead of stdout.
-    /// Output file is named after the input file with the appropriate extension.
+    /// By default, this writes the root file plus all transitive imports.
     #[arg(long, short = 'o')]
     out_dir: Option<PathBuf>,
+
+    /// With --out-dir, generate only the requested root file.
+    #[arg(long)]
+    single_file: bool,
 
     /// Input .syn file
     file: PathBuf,
@@ -43,6 +47,13 @@ fn main() {
     let lang = cfs_synapse::Lang::from(args.lang);
 
     match args.out_dir {
+        None if args.single_file => {
+            eprintln!(
+                "Error generating {}: --single-file only applies with --out-dir",
+                args.file.display()
+            );
+            process::exit(1);
+        }
         None => {
             let output = cfs_synapse::generate_path(&args.file, lang).unwrap_or_else(|e| {
                 eprintln!("Error generating {}:\n{e}", args.file.display());
@@ -51,12 +62,22 @@ fn main() {
 
             print!("{output}");
         }
-        Some(dir) => {
+        Some(dir) if args.single_file => {
             let out_path = cfs_synapse::generate_file(&args.file, &dir, lang).unwrap_or_else(|e| {
                 eprintln!("Error generating {}: {e}", args.file.display());
                 process::exit(1);
             });
             eprintln!("wrote {}", out_path.display());
+        }
+        Some(dir) => {
+            let out_paths =
+                cfs_synapse::generate_files(&args.file, &dir, lang).unwrap_or_else(|e| {
+                    eprintln!("Error generating {}: {e}", args.file.display());
+                    process::exit(1);
+                });
+            for out_path in out_paths {
+                eprintln!("wrote {}", out_path.display());
+            }
         }
     }
 }

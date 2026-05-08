@@ -35,11 +35,11 @@ Namespaces are used by C codegen to prefix generated type names, such as `camera
 import "std_msgs.syn"
 ```
 
-Imports generate C `#include` lines and Rust `use crate::...` lines. Path-based generation through the CLI or `generate_file` validates direct imports relative to the input file: imported files must exist, parse, and provide any referenced qualified types such as `std_msgs::Header`.
+Imports generate C `#include` lines and Rust `use crate::...` lines. Path-based generation through the CLI or `generate_file` validates the import graph rooted at the input file: imported files must exist, parse, and provide any referenced qualified types such as `std_msgs::Header`.
 
 Imported type references should be namespace-qualified. For example, after `import "std_msgs.syn"`, use `std_msgs::Header` rather than bare `Header`. Bare type references are reserved for declarations in the current file.
 
-This first pass is intentionally shallow. Imports are not resolved transitively, imported files are not generated automatically, and symbolic constants in attributes are not resolved through imports yet.
+Each file can reference only its local declarations and directly imported namespaces. Transitive imports are loaded and validated so dependency files are checked, but a root file must directly import any namespace it references. CLI output-directory generation emits the root file plus its transitive imports in dependency order by default; add `--single-file` to emit only the requested root file. In library code, use `generate_files` for the import closure and `generate_file` for only the root. Imported constants in attributes are not resolved yet.
 
 ### `struct`
 
