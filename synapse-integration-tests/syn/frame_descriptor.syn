@@ -1,5 +1,30 @@
 
-struct FrameDescriptor{
-    gamma: f32
+namespace frame_descriptor
+
+/// Pixel encoding used for the image buffer.
+enum u8 PixelFormat {
+    /// One 8-bit luminance sample per pixel.
+    Mono8 = 0
+    /// One 16-bit luminance sample per pixel.
+    Mono16 = 1
+    /// Packed red, green, blue bytes per pixel.
+    Rgb888 = 2
+    /// 8-bit Bayer pattern starting with red/green on the first row.
+    BayerRggb8 = 3
+}
+
+/// Acquisition metadata attached to one image frame.
+struct FrameDescriptor {
+    /// Monotonic frame sequence assigned by the camera app.
+    sequence: u32
+    /// Capture timestamp in mission-defined microseconds.
+    timestamp_us: u64
+    /// Exposure time used for this frame.
+    exposure_us: u32
+    /// Sensor gain multiplier.
     gain: f32
+    /// Display or processing gamma applied to this frame.
+    gamma: f32
+    /// Pixel encoding for the associated image buffer.
+    pixel_format: PixelFormat
 }

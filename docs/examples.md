@@ -8,6 +8,7 @@ The most useful examples live in `synapse-integration-tests/syn`. These files ar
 - [`cfs_patterns.syn`](../synapse-integration-tests/syn/cfs_patterns.syn): minimal `table`, `command`, and `telemetry` definitions.
 - [`geometry_msgs.syn`](../synapse-integration-tests/syn/geometry_msgs.syn): ROS-like geometry structs and stamped telemetry packets.
 - [`camera_msgs.syn`](../synapse-integration-tests/syn/camera_msgs.syn): camera control examples, including commands, telemetry, nested structs, bounded strings, fixed arrays, doc comments, and a calibration table.
+- [`frame_descriptor.syn`](../synapse-integration-tests/syn/frame_descriptor.syn) and [`postcard.syn`](../synapse-integration-tests/syn/postcard.syn): small cross-file import example using acquisition metadata, a represented pixel-format enum, a namespaced type reference, and a large fixed image buffer.
 
 ## Generated Output
 

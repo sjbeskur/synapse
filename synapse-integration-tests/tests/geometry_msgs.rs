@@ -45,11 +45,30 @@ fn camera_msgs_parse() {
 }
 
 #[test]
+fn postcard_msgs_parse() {
+    let frame = read_and_parse("frame_descriptor.syn");
+    // namespace + PixelFormat enum + FrameDescriptor
+    assert_eq!(frame.items.len(), 3);
+
+    let postcard = read_and_parse("postcard.syn");
+    // namespace + import + Postcard
+    assert_eq!(postcard.items.len(), 3);
+}
+
+#[test]
 fn facade_validates_camera_imports_for_path_generation() {
     let out = cfs_synapse::generate_path(syn_dir().join("camera_msgs.syn"), cfs_synapse::Lang::C)
         .unwrap();
     assert!(out.contains("#include \"std_msgs.h\""));
     assert!(out.contains("std_msgs_Header_t header;"));
+}
+
+#[test]
+fn facade_validates_postcard_imports_for_path_generation() {
+    let out =
+        cfs_synapse::generate_path(syn_dir().join("postcard.syn"), cfs_synapse::Lang::C).unwrap();
+    assert!(out.contains("#include \"frame_descriptor.h\""));
+    assert!(out.contains("frame_descriptor_FrameDescriptor_t fd;"));
 }
 
 // ── cFS C codegen ──────────────────────────────────────────────────────────────
@@ -149,6 +168,30 @@ fn cfs_c_codegen_camera_msgs() {
     let table_start = out[..table_end].rfind("typedef struct {").unwrap();
     let table = &out[table_start..table_end];
     assert!(!table.contains("CFE_MSG_"));
+}
+
+#[test]
+fn cfs_c_codegen_postcard_msgs() {
+    let frame = synapse_codegen_cfs::generate_c(&read_and_parse("frame_descriptor.syn"));
+    let postcard = synapse_codegen_cfs::generate_c(&read_and_parse("postcard.syn"));
+
+    assert!(frame.contains("typedef uint8_t frame_descriptor_PixelFormat_t;"));
+    assert!(
+        frame.contains("#define PIXEL_FORMAT_BAYER_RGGB8  ((frame_descriptor_PixelFormat_t)3)")
+    );
+    assert!(frame.contains("} frame_descriptor_FrameDescriptor_t;"));
+    assert!(frame.contains("    uint32_t sequence;"));
+    assert!(frame.contains("    uint64_t timestamp_us;"));
+    assert!(frame.contains("    uint32_t exposure_us;"));
+    assert!(frame.contains("    float gamma;"));
+    assert!(frame.contains("    float gain;"));
+    assert!(frame.contains("    frame_descriptor_PixelFormat_t pixel_format;"));
+    assert!(postcard.contains("#include \"frame_descriptor.h\""));
+    assert!(postcard.contains("} camera_Postcard_t;"));
+    assert!(postcard.contains("    uint8_t image[10000];"));
+    assert!(postcard.contains("    uint32_t width;"));
+    assert!(postcard.contains("    uint32_t height;"));
+    assert!(postcard.contains("    frame_descriptor_FrameDescriptor_t fd;"));
 }
 
 #[test]
@@ -271,6 +314,74 @@ int check_camera_mode(void) {
     );
 }
 
+#[test]
+fn generated_c_postcard_msgs_compiles() {
+    let frame = synapse_codegen_cfs::generate_c(&read_and_parse("frame_descriptor.syn"));
+    let postcard = synapse_codegen_cfs::generate_c(&read_and_parse("postcard.syn"));
+
+    let dir = std::env::temp_dir().join(format!("synapse-postcard-cc-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create temp postcard cc dir");
+    fs::write(
+        dir.join("cfe.h"),
+        r#"
+#pragma once
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct {
+    uint8_t bytes[16];
+} CFE_MSG_TelemetryHeader_t;
+
+typedef struct {
+    uint8_t bytes[16];
+} CFE_MSG_CommandHeader_t;
+
+typedef struct {
+    const void *Data;
+    size_t Size;
+} CFE_Span_t;
+"#,
+    )
+    .expect("write cfe.h stub");
+    fs::write(dir.join("frame_descriptor.h"), frame).expect("write frame_descriptor.h");
+    fs::write(dir.join("postcard.h"), postcard).expect("write postcard.h");
+    fs::write(
+        dir.join("check.c"),
+        r#"
+#include "postcard.h"
+
+int check_postcard(void) {
+    camera_Postcard_t postcard = {0};
+    postcard.fd.sequence = 1U;
+    postcard.fd.timestamp_us = 42U;
+    postcard.fd.exposure_us = 1000U;
+    postcard.fd.gamma = 1.0f;
+    postcard.fd.gain = 2.0f;
+    postcard.fd.pixel_format = PIXEL_FORMAT_MONO8;
+    return postcard.image[0];
+}
+"#,
+    )
+    .expect("write C postcard check source");
+
+    let output = Command::new("cc")
+        .arg("-std=c99")
+        .arg("-fsyntax-only")
+        .arg("-I")
+        .arg(&dir)
+        .arg(dir.join("check.c"))
+        .output()
+        .expect("run cc");
+
+    assert!(
+        output.status.success(),
+        "generated postcard C did not compile\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 // ── cFS Rust codegen ───────────────────────────────────────────────────────────
 
 #[test]
@@ -363,6 +474,29 @@ fn cfs_rust_codegen_camera_msgs() {
     let table_end = out[table_start..].find("}\n\n").unwrap() + table_start;
     let table = &out[table_start..table_end];
     assert!(!table.contains("cfs_header"));
+}
+
+#[test]
+fn cfs_rust_codegen_postcard_msgs() {
+    let opts = RustOptions::default();
+    let frame = synapse_codegen_cfs::generate_rust(&read_and_parse("frame_descriptor.syn"), &opts);
+    let postcard = synapse_codegen_cfs::generate_rust(&read_and_parse("postcard.syn"), &opts);
+
+    assert!(frame.contains("pub type PixelFormat = u8;"));
+    assert!(frame.contains("pub const PIXEL_FORMAT_BAYER_RGGB8: PixelFormat = 3;"));
+    assert!(frame.contains("pub struct FrameDescriptor {"));
+    assert!(frame.contains("    pub sequence: u32,"));
+    assert!(frame.contains("    pub timestamp_us: u64,"));
+    assert!(frame.contains("    pub exposure_us: u32,"));
+    assert!(frame.contains("    pub gamma: f32,"));
+    assert!(frame.contains("    pub gain: f32,"));
+    assert!(frame.contains("    pub pixel_format: PixelFormat,"));
+    assert!(postcard.contains("use crate::frame_descriptor;"));
+    assert!(postcard.contains("pub struct Postcard {"));
+    assert!(postcard.contains("    pub image: [u8; 10000],"));
+    assert!(postcard.contains("    pub width: u32,"));
+    assert!(postcard.contains("    pub height: u32,"));
+    assert!(postcard.contains("    pub fd: frame_descriptor::FrameDescriptor,"));
 }
 
 #[test]
@@ -473,6 +607,51 @@ pub fn selected_mode() -> camera_msgs::CameraMode {{
     assert!(
         output.status.success(),
         "generated camera Rust did not compile\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn generated_rust_postcard_msgs_compiles() {
+    let opts = RustOptions::default();
+    let frame = synapse_codegen_cfs::generate_rust(&read_and_parse("frame_descriptor.syn"), &opts);
+    let postcard = synapse_codegen_cfs::generate_rust(&read_and_parse("postcard.syn"), &opts);
+
+    let src = format!(
+        r#"
+pub mod frame_descriptor {{
+{frame}
+}}
+
+pub mod postcard {{
+{postcard}
+}}
+
+pub fn postcard_gain(card: &postcard::Postcard) -> f32 {{
+    card.fd.gain
+}}
+"#
+    );
+
+    let dir = std::env::temp_dir().join(format!("synapse-postcard-rustc-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create temp postcard rustc dir");
+    let src_path = dir.join("generated_postcard.rs");
+    let lib_path = dir.join("libgenerated_postcard.rlib");
+    fs::write(&src_path, src).expect("write generated postcard Rust test source");
+
+    let output = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg("--crate-type=lib")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&lib_path)
+        .output()
+        .expect("run rustc");
+
+    assert!(
+        output.status.success(),
+        "generated postcard Rust did not compile\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
