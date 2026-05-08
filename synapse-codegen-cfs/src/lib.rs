@@ -21,6 +21,30 @@ pub const PREAMBLE: &str = "\
 /// Resolved integer constants visible to a file from imported namespaces.
 pub type ResolvedConstants = HashMap<Vec<String>, u64>;
 
+/// cFS packet category used by mission-wide validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CfsPacketKind {
+    /// cFS Software Bus command packet.
+    Command,
+    /// cFS Software Bus telemetry packet.
+    Telemetry,
+}
+
+/// Resolved cFS packet facts for registry-style validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CfsPacket {
+    /// Namespace segments declared by the source file, if any.
+    pub namespace: Vec<String>,
+    /// Packet declaration name.
+    pub name: String,
+    /// Packet kind.
+    pub kind: CfsPacketKind,
+    /// Resolved numeric message ID.
+    pub mid: u64,
+    /// Resolved numeric command code for command packets.
+    pub cc: Option<u64>,
+}
+
 /// Options for Rust cFS binding generation.
 pub struct RustOptions<'a> {
     /// Module path prefix for the cFS header types.
@@ -250,6 +274,18 @@ pub fn validate_cfs_with_constants(
     validate_supported(file, &constants)
 }
 
+/// Collect resolved cFS packet facts with additional imported constants available.
+///
+/// This validates packet-level attributes needed to resolve MIDs and command
+/// codes, but it does not validate fields or other cFS ABI constraints.
+pub fn collect_cfs_packets_with_constants(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+) -> Result<Vec<CfsPacket>, CodegenError> {
+    let constants = const_context(file, imported_constants);
+    collect_cfs_packets(file, &constants)
+}
+
 /// Try to generate a C header with additional imported constants available for attributes.
 pub fn try_generate_c_with_constants(
     file: &SynFile,
@@ -326,6 +362,73 @@ fn validate_supported(file: &SynFile, constants: &ConstContext<'_>) -> Result<()
         }
     }
     Ok(())
+}
+
+fn collect_cfs_packets(
+    file: &SynFile,
+    constants: &ConstContext<'_>,
+) -> Result<Vec<CfsPacket>, CodegenError> {
+    let namespace = file_namespace(file);
+    let mut packets = Vec::new();
+
+    for item in &file.items {
+        let packet = match item {
+            Item::Command(m) | Item::Telemetry(m) => m,
+            Item::Namespace(_)
+            | Item::Import(_)
+            | Item::Const(_)
+            | Item::Enum(_)
+            | Item::Struct(_)
+            | Item::Table(_)
+            | Item::Message(_) => continue,
+        };
+
+        let Some(mid) = find_mid_attr(&packet.attrs) else {
+            return Err(CodegenError::MissingMid {
+                packet: packet.name.clone(),
+            });
+        };
+        let mid_value = resolve_literal_to_u64(mid, constants).ok_or_else(|| {
+            CodegenError::MessageIdValueUnsupported {
+                packet: packet.name.clone(),
+            }
+        })?;
+        validate_mid_range(packet, mid_value, mid, constants)?;
+
+        let cc = find_cc_attr(&packet.attrs);
+        let (kind, cc_value) = match packet.kind {
+            PacketKind::Command => {
+                let cc = cc.ok_or_else(|| CodegenError::MissingCommandCode {
+                    packet: packet.name.clone(),
+                })?;
+                let cc_value = resolve_literal_to_u64(cc, constants).ok_or_else(|| {
+                    CodegenError::CommandCodeValueUnsupported {
+                        packet: packet.name.clone(),
+                    }
+                })?;
+                (CfsPacketKind::Command, Some(cc_value))
+            }
+            PacketKind::Telemetry => {
+                if cc.is_some() {
+                    return Err(CodegenError::CommandCodeUnsupported {
+                        item: packet.name.clone(),
+                    });
+                }
+                (CfsPacketKind::Telemetry, None)
+            }
+            PacketKind::Message => continue,
+        };
+
+        packets.push(CfsPacket {
+            namespace: namespace.clone(),
+            name: packet.name.clone(),
+            kind,
+            mid: mid_value,
+            cc: cc_value,
+        });
+    }
+
+    Ok(packets)
 }
 
 struct ConstContext<'a> {

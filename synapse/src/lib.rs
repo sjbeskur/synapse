@@ -33,6 +33,7 @@ pub enum Error {
     Parse(Box<pest::error::Error<synapse_parser::synapse::Rule>>),
     Codegen(synapse_codegen_cfs::CodegenError),
     Import(String),
+    Mission(String),
 }
 
 impl fmt::Display for Error {
@@ -42,6 +43,7 @@ impl fmt::Display for Error {
             Error::Parse(e) => write!(f, "{e}"),
             Error::Codegen(e) => write!(f, "{e}"),
             Error::Import(e) => write!(f, "{e}"),
+            Error::Mission(e) => write!(f, "{e}"),
         }
     }
 }
@@ -52,7 +54,7 @@ impl StdError for Error {
             Error::Io(e) => Some(e),
             Error::Parse(e) => Some(e),
             Error::Codegen(e) => Some(e),
-            Error::Import(_) => None,
+            Error::Import(_) | Error::Mission(_) => None,
         }
     }
 }
@@ -90,7 +92,30 @@ pub fn check_str(source: &str) -> Result<(), Error> {
 
 /// Check a `.syn` input path, validating its import graph and cFS codegen support.
 pub fn check_path(input: impl AsRef<Path>) -> Result<(), Error> {
-    let graph = load_import_graph(input.as_ref())?;
+    check_paths([input.as_ref()])
+}
+
+/// Check one or more `.syn` input paths as a mission-visible set.
+///
+/// Each root and its imports are validated normally. When more than one root is
+/// supplied, Synapse also validates mission-wide packet ID uniqueness across the
+/// deduplicated import closure.
+pub fn check_paths<I, P>(inputs: I) -> Result<(), Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let inputs = inputs
+        .into_iter()
+        .map(|input| input.as_ref().to_path_buf())
+        .collect::<Vec<_>>();
+    if inputs.is_empty() {
+        return Err(Error::Mission(
+            "check requires at least one input .syn file".to_string(),
+        ));
+    }
+
+    let graph = load_import_graphs(&inputs)?;
     validate_import_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
 
@@ -98,6 +123,7 @@ pub fn check_path(input: impl AsRef<Path>) -> Result<(), Error> {
         let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
         synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
     }
+    validate_mission_registry(&graph, &units_by_path)?;
 
     Ok(())
 }
@@ -201,11 +227,17 @@ struct ParsedUnit {
 }
 
 fn load_import_graph(input: &Path) -> Result<ImportGraph, Error> {
+    load_import_graphs(&[input.to_path_buf()])
+}
+
+fn load_import_graphs(inputs: &[PathBuf]) -> Result<ImportGraph, Error> {
     let mut units = Vec::new();
     let mut visited = HashSet::new();
     let mut visiting = HashSet::new();
     let mut stack = Vec::new();
-    load_import_unit(input, &mut units, &mut visited, &mut visiting, &mut stack)?;
+    for input in inputs {
+        load_import_unit(input, &mut units, &mut visited, &mut visiting, &mut stack)?;
+    }
     Ok(ImportGraph { units })
 }
 
@@ -362,6 +394,90 @@ fn validate_import_unit(
     }
 
     validate_type_refs(&unit.file, &symbols, &imported_type_suggestions)
+}
+
+#[derive(Debug, Clone)]
+struct MissionPacket {
+    path: PathBuf,
+    namespace: Vec<String>,
+    name: String,
+    kind: synapse_codegen_cfs::CfsPacketKind,
+    mid: u64,
+    cc: Option<u64>,
+}
+
+fn validate_mission_registry(
+    graph: &ImportGraph,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+) -> Result<(), Error> {
+    let mut telemetry_mids = HashMap::<u64, MissionPacket>::new();
+    let mut command_codes = HashMap::<(u64, u64), MissionPacket>::new();
+
+    for unit in &graph.units {
+        let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
+        let packets = synapse_codegen_cfs::collect_cfs_packets_with_constants(
+            &unit.file,
+            &imported_constants,
+        )?;
+
+        for packet in packets {
+            let packet = MissionPacket {
+                path: unit.path.clone(),
+                namespace: packet.namespace,
+                name: packet.name,
+                kind: packet.kind,
+                mid: packet.mid,
+                cc: packet.cc,
+            };
+
+            match packet.kind {
+                synapse_codegen_cfs::CfsPacketKind::Telemetry => {
+                    if let Some(first) = telemetry_mids.insert(packet.mid, packet.clone()) {
+                        return Err(Error::Mission(format!(
+                            "duplicate telemetry MID `{}` across mission packets `{}` ({}) and `{}` ({})",
+                            format_mid(packet.mid),
+                            packet_name(&first),
+                            first.path.display(),
+                            packet_name(&packet),
+                            packet.path.display()
+                        )));
+                    }
+                }
+                synapse_codegen_cfs::CfsPacketKind::Command => {
+                    let cc = packet
+                        .cc
+                        .expect("cFS packet collector resolves command codes");
+                    if let Some(first) = command_codes.insert((packet.mid, cc), packet.clone()) {
+                        return Err(Error::Mission(format!(
+                            "duplicate command MID/CC pair `{}`/`{}` across mission packets `{}` ({}) and `{}` ({})",
+                            format_mid(packet.mid),
+                            cc,
+                            packet_name(&first),
+                            first.path.display(),
+                            packet_name(&packet),
+                            packet.path.display()
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn packet_name(packet: &MissionPacket) -> String {
+    if packet.namespace.is_empty() {
+        packet.name.clone()
+    } else {
+        let mut segments = packet.namespace.clone();
+        segments.push(packet.name.clone());
+        segments.join("::")
+    }
+}
+
+fn format_mid(mid: u64) -> String {
+    format!("0x{mid:04X}")
 }
 
 fn output_path_for(input: &Path, out_dir: &Path, lang: Lang) -> Result<PathBuf, Error> {
@@ -689,6 +805,71 @@ struct Root { unsupported: bad::Unsupported }
             err.to_string(),
             "optional field `Unsupported.count` is not supported by cFS codegen yet"
         );
+    }
+
+    #[test]
+    fn check_paths_rejects_duplicate_telemetry_mids_across_roots() {
+        let dir = test_dir("check-paths-duplicate-telemetry-mids");
+        let nav = dir.join("nav.syn");
+        fs::write(
+            &nav,
+            "namespace nav_app\n@mid(0x0801)\ntelemetry NavState { x: f64 }",
+        )
+        .unwrap();
+        let payload = dir.join("payload.syn");
+        fs::write(
+            &payload,
+            "namespace payload_app\n@mid(0x0801)\ntelemetry PayloadStatus { temp: f32 }",
+        )
+        .unwrap();
+
+        let err = check_paths([&nav, &payload]).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("duplicate telemetry MID `0x0801`"));
+        assert!(msg.contains("nav_app::NavState"));
+        assert!(msg.contains("payload_app::PayloadStatus"));
+    }
+
+    #[test]
+    fn check_paths_rejects_duplicate_command_mid_cc_pairs_across_roots() {
+        let dir = test_dir("check-paths-duplicate-command-codes");
+        let camera = dir.join("camera.syn");
+        fs::write(
+            &camera,
+            "namespace camera_app\n@mid(0x1880)\n@cc(1)\ncommand SetMode { mode: u8 }",
+        )
+        .unwrap();
+        let radio = dir.join("radio.syn");
+        fs::write(
+            &radio,
+            "namespace radio_app\n@mid(0x1880)\n@cc(1)\ncommand SetMode { mode: u8 }",
+        )
+        .unwrap();
+
+        let err = check_paths([&camera, &radio]).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("duplicate command MID/CC pair `0x1880`/`1`"));
+        assert!(msg.contains("camera_app::SetMode"));
+        assert!(msg.contains("radio_app::SetMode"));
+    }
+
+    #[test]
+    fn check_paths_allows_shared_command_mid_with_distinct_command_codes() {
+        let dir = test_dir("check-paths-shared-command-mid");
+        let camera = dir.join("camera.syn");
+        fs::write(
+            &camera,
+            "namespace camera_app\n@mid(0x1880)\n@cc(1)\ncommand SetMode { mode: u8 }",
+        )
+        .unwrap();
+        let radio = dir.join("radio.syn");
+        fs::write(
+            &radio,
+            "namespace radio_app\n@mid(0x1880)\n@cc(2)\ncommand SetMode { mode: u8 }",
+        )
+        .unwrap();
+
+        check_paths([&camera, &radio]).unwrap();
     }
 
     #[test]

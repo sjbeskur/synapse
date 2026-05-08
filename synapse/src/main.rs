@@ -25,8 +25,9 @@ enum Command {
 
 #[derive(ClapArgs)]
 struct CheckArgs {
-    /// Input .syn file
-    file: PathBuf,
+    /// Input .syn files. Multiple roots are checked together for mission-wide packet ID conflicts.
+    #[arg(required = true)]
+    files: Vec<PathBuf>,
 }
 
 #[derive(ClapArgs)]
@@ -75,11 +76,13 @@ fn main() {
 }
 
 fn check_path(args: CheckArgs) {
-    cfs_synapse::check_path(&args.file).unwrap_or_else(|e| {
-        eprintln!("Error checking {}:\n{e}", args.file.display());
+    cfs_synapse::check_paths(&args.files).unwrap_or_else(|e| {
+        eprintln!("Error checking inputs:\n{e}");
         process::exit(1);
     });
-    eprintln!("checked {}", args.file.display());
+    for file in args.files {
+        eprintln!("checked {}", file.display());
+    }
 }
 
 fn generate_path(args: GenerateArgs) {

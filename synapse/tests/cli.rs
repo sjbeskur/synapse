@@ -139,3 +139,38 @@ struct Root { unsupported: bad::Unsupported }
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("optional field"));
 }
+
+#[test]
+fn check_accepts_multiple_roots_and_rejects_mission_mid_conflicts() {
+    let dir = test_dir("check-multiple-roots");
+    let nav = dir.join("nav.syn");
+    fs::write(
+        &nav,
+        "namespace nav_app\n@mid(0x0801)\ntelemetry NavState { x: f64 }",
+    )
+    .unwrap();
+    let payload = dir.join("payload.syn");
+    fs::write(
+        &payload,
+        "namespace payload_app\n@mid(0x0801)\ntelemetry PayloadStatus { temp: f32 }",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg(&nav)
+        .arg(&payload)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        !output.status.success(),
+        "synapse unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("duplicate telemetry MID `0x0801`"));
+    assert!(stderr.contains("nav_app::NavState"));
+    assert!(stderr.contains("payload_app::PayloadStatus"));
+}

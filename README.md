@@ -81,12 +81,12 @@ CFS_ROOT=/path/to/cFS just test-cfs
 ## CLI
 
 ```bash
-synapse check <file.syn>
+synapse check <file.syn> [more-roots.syn ...]
 synapse --lang <c|rust> [-o <out-dir>] <file.syn>
 synapse generate --lang <c|rust> [-o <out-dir>] <file.syn>
 ```
 
-- `check` validates the input file, its import graph, and cFS codegen support without writing generated output.
+- `check` validates input roots, their import graphs, and cFS codegen support without writing generated output. Multiple roots are checked together for mission-wide telemetry MID and command MID/CC conflicts.
 - `--lang c` generates a cFS C header (`.h`) that includes `cfe.h`.
 - `--lang rust` generates Rust `#[repr(C)]` bindings (`.rs`) that reference `cfs_sys` header types by default.
 - Without `-o`, generated code is written to stdout.
@@ -192,6 +192,7 @@ Enums need an explicit integer representation when used in generated cFS fields,
 
 See `docs/language.md` for the current language status and `0.1.x` review checklist.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.
+See `docs/mission.md` for the mission-wide validation and registry concept.
 See `docs/roadmap-0.2.md` for planned `0.2.x` language review items.
 
 ## Documentation Comments
