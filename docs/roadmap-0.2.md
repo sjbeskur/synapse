@@ -185,6 +185,7 @@ Direction:
 - Generate the root file plus transitive imports in dependency order through CLI `-o` or library `generate_files` - implemented.
 - Resolve directly imported integer constants in attributes - implemented.
 - Require a direct import for constants used in attributes; transitive-only constant references are rejected - implemented.
+- Add CLI and library validation-only checks for CI/preflight workflows - implemented.
 
 Open questions:
 

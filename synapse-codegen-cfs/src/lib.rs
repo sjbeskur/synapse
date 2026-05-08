@@ -236,6 +236,20 @@ pub fn try_generate_c(file: &SynFile) -> Result<String, CodegenError> {
     try_generate_c_with_constants(file, &ResolvedConstants::new())
 }
 
+/// Validate that a parsed Synapse file is supported by cFS code generation.
+pub fn validate_cfs(file: &SynFile) -> Result<(), CodegenError> {
+    validate_cfs_with_constants(file, &ResolvedConstants::new())
+}
+
+/// Validate cFS code generation support with additional imported constants available.
+pub fn validate_cfs_with_constants(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+) -> Result<(), CodegenError> {
+    let constants = const_context(file, imported_constants);
+    validate_supported(file, &constants)
+}
+
 /// Try to generate a C header with additional imported constants available for attributes.
 pub fn try_generate_c_with_constants(
     file: &SynFile,

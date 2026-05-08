@@ -81,9 +81,12 @@ CFS_ROOT=/path/to/cFS just test-cfs
 ## CLI
 
 ```bash
+synapse check <file.syn>
 synapse --lang <c|rust> [-o <out-dir>] <file.syn>
+synapse generate --lang <c|rust> [-o <out-dir>] <file.syn>
 ```
 
+- `check` validates the input file, its import graph, and cFS codegen support without writing generated output.
 - `--lang c` generates a cFS C header (`.h`) that includes `cfe.h`.
 - `--lang rust` generates Rust `#[repr(C)]` bindings (`.rs`) that reference `cfs_sys` header types by default.
 - Without `-o`, generated code is written to stdout.
@@ -110,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The library facade also exposes `generate_rust_file`, `generate_file`, `generate_files`, `generate_path`, and `generate_str` for custom build flows. Path-based generation validates the import graph rooted at the input file. Use `generate_files` when a build should emit the root file plus its transitive imports.
+The library facade also exposes `check_path`, `check_str`, `generate_rust_file`, `generate_file`, `generate_files`, `generate_path`, and `generate_str` for custom build flows. Path-based generation validates the import graph rooted at the input file. Use `generate_files` when a build should emit the root file plus its transitive imports.
 
 ## Mental Model
 

@@ -21,6 +21,7 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [x] Validate direct imports and qualified type references for path-based generation.
 - [x] Transitive import resolution and dependency graph validation.
 - [x] Imported/scoped constant resolution for attributes, e.g. `@mid(nav_app::NAV_TLM_MID)`.
+- [x] Add validation-only `synapse check` CLI and library API.
 - [x] Add deterministic generated file headers.
 
 ## Rough Edges

@@ -81,6 +81,27 @@ pub fn generate_str(source: &str, lang: Lang) -> Result<String, Error> {
     generate_parsed(&file, lang)
 }
 
+/// Check `.syn` source text for parser and cFS codegen support.
+pub fn check_str(source: &str) -> Result<(), Error> {
+    let file = synapse_parser::ast::parse(source)?;
+    synapse_codegen_cfs::validate_cfs(&file)?;
+    Ok(())
+}
+
+/// Check a `.syn` input path, validating its import graph and cFS codegen support.
+pub fn check_path(input: impl AsRef<Path>) -> Result<(), Error> {
+    let graph = load_import_graph(input.as_ref())?;
+    validate_import_graph(&graph)?;
+    let units_by_path = units_by_path(&graph);
+
+    for unit in &graph.units {
+        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
+        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
+    }
+
+    Ok(())
+}
+
 /// Generate code from a `.syn` input path, validating the import graph rooted at that file.
 pub fn generate_path(input: impl AsRef<Path>, lang: Lang) -> Result<String, Error> {
     let graph = load_import_graph(input.as_ref())?;
@@ -521,6 +542,15 @@ mod tests {
     }
 
     #[test]
+    fn check_str_validates_cfs_codegen_support() {
+        let err = check_str("@mid(0x0801)\ntelemetry Status { error_code?: u32 }").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "optional field `Status.error_code` is not supported by cFS codegen yet"
+        );
+    }
+
+    #[test]
     fn rejects_default_values() {
         let err = generate_str("table Config { exposure_us: u32 = 10000 }", Lang::C).unwrap_err();
         assert_eq!(
@@ -634,6 +664,31 @@ telemetry CameraStatus {
         let out = generate_path(&input, Lang::C).unwrap();
         assert!(out.contains("#include \"std_msgs.h\""));
         assert!(out.contains("std_msgs_Header_t header;"));
+    }
+
+    #[test]
+    fn check_path_validates_imported_codegen_support() {
+        let dir = test_dir("check-validates-imported-codegen-support");
+        fs::write(
+            dir.join("bad.syn"),
+            "namespace bad\nstruct Unsupported { count?: u32 }",
+        )
+        .unwrap();
+        let input = dir.join("root.syn");
+        fs::write(
+            &input,
+            r#"namespace root
+import "bad.syn"
+struct Root { unsupported: bad::Unsupported }
+"#,
+        )
+        .unwrap();
+
+        let err = check_path(&input).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "optional field `Unsupported.count` is not supported by cFS codegen yet"
+        );
     }
 
     #[test]
