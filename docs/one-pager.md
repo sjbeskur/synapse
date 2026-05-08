@@ -89,6 +89,8 @@ The current `0.2.x` work focuses on safety and clarity:
 - Stronger validation for supported cFS ABI features.
 - More examples and canaries for C, C++, Rust, and mission-level checks.
 - Mission-wide registry checks.
+- Machine-readable registry export for downstream databases, ICD tooling, and reports.
+- Static HTML documentation generated from `.syn` files and doc comments.
 - Future mission manifests for repeatable roots and MID range ownership.
 
 The long-term goal is simple: make cFS message contracts easier to define, safer to generate, and harder to accidentally break.

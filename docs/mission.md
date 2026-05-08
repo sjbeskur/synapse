@@ -101,6 +101,8 @@ PacketEntry {
 
 The resolved numeric values are what enable validation. The source strings are what make diagnostics useful to humans.
 
+The same registry could later be emitted as a machine-readable artifact, such as JSON, for tools that want to ingest packet definitions into a database, generate reports, publish ICDs, or build dashboards. That keeps Synapse focused: it produces and validates the message-contract data, while other tools can decide how to store, query, or present it.
+
 ## What It Catches
 
 Duplicate telemetry MIDs:
@@ -189,6 +191,19 @@ command = "0x1880..0x18BF"
 ```
 
 For now, use multi-root `synapse check` as the supported mission validation interface.
+
+## Possible Future Outputs
+
+Once the registry is stable enough to expose, Synapse could provide explicit output commands:
+
+```bash
+synapse registry mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --format json
+synapse docs mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --format html -o site/
+```
+
+The first command would produce a machine-readable packet registry for downstream databases or automation. The second would generate human-readable static documentation from packet IDs, command codes, fields, types, namespaces, imports, and doc comments.
+
+Those outputs stay inside Synapse's intended boundary: define, generate, validate, and report message contracts. Database storage, web hosting, dashboards, and mission operations remain separate tools.
 
 ## Implementation Plan
 
