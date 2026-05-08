@@ -10,6 +10,10 @@ use synapse_parser::ast::{
 
 use crate::{Error, ImportGraph, ParsedUnit, format_mid, imported_constants_for_unit, namespace};
 
+const DOC_PAGE_TEMPLATE: &str = include_str!("templates/docs/page.html");
+const DOC_STYLE: &str = include_str!("templates/docs/style.css");
+const DOC_SEARCH_SCRIPT: &str = include_str!("templates/docs/search.js");
+
 #[derive(Default)]
 struct DocSummary {
     commands: usize,
@@ -26,89 +30,38 @@ pub(crate) fn render_html_docs(
 ) -> Result<String, Error> {
     let summary = doc_summary(graph);
     let nav = doc_nav(graph);
-    let mut out = String::new();
+    let mut summary_html = String::new();
+    render_metric(&mut summary_html, graph.units.len(), "files");
+    render_metric(&mut summary_html, summary.telemetry, "telemetry");
+    render_metric(&mut summary_html, summary.commands, "commands");
+    render_metric(&mut summary_html, summary.structs, "structs");
+    render_metric(&mut summary_html, summary.tables, "tables");
+    render_metric(&mut summary_html, summary.enums, "enums");
+    render_metric(&mut summary_html, summary.constants, "constants");
 
-    out.push_str("<!doctype html>\n<html lang=\"en\">\n<head>\n");
-    out.push_str("<meta charset=\"utf-8\">\n");
-    out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-    out.push_str("<title>Synapse Message Documentation</title>\n");
-    out.push_str("<style>\n");
-    out.push_str(
-        ":root{color-scheme:light;--bg:#f7f8fa;--panel:#fff;--ink:#18202a;--muted:#657287;--line:#d8dee8;--accent:#0f766e;--code:#eef4f3;--mark:#fff4bc;--sidebar:#f0f4f7}\
-         *{box-sizing:border-box}\
-         body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.45}\
-         a{color:#0f766e;text-decoration:none}a:hover{text-decoration:underline}\
-         header{padding:34px 36px 22px;background:#10212b;color:#fff}\
-         header p{max-width:900px;color:#c9d4dd}\
-         .layout{display:grid;grid-template-columns:300px minmax(0,1fr);max-width:1480px;margin:0 auto}\
-         aside{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;background:var(--sidebar);border-right:1px solid var(--line);padding:18px 14px}\
-         main{min-width:0;padding:24px 32px 48px}\
-         h1,h2,h3{line-height:1.15}\
-         h1{margin:0 0 10px;font-size:2.1rem}\
-         h2{margin:32px 0 12px;font-size:1.55rem}\
-         h3{margin:0 0 8px;font-size:1.12rem}\
-         .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:22px;max-width:900px}\
-         .metric{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:10px 12px}\
-         .metric strong{display:block;font-size:1.35rem;color:#fff}\
-         .metric span{font-size:.82rem;color:#c9d4dd;text-transform:uppercase;letter-spacing:.04em}\
-         .sidebar-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:0 0 10px}\
-         .search input{box-sizing:border-box;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;background:#fff;color:var(--ink)}\
-         .search p{margin:6px 0 0;color:var(--muted);font-size:.86rem}\
-         .toc{display:grid;gap:2px;margin-top:18px}\
-         .toc a{display:block;border-radius:6px;padding:6px 8px;font-size:.9rem;color:#24313f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
-         .toc a:hover{background:#fff;text-decoration:none}\
-         .toc .kind{margin-right:6px;padding:1px 6px;font-size:.66rem}\
-         .unit{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:18px 0;padding:20px;box-shadow:0 1px 2px rgba(16,33,43,.04)}\
-         .unit-header{display:flex;gap:12px;justify-content:space-between;align-items:start}\
-         .unit-header h2{margin-top:0}\
-         .item-title{display:flex;gap:12px;justify-content:space-between;align-items:start}\
-         .top-link{font-size:.85rem;color:var(--muted);white-space:nowrap}\
-         .source-link{font-size:.82rem;color:var(--muted);white-space:nowrap}\
-         .meta{color:var(--muted);font-size:.92rem;margin:4px 0 14px}\
-         .items{display:grid;gap:14px}\
-         .item{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fbfcfd}\
-         .item:target{outline:2px solid var(--accent);background:#fff}\
-         .kind{display:inline-block;margin-right:8px;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em}\
-         .doc{color:#344052;margin:8px 0 12px}\
-         table{border-collapse:collapse;width:100%;margin-top:10px;font-size:.93rem}\
-         th,td{border-top:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}\
-         th{color:#526072;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;background:#f3f6f8}\
-         code{background:var(--code);border-radius:4px;padding:1px 5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.92em}\
-         dl{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 12px}\
-         dt{color:var(--muted);font-weight:700}\
-         dd{margin:0}\
-         ul{margin:8px 0 0;padding-left:20px}\
-         .empty{color:var(--muted)}\
-         .hidden{display:none!important}\
-         mark{background:var(--mark);border-radius:3px;padding:0 2px}\
-         @media(max-width:900px){header{padding:30px 20px 20px}.layout{display:block}aside{position:static;height:auto;max-height:48vh;border-right:0;border-bottom:1px solid var(--line)}main{padding:20px 16px 40px}.toc{max-height:260px;overflow:auto}}\n",
-    );
-    out.push_str("</style>\n</head>\n<body>\n");
-    out.push_str("<header>\n");
-    out.push_str("<h1>Synapse Message Documentation</h1>\n");
-    out.push_str("<p>Generated from .syn message contracts. This page documents the validated import closure, packet IDs, command codes, types, fields, and doc comments.</p>\n");
-    out.push_str("<div class=\"summary\">\n");
-    render_metric(&mut out, graph.units.len(), "files");
-    render_metric(&mut out, summary.telemetry, "telemetry");
-    render_metric(&mut out, summary.commands, "commands");
-    render_metric(&mut out, summary.structs, "structs");
-    render_metric(&mut out, summary.tables, "tables");
-    render_metric(&mut out, summary.enums, "enums");
-    render_metric(&mut out, summary.constants, "constants");
-    out.push_str("</div>\n</header>\n<div id=\"top\" class=\"layout\">\n<aside>\n");
-    out.push_str("<p class=\"sidebar-title\">Search</p>\n");
-    out.push_str("<div class=\"search\"><input id=\"doc-search\" type=\"search\" placeholder=\"Search packets, fields, MIDs, CCs...\" aria-label=\"Search documentation\"><p id=\"search-count\">Showing all declarations.</p></div>\n");
-    out.push_str("<p class=\"sidebar-title\" style=\"margin-top:22px\">Contents</p>\n");
-    render_toc(&mut out, &nav);
-    out.push_str("</aside>\n<main>\n");
+    let mut toc_html = String::new();
+    render_toc(&mut toc_html, &nav);
+
+    let mut content_html = String::new();
 
     for unit in &graph.units {
-        render_doc_unit(&mut out, unit, units_by_path)?;
+        render_doc_unit(&mut content_html, unit, units_by_path)?;
     }
 
-    render_search_script(&mut out);
-    out.push_str("</main>\n</div>\n</body>\n</html>\n");
-    Ok(out)
+    Ok(render_page_template(
+        &summary_html,
+        &toc_html,
+        &content_html,
+    ))
+}
+
+fn render_page_template(summary_html: &str, toc_html: &str, content_html: &str) -> String {
+    DOC_PAGE_TEMPLATE
+        .replace("{{style}}", DOC_STYLE)
+        .replace("{{summary}}", summary_html)
+        .replace("{{toc}}", toc_html)
+        .replace("{{content}}", content_html)
+        .replace("{{script}}", DOC_SEARCH_SCRIPT)
 }
 
 fn doc_summary(graph: &ImportGraph) -> DocSummary {
@@ -501,42 +454,6 @@ fn packet_search_text(
         parts.push(field.doc.join(" "));
     }
     parts.join(" ")
-}
-
-fn render_search_script(out: &mut String) {
-    out.push_str(
-        "<script>
-const searchInput = document.getElementById('doc-search');
-const searchCount = document.getElementById('search-count');
-const items = Array.from(document.querySelectorAll('.item'));
-const units = Array.from(document.querySelectorAll('.unit'));
-
-function normalize(value) {
-  return value.toLowerCase().trim();
-}
-
-function applySearch() {
-  const query = normalize(searchInput.value);
-  let shown = 0;
-  for (const item of items) {
-    const haystack = normalize(item.dataset.search || item.textContent);
-    const match = query === '' || haystack.includes(query);
-    item.classList.toggle('hidden', !match);
-    if (match) shown += 1;
-  }
-  for (const unit of units) {
-    const hasVisibleItem = Array.from(unit.querySelectorAll('.item')).some((item) => !item.classList.contains('hidden'));
-    const unitMatch = query !== '' && normalize(unit.dataset.search || '').includes(query);
-    unit.classList.toggle('hidden', query !== '' && !hasVisibleItem && !unitMatch);
-  }
-  searchCount.textContent = query === ''
-    ? 'Showing all declarations.'
-    : `Showing ${shown} matching declaration${shown === 1 ? '' : 's'}.`;
-}
-
-searchInput.addEventListener('input', applySearch);
-</script>\n",
-    );
 }
 
 fn cfs_packet_fact_key(packet: &MessageDef) -> Option<String> {
