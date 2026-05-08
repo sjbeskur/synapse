@@ -202,13 +202,14 @@ synapse doc mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn -o site/
 
 That command generates human-readable static documentation from packet IDs, command codes, fields, types, namespaces, imports, and doc comments.
 
-Once the registry is stable enough to expose, Synapse could also provide an explicit machine-readable output command:
+Synapse also provides machine-readable packet registry output:
 
 ```bash
 synapse registry mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --format json
+synapse registry mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --format csv -o packets.csv
 ```
 
-That command would produce a packet registry for downstream databases or automation.
+That command produces a validated packet registry for downstream databases or automation.
 
 Those outputs stay inside Synapse's intended boundary: define, generate, validate, and report message contracts. Database storage, web hosting, dashboards, and mission operations remain separate tools.
 

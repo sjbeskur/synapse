@@ -19,6 +19,15 @@ pub enum Lang {
     Rust,
 }
 
+/// Machine-readable packet registry output format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistryFormat {
+    /// JSON object with a `packets` array.
+    Json,
+    /// CSV table with one packet per row.
+    Csv,
+}
+
 impl Lang {
     /// File extension used for this generated language.
     pub fn extension(self) -> &'static str {
@@ -172,6 +181,60 @@ where
     let out_path = out_dir.join("index.html");
     fs::write(&out_path, output)?;
     Ok(out_path)
+}
+
+/// Generate a machine-readable packet registry from one or more `.syn` input paths.
+pub fn generate_registry<I, P>(inputs: I, format: RegistryFormat) -> Result<String, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let inputs = inputs
+        .into_iter()
+        .map(|input| input.as_ref().to_path_buf())
+        .collect::<Vec<_>>();
+    if inputs.is_empty() {
+        return Err(Error::Mission(
+            "registry requires at least one input .syn file".to_string(),
+        ));
+    }
+
+    let graph = load_import_graphs(&inputs)?;
+    validate_import_graph(&graph)?;
+    let units_by_path = units_by_path(&graph);
+
+    for unit in &graph.units {
+        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
+        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
+    }
+    validate_mission_registry(&graph, &units_by_path)?;
+
+    let packets = collect_registry_packets(&graph, &units_by_path)?;
+    Ok(match format {
+        RegistryFormat::Json => render_registry_json(&packets),
+        RegistryFormat::Csv => render_registry_csv(&packets),
+    })
+}
+
+/// Generate a machine-readable packet registry and write it to `output`.
+pub fn write_registry<I, P>(
+    inputs: I,
+    output: impl AsRef<Path>,
+    format: RegistryFormat,
+) -> Result<PathBuf, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let registry = generate_registry(inputs, format)?;
+    let output = output.as_ref();
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::write(output, registry)?;
+    Ok(output.to_path_buf())
 }
 
 /// Generate code from a `.syn` input path, validating the import graph rooted at that file.
@@ -524,6 +587,121 @@ fn packet_name(packet: &MissionPacket) -> String {
 
 fn format_mid(mid: u64) -> String {
     format!("0x{mid:04X}")
+}
+
+#[derive(Debug, Clone)]
+struct RegistryPacket {
+    source: PathBuf,
+    namespace: Vec<String>,
+    name: String,
+    kind: synapse_codegen_cfs::CfsPacketKind,
+    mid: u64,
+    cc: Option<u64>,
+}
+
+fn collect_registry_packets(
+    graph: &ImportGraph,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+) -> Result<Vec<RegistryPacket>, Error> {
+    let mut packets = Vec::new();
+    for unit in &graph.units {
+        let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
+        let unit_packets = synapse_codegen_cfs::collect_cfs_packets_with_constants(
+            &unit.file,
+            &imported_constants,
+        )?;
+
+        packets.extend(unit_packets.into_iter().map(|packet| RegistryPacket {
+            source: unit.path.clone(),
+            namespace: packet.namespace,
+            name: packet.name,
+            kind: packet.kind,
+            mid: packet.mid,
+            cc: packet.cc,
+        }));
+    }
+    Ok(packets)
+}
+
+fn render_registry_json(packets: &[RegistryPacket]) -> String {
+    let mut out = String::from("{\n  \"packets\": [\n");
+    for (idx, packet) in packets.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(",\n");
+        }
+        out.push_str("    {\n");
+        out.push_str(&format!(
+            "      \"namespace\": {},\n",
+            json_string(&packet.namespace.join("::"))
+        ));
+        out.push_str(&format!("      \"name\": {},\n", json_string(&packet.name)));
+        out.push_str(&format!(
+            "      \"qualified_name\": {},\n",
+            json_string(&registry_packet_name(packet))
+        ));
+        out.push_str(&format!(
+            "      \"kind\": {},\n",
+            json_string(registry_kind(packet.kind))
+        ));
+        out.push_str(&format!(
+            "      \"source\": {},\n",
+            json_string(&packet.source.display().to_string())
+        ));
+        out.push_str(&format!("      \"mid\": {},\n", packet.mid));
+        out.push_str(&format!(
+            "      \"mid_hex\": {},\n",
+            json_string(&format_mid(packet.mid))
+        ));
+        match packet.cc {
+            Some(cc) => out.push_str(&format!("      \"cc\": {cc}\n")),
+            None => out.push_str("      \"cc\": null\n"),
+        }
+        out.push_str("    }");
+    }
+    out.push_str("\n  ]\n}\n");
+    out
+}
+
+fn render_registry_csv(packets: &[RegistryPacket]) -> String {
+    let mut out = String::from("namespace,name,qualified_name,kind,source,mid,mid_hex,cc\n");
+    for packet in packets {
+        let fields = [
+            packet.namespace.join("::"),
+            packet.name.clone(),
+            registry_packet_name(packet),
+            registry_kind(packet.kind).to_string(),
+            packet.source.display().to_string(),
+            packet.mid.to_string(),
+            format_mid(packet.mid),
+            packet.cc.map(|cc| cc.to_string()).unwrap_or_default(),
+        ];
+        out.push_str(
+            &fields
+                .iter()
+                .map(|field| csv_field(field))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        out.push('\n');
+    }
+    out
+}
+
+fn registry_packet_name(packet: &RegistryPacket) -> String {
+    if packet.namespace.is_empty() {
+        packet.name.clone()
+    } else {
+        let mut segments = packet.namespace.clone();
+        segments.push(packet.name.clone());
+        segments.join("::")
+    }
+}
+
+fn registry_kind(kind: synapse_codegen_cfs::CfsPacketKind) -> &'static str {
+    match kind {
+        synapse_codegen_cfs::CfsPacketKind::Command => "command",
+        synapse_codegen_cfs::CfsPacketKind::Telemetry => "telemetry",
+    }
 }
 
 #[derive(Default)]
@@ -1136,6 +1314,28 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+fn json_string(value: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            ch if ch.is_control() => out.push_str(&format!("\\u{:04X}", ch as u32)),
+            ch => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn csv_field(value: &str) -> String {
+    let escaped = value.replace('"', "\"\"");
+    format!("\"{escaped}\"")
+}
+
 fn escape_attr(value: &str) -> String {
     escape_html(value)
 }
@@ -1621,6 +1821,57 @@ telemetry NavState {
         let out_path = write_docs([&input], &out_dir).unwrap();
         assert_eq!(out_path, out_dir.join("index.html"));
         assert!(fs::read_to_string(out_path).unwrap().contains("status_app"));
+    }
+
+    #[test]
+    fn generate_registry_json_includes_packet_facts() {
+        let dir = test_dir("generate-registry-json");
+        fs::write(
+            dir.join("mission_ids.syn"),
+            "namespace mission_ids\nconst CMD_MID: u16 = 0x1880\nconst SET_MODE_CC: u16 = 2",
+        )
+        .unwrap();
+        let input = dir.join("camera.syn");
+        fs::write(
+            &input,
+            r#"namespace camera_app
+import "mission_ids.syn"
+@mid(mission_ids::CMD_MID)
+@cc(mission_ids::SET_MODE_CC)
+command SetMode {
+    mode: u8
+}
+"#,
+        )
+        .unwrap();
+
+        let json = generate_registry([&input], RegistryFormat::Json).unwrap();
+        assert!(json.contains("\"packets\""));
+        assert!(json.contains("\"namespace\": \"camera_app\""));
+        assert!(json.contains("\"qualified_name\": \"camera_app::SetMode\""));
+        assert!(json.contains("\"kind\": \"command\""));
+        assert!(json.contains("\"mid\": 6272"));
+        assert!(json.contains("\"mid_hex\": \"0x1880\""));
+        assert!(json.contains("\"cc\": 2"));
+    }
+
+    #[test]
+    fn write_registry_csv_writes_packet_rows() {
+        let dir = test_dir("write-registry-csv");
+        let input = dir.join("status.syn");
+        fs::write(
+            &input,
+            "namespace status_app\n@mid(0x0801)\ntelemetry Status { count: u32 }",
+        )
+        .unwrap();
+        let output = dir.join("registry.csv");
+
+        let out_path = write_registry([&input], &output, RegistryFormat::Csv).unwrap();
+        assert_eq!(out_path, output);
+        let csv = fs::read_to_string(out_path).unwrap();
+        assert!(csv.starts_with("namespace,name,qualified_name,kind,source,mid,mid_hex,cc"));
+        assert!(csv.contains("\"status_app\",\"Status\",\"status_app::Status\",\"telemetry\""));
+        assert!(csv.contains("\"2049\",\"0x0801\""));
     }
 
     #[test]

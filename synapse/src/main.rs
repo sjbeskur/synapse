@@ -23,6 +23,8 @@ enum Command {
     Doc(DocArgs),
     /// Generate C headers or Rust bindings.
     Generate(GenerateArgs),
+    /// Emit a machine-readable packet registry from .syn files.
+    Registry(RegistryArgs),
 }
 
 #[derive(ClapArgs)]
@@ -39,6 +41,21 @@ struct DocArgs {
     out_dir: Option<PathBuf>,
 
     /// Input .syn files. Multiple roots are documented together.
+    #[arg(required = true)]
+    files: Vec<PathBuf>,
+}
+
+#[derive(ClapArgs)]
+struct RegistryArgs {
+    /// Registry output format.
+    #[arg(long, value_enum, default_value_t = CliRegistryFormat::Json)]
+    format: CliRegistryFormat,
+
+    /// Write registry output to this file instead of stdout.
+    #[arg(long, short = 'o')]
+    output: Option<PathBuf>,
+
+    /// Input .syn files. Multiple roots are exported together.
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
@@ -70,11 +87,28 @@ enum CliLang {
     Rust,
 }
 
+#[derive(Clone, ValueEnum)]
+enum CliRegistryFormat {
+    /// JSON packet registry.
+    Json,
+    /// CSV packet registry.
+    Csv,
+}
+
 impl From<CliLang> for cfs_synapse::Lang {
     fn from(value: CliLang) -> Self {
         match value {
             CliLang::C => cfs_synapse::Lang::C,
             CliLang::Rust => cfs_synapse::Lang::Rust,
+        }
+    }
+}
+
+impl From<CliRegistryFormat> for cfs_synapse::RegistryFormat {
+    fn from(value: CliRegistryFormat) -> Self {
+        match value {
+            CliRegistryFormat::Json => cfs_synapse::RegistryFormat::Json,
+            CliRegistryFormat::Csv => cfs_synapse::RegistryFormat::Csv,
         }
     }
 }
@@ -85,6 +119,7 @@ fn main() {
         Some(Command::Check(check)) => check_path(check),
         Some(Command::Doc(doc)) => doc_path(doc),
         Some(Command::Generate(generate)) => generate_path(generate),
+        Some(Command::Registry(registry)) => registry_path(registry),
         None => generate_path(args.generate),
     }
 }
@@ -113,6 +148,27 @@ fn doc_path(args: DocArgs) {
                 eprintln!("Error documenting inputs:\n{e}");
                 process::exit(1);
             });
+            eprintln!("wrote {}", out_path.display());
+        }
+    }
+}
+
+fn registry_path(args: RegistryArgs) {
+    let format = cfs_synapse::RegistryFormat::from(args.format);
+    match args.output {
+        None => {
+            let output = cfs_synapse::generate_registry(&args.files, format).unwrap_or_else(|e| {
+                eprintln!("Error exporting registry:\n{e}");
+                process::exit(1);
+            });
+            print!("{output}");
+        }
+        Some(path) => {
+            let out_path =
+                cfs_synapse::write_registry(&args.files, &path, format).unwrap_or_else(|e| {
+                    eprintln!("Error exporting registry:\n{e}");
+                    process::exit(1);
+                });
             eprintln!("wrote {}", out_path.display());
         }
     }

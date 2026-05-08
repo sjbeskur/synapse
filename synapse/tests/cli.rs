@@ -237,3 +237,61 @@ telemetry Status {
     assert!(html.contains("Status packet."));
     assert!(html.contains("0x0801"));
 }
+
+#[test]
+fn registry_writes_json_and_csv() {
+    let dir = test_dir("registry-output");
+    let input = dir.join("status.syn");
+    fs::write(
+        &input,
+        "namespace status_app\n@mid(0x0801)\ntelemetry Status { count: u32 }",
+    )
+    .unwrap();
+    let json_path = dir.join("registry.json");
+    let csv_path = dir.join("registry.csv");
+
+    let json_output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("registry")
+        .arg("--format")
+        .arg("json")
+        .arg("-o")
+        .arg(&json_path)
+        .arg(&input)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        json_output.status.success(),
+        "synapse failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&json_output.stdout),
+        String::from_utf8_lossy(&json_output.stderr)
+    );
+
+    let csv_output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("registry")
+        .arg("--format")
+        .arg("csv")
+        .arg("-o")
+        .arg(&csv_path)
+        .arg(&input)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        csv_output.status.success(),
+        "synapse failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csv_output.stdout),
+        String::from_utf8_lossy(&csv_output.stderr)
+    );
+
+    assert!(
+        fs::read_to_string(json_path)
+            .unwrap()
+            .contains("\"mid_hex\": \"0x0801\"")
+    );
+    assert!(
+        fs::read_to_string(csv_path)
+            .unwrap()
+            .contains("\"status_app::Status\"")
+    );
+}
