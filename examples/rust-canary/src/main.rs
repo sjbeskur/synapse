@@ -13,7 +13,10 @@ pub mod cfs_sys {
 }
 
 pub mod mission_ids {
-    include!(concat!(env!("OUT_DIR"), "/synapse/mission_ids.rs"));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/generated/mission_ids.rs"
+    ));
 }
 
 pub mod demo_msgs {
@@ -21,7 +24,10 @@ pub mod demo_msgs {
 
     use crate::cfs_sys;
 
-    include!(concat!(env!("OUT_DIR"), "/synapse/demo_msgs.rs"));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/generated/demo_msgs.rs"
+    ));
 }
 
 fn sensor_id(name: &str) -> demo_msgs::SensorId {

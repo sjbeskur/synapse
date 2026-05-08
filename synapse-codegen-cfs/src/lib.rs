@@ -203,10 +203,7 @@ impl fmt::Display for CodegenError {
                 packet,
                 mid,
                 expected,
-            } => write!(
-                f,
-                "packet `{packet}` has MID `{mid}`, expected {expected}"
-            ),
+            } => write!(f, "packet `{packet}` has MID `{mid}`, expected {expected}"),
             CodegenError::DynamicArrayUnsupported {
                 container,
                 field,

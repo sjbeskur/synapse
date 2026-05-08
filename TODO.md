@@ -23,6 +23,22 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [x] Imported/scoped constant resolution for attributes, e.g. `@mid(nav_app::NAV_TLM_MID)`.
 - [x] Add deterministic generated file headers.
 
+## Rough Edges
+
+### Codegen output quality
+
+- [ ] Emit `///` doc comments into generated C (`/* ... */`) and Rust (`/// ...`) output. The AST already captures them; they just aren't wired to the emitters.
+- [ ] Add schema hash or generation timestamp to the file banner so stale headers are detectable.
+- [ ] Normalize hex formatting: C MID defines use `0x{:04X}U`, but Rust uses `0x{:04X}` for MID and `0x{:X}` for CC. Pick one convention per target.
+
+### CFE_Span_t for arrays
+
+- [ ] `CFE_Span_t` is emitted for dynamic/bounded non-string arrays as a workaround. Validate that the target cFS tree provides this type, or document the requirement explicitly. Longer-term: design a proper ABI representation.
+
+### Grammar vs codegen surface mismatch
+
+- [ ] The grammar accepts optional fields, field defaults, and dynamic arrays that codegen immediately rejects. Consider either gating the grammar to match what codegen supports, or surfacing a clearer "not yet implemented" distinction in parser-level docs/errors.
+
 ## Explore MID Ownership and Validation
 
 Message IDs need a clearer ownership model before the DSL grows much further.

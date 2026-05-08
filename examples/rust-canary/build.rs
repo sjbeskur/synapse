@@ -3,7 +3,7 @@ use std::{env, path::PathBuf};
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let input = manifest_dir.join("syn/demo_msgs.syn");
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join("synapse");
+    let out_dir = manifest_dir.join("generated");
 
     println!("cargo:rerun-if-changed=syn/mission_ids.syn");
     println!("cargo:rerun-if-changed=syn/demo_msgs.syn");

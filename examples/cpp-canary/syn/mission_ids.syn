@@ -1,0 +1,10 @@
+namespace mission_ids
+
+/// Telemetry MID for the demo sensor status packet.
+const DEMO_SENSOR_STATUS_TLM_MID: u16 = 0x0801
+
+/// Command MID shared by demo sensor commands.
+const DEMO_SENSOR_CMD_MID: u16 = 0x1880
+
+/// Command code for SetSensorMode.
+const DEMO_SET_SENSOR_MODE_CC: u16 = 4
