@@ -197,3 +197,43 @@ fn mission_demo_validates_multiple_roots() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn doc_writes_static_html() {
+    let dir = test_dir("doc-html");
+    let input = dir.join("status.syn");
+    fs::write(
+        &input,
+        r#"namespace status_app
+/// Status packet.
+@mid(0x0801)
+telemetry Status {
+    /// Counter value.
+    count: u32
+}
+"#,
+    )
+    .unwrap();
+    let out_dir = dir.join("site");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("doc")
+        .arg("-o")
+        .arg(&out_dir)
+        .arg(&input)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        output.status.success(),
+        "synapse failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+    assert!(html.contains("Synapse Message Documentation"));
+    assert!(html.contains("status_app"));
+    assert!(html.contains("Status packet."));
+    assert!(html.contains("0x0801"));
+}

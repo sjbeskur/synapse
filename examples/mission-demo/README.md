@@ -47,3 +47,13 @@ Expected result:
 duplicate command MID/CC pair `0x1881`/`1`
 ```
 
+## Generate HTML Documentation
+
+```bash
+cargo run -p cfs-synapse -- doc -o /tmp/synapse-mission-docs \
+  examples/mission-demo/syn/nav_app.syn \
+  examples/mission-demo/syn/camera_app.syn \
+  examples/mission-demo/syn/payload_app.syn
+```
+
+That writes `/tmp/synapse-mission-docs/index.html` with packet IDs, command codes, fields, types, and doc comments.

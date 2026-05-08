@@ -194,14 +194,21 @@ For now, use multi-root `synapse check` as the supported mission validation inte
 
 ## Possible Future Outputs
 
-Once the registry is stable enough to expose, Synapse could provide explicit output commands:
+Synapse now provides static HTML documentation from the same validated roots:
+
+```bash
+synapse doc mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn -o site/
+```
+
+That command generates human-readable static documentation from packet IDs, command codes, fields, types, namespaces, imports, and doc comments.
+
+Once the registry is stable enough to expose, Synapse could also provide an explicit machine-readable output command:
 
 ```bash
 synapse registry mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --format json
-synapse docs mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --format html -o site/
 ```
 
-The first command would produce a machine-readable packet registry for downstream databases or automation. The second would generate human-readable static documentation from packet IDs, command codes, fields, types, namespaces, imports, and doc comments.
+That command would produce a packet registry for downstream databases or automation.
 
 Those outputs stay inside Synapse's intended boundary: define, generate, validate, and report message contracts. Database storage, web hosting, dashboards, and mission operations remain separate tools.
 

@@ -208,7 +208,7 @@ Open questions:
 
 ## Registry And Documentation Outputs
 
-Status: Proposed
+Status: Accepted
 
 Direction:
 
@@ -216,20 +216,20 @@ Direction:
 - Use the mission registry as an exportable artifact, not as a replacement for `.syn` definitions.
 - Add a machine-readable registry output, likely JSON first, for database ingestion, ICD tooling, dashboards, and other external systems.
 - Consider CSV as an export/report format for packet tables, while avoiding CSV as the primary message-definition format.
-- Add generated documentation output, likely static HTML first, built from namespaces, imports, packet IDs, command codes, fields, types, and doc comments.
+- Add generated documentation output built from namespaces, imports, packet IDs, command codes, fields, types, and doc comments - implemented as single-file static HTML through `synapse doc`.
 - Keep these outputs in Synapse's boundary: generate and validate message-contract artifacts; do not become the database, web service, ground system, or mission configuration platform.
 
 Possible CLI shape:
 
 ```bash
 synapse registry root_a.syn root_b.syn --format json
-synapse docs root_a.syn root_b.syn --format html -o site/
+synapse doc root_a.syn root_b.syn -o site/
 ```
 
 Open questions:
 
 - Should registry output be a separate subcommand, or an output mode of `check`?
-- Should generated HTML be single-file, multi-page, or both?
+- Should generated HTML eventually support multi-page output in addition to the single-file `index.html`?
 - Should JSON include fully resolved numeric values only, or both resolved values and original symbolic expressions?
 - Should the exported registry include all imported packets, only explicit roots, or both with ownership metadata?
 - What schema stability promise should registry JSON make across minor releases?

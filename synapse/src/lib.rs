@@ -5,7 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use synapse_parser::ast::{BaseType, FieldDef, Item, SynFile};
+use synapse_parser::ast::{
+    ArraySuffix, BaseType, FieldDef, Item, Literal, MessageDef, PacketKind, PrimitiveType,
+    StructDef, SynFile, TypeExpr,
+};
 
 /// Target language for Synapse code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,6 +129,49 @@ where
     validate_mission_registry(&graph, &units_by_path)?;
 
     Ok(())
+}
+
+/// Generate static HTML documentation from one or more `.syn` input paths.
+pub fn generate_docs<I, P>(inputs: I) -> Result<String, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let inputs = inputs
+        .into_iter()
+        .map(|input| input.as_ref().to_path_buf())
+        .collect::<Vec<_>>();
+    if inputs.is_empty() {
+        return Err(Error::Mission(
+            "doc requires at least one input .syn file".to_string(),
+        ));
+    }
+
+    let graph = load_import_graphs(&inputs)?;
+    validate_import_graph(&graph)?;
+    let units_by_path = units_by_path(&graph);
+
+    for unit in &graph.units {
+        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
+        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
+    }
+    validate_mission_registry(&graph, &units_by_path)?;
+
+    render_html_docs(&graph, &units_by_path)
+}
+
+/// Generate static HTML documentation and write it to `out_dir/index.html`.
+pub fn write_docs<I, P>(inputs: I, out_dir: impl AsRef<Path>) -> Result<PathBuf, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let output = generate_docs(inputs)?;
+    let out_dir = out_dir.as_ref();
+    fs::create_dir_all(out_dir)?;
+    let out_path = out_dir.join("index.html");
+    fs::write(&out_path, output)?;
+    Ok(out_path)
 }
 
 /// Generate code from a `.syn` input path, validating the import graph rooted at that file.
@@ -478,6 +524,386 @@ fn packet_name(packet: &MissionPacket) -> String {
 
 fn format_mid(mid: u64) -> String {
     format!("0x{mid:04X}")
+}
+
+#[derive(Default)]
+struct DocSummary {
+    commands: usize,
+    telemetry: usize,
+    structs: usize,
+    tables: usize,
+    enums: usize,
+    constants: usize,
+}
+
+fn render_html_docs(
+    graph: &ImportGraph,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+) -> Result<String, Error> {
+    let summary = doc_summary(graph);
+    let mut out = String::new();
+
+    out.push_str("<!doctype html>\n<html lang=\"en\">\n<head>\n");
+    out.push_str("<meta charset=\"utf-8\">\n");
+    out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+    out.push_str("<title>Synapse Message Documentation</title>\n");
+    out.push_str("<style>\n");
+    out.push_str(
+        ":root{color-scheme:light;--bg:#f7f8fa;--panel:#fff;--ink:#18202a;--muted:#657287;--line:#d8dee8;--accent:#0f766e;--code:#eef4f3}\
+         body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.45}\
+         header{padding:40px 32px 24px;background:#10212b;color:#fff}\
+         header p{max-width:900px;color:#c9d4dd}\
+         main{max-width:1120px;margin:0 auto;padding:24px 24px 48px}\
+         h1,h2,h3{line-height:1.15}\
+         h1{margin:0 0 10px;font-size:2.1rem}\
+         h2{margin:32px 0 12px;font-size:1.55rem}\
+         h3{margin:0 0 8px;font-size:1.12rem}\
+         .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:22px;max-width:900px}\
+         .metric{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:10px 12px}\
+         .metric strong{display:block;font-size:1.35rem;color:#fff}\
+         .metric span{font-size:.82rem;color:#c9d4dd;text-transform:uppercase;letter-spacing:.04em}\
+         .unit{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:18px 0;padding:20px;box-shadow:0 1px 2px rgba(16,33,43,.04)}\
+         .meta{color:var(--muted);font-size:.92rem;margin:4px 0 14px}\
+         .items{display:grid;gap:14px}\
+         .item{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fbfcfd}\
+         .kind{display:inline-block;margin-right:8px;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em}\
+         .doc{color:#344052;margin:8px 0 12px}\
+         table{border-collapse:collapse;width:100%;margin-top:10px;font-size:.93rem}\
+         th,td{border-top:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}\
+         th{color:#526072;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;background:#f3f6f8}\
+         code{background:var(--code);border-radius:4px;padding:1px 5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.92em}\
+         dl{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 12px}\
+         dt{color:var(--muted);font-weight:700}\
+         dd{margin:0}\
+         ul{margin:8px 0 0;padding-left:20px}\
+         .empty{color:var(--muted)}\n",
+    );
+    out.push_str("</style>\n</head>\n<body>\n");
+    out.push_str("<header>\n");
+    out.push_str("<h1>Synapse Message Documentation</h1>\n");
+    out.push_str("<p>Generated from .syn message contracts. This page documents the validated import closure, packet IDs, command codes, types, fields, and doc comments.</p>\n");
+    out.push_str("<div class=\"summary\">\n");
+    render_metric(&mut out, graph.units.len(), "files");
+    render_metric(&mut out, summary.telemetry, "telemetry");
+    render_metric(&mut out, summary.commands, "commands");
+    render_metric(&mut out, summary.structs, "structs");
+    render_metric(&mut out, summary.tables, "tables");
+    render_metric(&mut out, summary.enums, "enums");
+    render_metric(&mut out, summary.constants, "constants");
+    out.push_str("</div>\n</header>\n<main>\n");
+
+    for unit in &graph.units {
+        render_doc_unit(&mut out, unit, units_by_path)?;
+    }
+
+    out.push_str("</main>\n</body>\n</html>\n");
+    Ok(out)
+}
+
+fn doc_summary(graph: &ImportGraph) -> DocSummary {
+    let mut summary = DocSummary::default();
+    for unit in &graph.units {
+        for item in &unit.file.items {
+            match item {
+                Item::Command(_) => summary.commands += 1,
+                Item::Telemetry(_) => summary.telemetry += 1,
+                Item::Struct(_) => summary.structs += 1,
+                Item::Table(_) => summary.tables += 1,
+                Item::Enum(_) => summary.enums += 1,
+                Item::Const(_) => summary.constants += 1,
+                Item::Namespace(_) | Item::Import(_) | Item::Message(_) => {}
+            }
+        }
+    }
+    summary
+}
+
+fn render_metric(out: &mut String, value: usize, label: &str) {
+    out.push_str(&format!(
+        "<div class=\"metric\"><strong>{value}</strong><span>{}</span></div>\n",
+        escape_html(label)
+    ));
+}
+
+fn render_doc_unit(
+    out: &mut String,
+    unit: &ParsedUnit,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+) -> Result<(), Error> {
+    let namespace = namespace(&unit.file);
+    let namespace_label = if namespace.is_empty() {
+        "(none)".to_string()
+    } else {
+        namespace.join("::")
+    };
+    let packet_facts = packet_facts_for_unit(unit, units_by_path)?;
+
+    out.push_str("<section class=\"unit\">\n");
+    out.push_str(&format!("<h2>{}</h2>\n", escape_html(&namespace_label)));
+    out.push_str(&format!(
+        "<p class=\"meta\">source: <code>{}</code></p>\n",
+        escape_html(&unit.path.display().to_string())
+    ));
+    render_imports(out, &unit.file);
+    out.push_str("<div class=\"items\">\n");
+
+    let mut rendered = 0usize;
+    for item in &unit.file.items {
+        match item {
+            Item::Const(c) => {
+                rendered += 1;
+                out.push_str("<article class=\"item\">\n");
+                out.push_str(&format!(
+                    "<h3><span class=\"kind\">const</span>{}</h3>\n",
+                    escape_html(&c.name)
+                ));
+                render_doc_lines_html(out, &c.doc);
+                out.push_str(&format!(
+                    "<dl><dt>Type</dt><dd><code>{}</code></dd><dt>Value</dt><dd><code>{}</code></dd></dl>\n",
+                    escape_html(&type_expr_display(&c.ty)),
+                    escape_html(&literal_display(&c.value))
+                ));
+                out.push_str("</article>\n");
+            }
+            Item::Enum(e) => {
+                rendered += 1;
+                out.push_str("<article class=\"item\">\n");
+                out.push_str(&format!(
+                    "<h3><span class=\"kind\">enum</span>{}</h3>\n",
+                    escape_html(&e.name)
+                ));
+                render_doc_lines_html(out, &e.doc);
+                if let Some(repr) = e.repr {
+                    out.push_str(&format!(
+                        "<dl><dt>Representation</dt><dd><code>{}</code></dd></dl>\n",
+                        escape_html(primitive_name(repr))
+                    ));
+                }
+                out.push_str("<table><thead><tr><th>Variant</th><th>Value</th><th>Description</th></tr></thead><tbody>\n");
+                for variant in &e.variants {
+                    let value = variant
+                        .value
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "-".to_string());
+                    out.push_str(&format!(
+                        "<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td></tr>\n",
+                        escape_html(&variant.name),
+                        escape_html(&value),
+                        escape_html(&variant.doc.join(" "))
+                    ));
+                }
+                out.push_str("</tbody></table>\n</article>\n");
+            }
+            Item::Struct(s) => {
+                rendered += 1;
+                render_struct_doc(out, "struct", s);
+            }
+            Item::Table(s) => {
+                rendered += 1;
+                render_struct_doc(out, "table", s);
+            }
+            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
+                rendered += 1;
+                render_packet_doc(out, m, &packet_facts);
+            }
+            Item::Namespace(_) | Item::Import(_) => {}
+        }
+    }
+
+    if rendered == 0 {
+        out.push_str("<p class=\"empty\">No documented declarations.</p>\n");
+    }
+    out.push_str("</div>\n</section>\n");
+    Ok(())
+}
+
+fn packet_facts_for_unit(
+    unit: &ParsedUnit,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+) -> Result<HashMap<String, synapse_codegen_cfs::CfsPacket>, Error> {
+    let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
+    let packets =
+        synapse_codegen_cfs::collect_cfs_packets_with_constants(&unit.file, &imported_constants)?;
+    Ok(packets
+        .into_iter()
+        .map(|packet| (packet_fact_key(&packet.name, packet.kind), packet))
+        .collect())
+}
+
+fn render_imports(out: &mut String, file: &SynFile) {
+    let imports = file
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Import(import) => Some(import.path.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if imports.is_empty() {
+        return;
+    }
+
+    out.push_str("<p class=\"meta\">imports:</p>\n<ul>\n");
+    for import in imports {
+        out.push_str(&format!("<li><code>{}</code></li>\n", escape_html(import)));
+    }
+    out.push_str("</ul>\n");
+}
+
+fn render_struct_doc(out: &mut String, kind: &str, s: &StructDef) {
+    out.push_str("<article class=\"item\">\n");
+    out.push_str(&format!(
+        "<h3><span class=\"kind\">{}</span>{}</h3>\n",
+        escape_html(kind),
+        escape_html(&s.name)
+    ));
+    render_doc_lines_html(out, &s.doc);
+    render_fields(out, &s.fields);
+    out.push_str("</article>\n");
+}
+
+fn render_packet_doc(
+    out: &mut String,
+    packet: &MessageDef,
+    packet_facts: &HashMap<String, synapse_codegen_cfs::CfsPacket>,
+) {
+    let kind = packet_kind_label(packet.kind);
+    out.push_str("<article class=\"item\">\n");
+    out.push_str(&format!(
+        "<h3><span class=\"kind\">{}</span>{}</h3>\n",
+        escape_html(kind),
+        escape_html(&packet.name)
+    ));
+    render_doc_lines_html(out, &packet.doc);
+    if let Some(fact_key) = cfs_packet_fact_key(packet) {
+        if let Some(packet) = packet_facts.get(&fact_key) {
+            out.push_str(&format!(
+                "<dl><dt>MID</dt><dd><code>{}</code></dd>",
+                escape_html(&format_mid(packet.mid))
+            ));
+            if let Some(cc) = packet.cc {
+                out.push_str(&format!("<dt>CC</dt><dd><code>{cc}</code></dd>"));
+            }
+            out.push_str("</dl>\n");
+        }
+    }
+    render_fields(out, &packet.fields);
+    out.push_str("</article>\n");
+}
+
+fn render_fields(out: &mut String, fields: &[FieldDef]) {
+    if fields.is_empty() {
+        out.push_str("<p class=\"empty\">No fields.</p>\n");
+        return;
+    }
+
+    out.push_str(
+        "<table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>\n",
+    );
+    for field in fields {
+        out.push_str(&format!(
+            "<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td></tr>\n",
+            escape_html(&field.name),
+            escape_html(&type_expr_display(&field.ty)),
+            escape_html(&field.doc.join(" "))
+        ));
+    }
+    out.push_str("</tbody></table>\n");
+}
+
+fn render_doc_lines_html(out: &mut String, doc: &[String]) {
+    if doc.is_empty() {
+        return;
+    }
+    out.push_str("<p class=\"doc\">");
+    for (idx, line) in doc.iter().enumerate() {
+        if idx > 0 {
+            out.push_str("<br>");
+        }
+        out.push_str(&escape_html(line));
+    }
+    out.push_str("</p>\n");
+}
+
+fn cfs_packet_fact_key(packet: &MessageDef) -> Option<String> {
+    let kind = match packet.kind {
+        PacketKind::Command => synapse_codegen_cfs::CfsPacketKind::Command,
+        PacketKind::Telemetry => synapse_codegen_cfs::CfsPacketKind::Telemetry,
+        PacketKind::Message => return None,
+    };
+    Some(packet_fact_key(&packet.name, kind))
+}
+
+fn packet_fact_key(name: &str, kind: synapse_codegen_cfs::CfsPacketKind) -> String {
+    let kind = match kind {
+        synapse_codegen_cfs::CfsPacketKind::Command => "command",
+        synapse_codegen_cfs::CfsPacketKind::Telemetry => "telemetry",
+    };
+    format!("{kind}:{name}")
+}
+
+fn packet_kind_label(kind: PacketKind) -> &'static str {
+    match kind {
+        PacketKind::Command => "command",
+        PacketKind::Telemetry => "telemetry",
+        PacketKind::Message => "message",
+    }
+}
+
+fn type_expr_display(ty: &TypeExpr) -> String {
+    let mut out = base_type_display(&ty.base);
+    match &ty.array {
+        None => {}
+        Some(ArraySuffix::Dynamic) => out.push_str("[]"),
+        Some(ArraySuffix::Fixed(n)) => out.push_str(&format!("[{n}]")),
+        Some(ArraySuffix::Bounded(n)) => out.push_str(&format!("[<={n}]")),
+    }
+    out
+}
+
+fn base_type_display(base: &BaseType) -> String {
+    match base {
+        BaseType::Primitive(p) => primitive_name(*p).to_string(),
+        BaseType::String => "string".to_string(),
+        BaseType::Ref(segments) => segments.join("::"),
+    }
+}
+
+fn primitive_name(p: PrimitiveType) -> &'static str {
+    match p {
+        PrimitiveType::F32 => "f32",
+        PrimitiveType::F64 => "f64",
+        PrimitiveType::I8 => "i8",
+        PrimitiveType::I16 => "i16",
+        PrimitiveType::I32 => "i32",
+        PrimitiveType::I64 => "i64",
+        PrimitiveType::U8 => "u8",
+        PrimitiveType::U16 => "u16",
+        PrimitiveType::U32 => "u32",
+        PrimitiveType::U64 => "u64",
+        PrimitiveType::Bool => "bool",
+        PrimitiveType::Bytes => "bytes",
+    }
+}
+
+fn literal_display(lit: &Literal) -> String {
+    match lit {
+        Literal::Float(f) => f.to_string(),
+        Literal::Int(n) => n.to_string(),
+        Literal::Hex(n) => format!("0x{n:X}"),
+        Literal::Bool(b) => b.to_string(),
+        Literal::Str(s) => format!("\"{s}\""),
+        Literal::Ident(segments) => segments.join("::"),
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn output_path_for(input: &Path, out_dir: &Path, lang: Lang) -> Result<PathBuf, Error> {
@@ -870,6 +1296,59 @@ struct Root { unsupported: bad::Unsupported }
         .unwrap();
 
         check_paths([&camera, &radio]).unwrap();
+    }
+
+    #[test]
+    fn generate_docs_includes_packet_ids_fields_and_docs() {
+        let dir = test_dir("generate-docs");
+        fs::write(
+            dir.join("mission_ids.syn"),
+            "namespace mission_ids\nconst NAV_STATE_MID: u16 = 0x0801",
+        )
+        .unwrap();
+        let input = dir.join("nav.syn");
+        fs::write(
+            &input,
+            r#"namespace nav_app
+import "mission_ids.syn"
+/// Navigation mode.
+enum u8 NavMode {
+    /// Tracking target attitude.
+    Track = 1
+}
+/// Navigation state estimate.
+@mid(mission_ids::NAV_STATE_MID)
+telemetry NavState {
+    /// Current mode.
+    mode: NavMode
+}
+"#,
+        )
+        .unwrap();
+
+        let html = generate_docs([&input]).unwrap();
+        assert!(html.contains("Synapse Message Documentation"));
+        assert!(html.contains("nav_app"));
+        assert!(html.contains("NavState"));
+        assert!(html.contains("0x0801"));
+        assert!(html.contains("Current mode."));
+        assert!(html.contains("NavMode"));
+    }
+
+    #[test]
+    fn write_docs_writes_index_html() {
+        let dir = test_dir("write-docs");
+        let input = dir.join("status.syn");
+        fs::write(
+            &input,
+            "namespace status_app\n@mid(0x0801)\ntelemetry Status { count: u32 }",
+        )
+        .unwrap();
+
+        let out_dir = dir.join("site");
+        let out_path = write_docs([&input], &out_dir).unwrap();
+        assert_eq!(out_path, out_dir.join("index.html"));
+        assert!(fs::read_to_string(out_path).unwrap().contains("status_app"));
     }
 
     #[test]

@@ -19,6 +19,8 @@ struct Args {
 enum Command {
     /// Validate a .syn file and its imports without writing generated output.
     Check(CheckArgs),
+    /// Generate static HTML documentation from .syn files.
+    Doc(DocArgs),
     /// Generate C headers or Rust bindings.
     Generate(GenerateArgs),
 }
@@ -26,6 +28,17 @@ enum Command {
 #[derive(ClapArgs)]
 struct CheckArgs {
     /// Input .syn files. Multiple roots are checked together for mission-wide packet ID conflicts.
+    #[arg(required = true)]
+    files: Vec<PathBuf>,
+}
+
+#[derive(ClapArgs)]
+struct DocArgs {
+    /// Write documentation to this directory instead of stdout.
+    #[arg(long, short = 'o')]
+    out_dir: Option<PathBuf>,
+
+    /// Input .syn files. Multiple roots are documented together.
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
@@ -70,6 +83,7 @@ fn main() {
     let args = Args::parse();
     match args.command {
         Some(Command::Check(check)) => check_path(check),
+        Some(Command::Doc(doc)) => doc_path(doc),
         Some(Command::Generate(generate)) => generate_path(generate),
         None => generate_path(args.generate),
     }
@@ -82,6 +96,25 @@ fn check_path(args: CheckArgs) {
     });
     for file in args.files {
         eprintln!("checked {}", file.display());
+    }
+}
+
+fn doc_path(args: DocArgs) {
+    match args.out_dir {
+        None => {
+            let output = cfs_synapse::generate_docs(&args.files).unwrap_or_else(|e| {
+                eprintln!("Error documenting inputs:\n{e}");
+                process::exit(1);
+            });
+            print!("{output}");
+        }
+        Some(dir) => {
+            let out_path = cfs_synapse::write_docs(&args.files, &dir).unwrap_or_else(|e| {
+                eprintln!("Error documenting inputs:\n{e}");
+                process::exit(1);
+            });
+            eprintln!("wrote {}", out_path.display());
+        }
     }
 }
 

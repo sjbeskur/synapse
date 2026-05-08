@@ -28,6 +28,7 @@ Synapse makes these contracts explicit, generated, and checkable.
 - Resolves local and imported constants used in `@mid(...)` and `@cc(...)`.
 - Checks multiple app roots together with `synapse check`.
 - Detects duplicate telemetry MIDs and duplicate command MID/CC pairs across a mission-visible set.
+- Generates static HTML documentation with `synapse doc`.
 
 ## The Game-Changing Feature
 
@@ -90,7 +91,7 @@ The current `0.2.x` work focuses on safety and clarity:
 - More examples and canaries for C, C++, Rust, and mission-level checks.
 - Mission-wide registry checks.
 - Machine-readable registry export for downstream databases, ICD tooling, and reports.
-- Static HTML documentation generated from `.syn` files and doc comments.
+- Richer documentation output generated from `.syn` files and doc comments.
 - Future mission manifests for repeatable roots and MID range ownership.
 
 The long-term goal is simple: make cFS message contracts easier to define, safer to generate, and harder to accidentally break.
