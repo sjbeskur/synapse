@@ -10,6 +10,19 @@ The most useful examples live in `synapse-integration-tests/syn`. These files ar
 - [`camera_msgs.syn`](../synapse-integration-tests/syn/camera_msgs.syn): camera control examples, including commands, telemetry, nested structs, bounded strings, fixed arrays, doc comments, and a calibration table.
 - [`frame_descriptor.syn`](../synapse-integration-tests/syn/frame_descriptor.syn) and [`postcard.syn`](../synapse-integration-tests/syn/postcard.syn): small cross-file import example using acquisition metadata, a represented pixel-format enum, a namespaced type reference, and a large fixed image buffer.
 
+## Mission Validation Example
+
+[`examples/mission-demo`](../examples/mission-demo) demonstrates mission-wide validation with multiple cFS app roots:
+
+```bash
+cargo run -p cfs-synapse -- check \
+  examples/mission-demo/syn/nav_app.syn \
+  examples/mission-demo/syn/camera_app.syn \
+  examples/mission-demo/syn/payload_app.syn
+```
+
+It also includes intentional conflict roots that show duplicate telemetry MID and duplicate command MID/CC diagnostics.
+
 ## Generated Output
 
 Checked-in generated geometry output is available in:
@@ -20,6 +33,7 @@ Checked-in generated geometry output is available in:
 Regenerate those files with:
 
 ```bash
+cargo run -p cfs-synapse -- check synapse-integration-tests/syn/geometry_msgs.syn
 cargo run -p cfs-synapse -- --lang c -o generated synapse-integration-tests/syn/geometry_msgs.syn
 cargo run -p cfs-synapse -- --lang rust -o generated synapse-integration-tests/syn/geometry_msgs.syn
 ```

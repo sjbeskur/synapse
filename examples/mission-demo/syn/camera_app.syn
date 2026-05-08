@@ -1,0 +1,49 @@
+namespace camera_app
+
+import "mission_ids.syn"
+
+/// Camera operating mode.
+enum u8 CameraMode {
+    /// Camera is powered but idle.
+    Standby = 0
+    /// Camera is exposing frames.
+    Imaging = 1
+    /// Camera is in a conservative thermal mode.
+    Safe = 2
+}
+
+/// Exposure configuration for the detector.
+struct ExposureConfig {
+    /// Exposure duration in microseconds.
+    exposure_us: u32
+    /// Analog gain in decibels.
+    gain_db: f32
+}
+
+/// Camera health and frame counter.
+@mid(demo_mission_ids::CAMERA_STATUS_TLM_MID)
+telemetry CameraStatus {
+    /// Current camera mode.
+    mode: CameraMode
+    /// Frames captured since boot.
+    frames_captured: u32
+    /// Detector temperature.
+    detector_temp_c: f32
+}
+
+/// Request a new camera mode.
+@mid(demo_mission_ids::CAMERA_CMD_MID)
+@cc(demo_mission_ids::CAMERA_SET_MODE_CC)
+command SetCameraMode {
+    /// Requested mode.
+    mode: CameraMode
+}
+
+/// Request a new exposure configuration.
+@mid(demo_mission_ids::CAMERA_CMD_MID)
+@cc(demo_mission_ids::CAMERA_SET_EXPOSURE_CC)
+command SetExposure {
+    /// New exposure settings.
+    config: ExposureConfig
+}
+

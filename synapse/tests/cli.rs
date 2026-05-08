@@ -84,3 +84,116 @@ fn single_file_writes_only_root_file() {
     assert!(!out_dir.join("frame_descriptor.h").exists());
     assert!(out_dir.join("postcard.h").exists());
 }
+
+#[test]
+fn check_validates_import_closure_without_output() {
+    let dir = test_dir("check");
+    let root = write_import_fixture(&dir);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg(&root)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        output.status.success(),
+        "synapse failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("checked"));
+    assert!(!dir.join("postcard.h").exists());
+    assert!(!dir.join("frame_descriptor.h").exists());
+}
+
+#[test]
+fn check_rejects_unsupported_imported_file() {
+    let dir = test_dir("check-import-error");
+    fs::write(
+        dir.join("bad.syn"),
+        "namespace bad\nstruct Unsupported { count?: u32 }",
+    )
+    .unwrap();
+    let root = dir.join("root.syn");
+    fs::write(
+        &root,
+        r#"namespace root
+import "bad.syn"
+struct Root { unsupported: bad::Unsupported }
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg(&root)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        !output.status.success(),
+        "synapse unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("optional field"));
+}
+
+#[test]
+fn check_accepts_multiple_roots_and_rejects_mission_mid_conflicts() {
+    let dir = test_dir("check-multiple-roots");
+    let nav = dir.join("nav.syn");
+    fs::write(
+        &nav,
+        "namespace nav_app\n@mid(0x0801)\ntelemetry NavState { x: f64 }",
+    )
+    .unwrap();
+    let payload = dir.join("payload.syn");
+    fs::write(
+        &payload,
+        "namespace payload_app\n@mid(0x0801)\ntelemetry PayloadStatus { temp: f32 }",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg(&nav)
+        .arg(&payload)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        !output.status.success(),
+        "synapse unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("duplicate telemetry MID `0x0801`"));
+    assert!(stderr.contains("nav_app::NavState"));
+    assert!(stderr.contains("payload_app::PayloadStatus"));
+}
+
+#[test]
+fn mission_demo_validates_multiple_roots() {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg(repo.join("examples/mission-demo/syn/nav_app.syn"))
+        .arg(repo.join("examples/mission-demo/syn/camera_app.syn"))
+        .arg(repo.join("examples/mission-demo/syn/payload_app.syn"))
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        output.status.success(),
+        "synapse failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

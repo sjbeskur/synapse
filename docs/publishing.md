@@ -39,6 +39,7 @@ Build the release binary:
 ```bash
 cargo build --release -p cfs-synapse --bin synapse
 ./target/release/synapse --help
+./target/release/synapse check synapse-integration-tests/syn/geometry_msgs.syn
 ./target/release/synapse --lang c -o /tmp/synapse-check synapse-integration-tests/syn/geometry_msgs.syn
 ./target/release/synapse --lang rust -o /tmp/synapse-check synapse-integration-tests/syn/geometry_msgs.syn
 ```

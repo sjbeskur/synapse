@@ -21,6 +21,30 @@ pub const PREAMBLE: &str = "\
 /// Resolved integer constants visible to a file from imported namespaces.
 pub type ResolvedConstants = HashMap<Vec<String>, u64>;
 
+/// cFS packet category used by mission-wide validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CfsPacketKind {
+    /// cFS Software Bus command packet.
+    Command,
+    /// cFS Software Bus telemetry packet.
+    Telemetry,
+}
+
+/// Resolved cFS packet facts for registry-style validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CfsPacket {
+    /// Namespace segments declared by the source file, if any.
+    pub namespace: Vec<String>,
+    /// Packet declaration name.
+    pub name: String,
+    /// Packet kind.
+    pub kind: CfsPacketKind,
+    /// Resolved numeric message ID.
+    pub mid: u64,
+    /// Resolved numeric command code for command packets.
+    pub cc: Option<u64>,
+}
+
 /// Options for Rust cFS binding generation.
 pub struct RustOptions<'a> {
     /// Module path prefix for the cFS header types.
@@ -236,6 +260,32 @@ pub fn try_generate_c(file: &SynFile) -> Result<String, CodegenError> {
     try_generate_c_with_constants(file, &ResolvedConstants::new())
 }
 
+/// Validate that a parsed Synapse file is supported by cFS code generation.
+pub fn validate_cfs(file: &SynFile) -> Result<(), CodegenError> {
+    validate_cfs_with_constants(file, &ResolvedConstants::new())
+}
+
+/// Validate cFS code generation support with additional imported constants available.
+pub fn validate_cfs_with_constants(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+) -> Result<(), CodegenError> {
+    let constants = const_context(file, imported_constants);
+    validate_supported(file, &constants)
+}
+
+/// Collect resolved cFS packet facts with additional imported constants available.
+///
+/// This validates packet-level attributes needed to resolve MIDs and command
+/// codes, but it does not validate fields or other cFS ABI constraints.
+pub fn collect_cfs_packets_with_constants(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+) -> Result<Vec<CfsPacket>, CodegenError> {
+    let constants = const_context(file, imported_constants);
+    collect_cfs_packets(file, &constants)
+}
+
 /// Try to generate a C header with additional imported constants available for attributes.
 pub fn try_generate_c_with_constants(
     file: &SynFile,
@@ -312,6 +362,73 @@ fn validate_supported(file: &SynFile, constants: &ConstContext<'_>) -> Result<()
         }
     }
     Ok(())
+}
+
+fn collect_cfs_packets(
+    file: &SynFile,
+    constants: &ConstContext<'_>,
+) -> Result<Vec<CfsPacket>, CodegenError> {
+    let namespace = file_namespace(file);
+    let mut packets = Vec::new();
+
+    for item in &file.items {
+        let packet = match item {
+            Item::Command(m) | Item::Telemetry(m) => m,
+            Item::Namespace(_)
+            | Item::Import(_)
+            | Item::Const(_)
+            | Item::Enum(_)
+            | Item::Struct(_)
+            | Item::Table(_)
+            | Item::Message(_) => continue,
+        };
+
+        let Some(mid) = find_mid_attr(&packet.attrs) else {
+            return Err(CodegenError::MissingMid {
+                packet: packet.name.clone(),
+            });
+        };
+        let mid_value = resolve_literal_to_u64(mid, constants).ok_or_else(|| {
+            CodegenError::MessageIdValueUnsupported {
+                packet: packet.name.clone(),
+            }
+        })?;
+        validate_mid_range(packet, mid_value, mid, constants)?;
+
+        let cc = find_cc_attr(&packet.attrs);
+        let (kind, cc_value) = match packet.kind {
+            PacketKind::Command => {
+                let cc = cc.ok_or_else(|| CodegenError::MissingCommandCode {
+                    packet: packet.name.clone(),
+                })?;
+                let cc_value = resolve_literal_to_u64(cc, constants).ok_or_else(|| {
+                    CodegenError::CommandCodeValueUnsupported {
+                        packet: packet.name.clone(),
+                    }
+                })?;
+                (CfsPacketKind::Command, Some(cc_value))
+            }
+            PacketKind::Telemetry => {
+                if cc.is_some() {
+                    return Err(CodegenError::CommandCodeUnsupported {
+                        item: packet.name.clone(),
+                    });
+                }
+                (CfsPacketKind::Telemetry, None)
+            }
+            PacketKind::Message => continue,
+        };
+
+        packets.push(CfsPacket {
+            namespace: namespace.clone(),
+            name: packet.name.clone(),
+            kind,
+            mid: mid_value,
+            cc: cc_value,
+        });
+    }
+
+    Ok(packets)
 }
 
 struct ConstContext<'a> {
@@ -694,7 +811,7 @@ fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
 
 fn emit_const(out: &mut String, c: &ConstDecl) {
     emit_doc_lines(out, &c.doc);
-    let val = literal_str(&c.value);
+    let val = typed_literal_str(&c.value, &c.ty);
     out.push_str(&format!("#define {}  {}\n\n", c.name, val));
 }
 
@@ -709,7 +826,7 @@ fn emit_enum(out: &mut String, e: &EnumDef, namespace: &[String]) {
     emit_doc_lines(out, &e.doc);
     out.push_str(&format!("typedef {} {};\n", primitive_str(repr), type_name));
 
-    let enum_prefix = to_screaming_snake(&e.name);
+    let enum_prefix = c_enum_variant_prefix(&e.name, namespace);
     for variant in &e.variants {
         emit_doc_lines(out, &variant.doc);
         let value = variant
@@ -817,7 +934,7 @@ fn emit_rust_items(
 
 fn emit_rust_const(out: &mut String, c: &ConstDecl) {
     emit_doc_lines(out, &c.doc);
-    let val = rust_literal_str(&c.value);
+    let val = rust_typed_literal_str(&c.value, &c.ty);
     let ty = rust_field_type_str(&c.ty);
     out.push_str(&format!("pub const {}: {} = {};\n\n", c.name, ty, val));
 }
@@ -975,6 +1092,25 @@ fn rust_literal_str(lit: &Literal) -> String {
         }
         Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
+    }
+}
+
+fn rust_typed_literal_str(lit: &Literal, ty: &TypeExpr) -> String {
+    match (lit, &ty.base) {
+        (Literal::Hex(n), BaseType::Primitive(p)) => rust_hex_str(*n, *p),
+        _ => rust_literal_str(lit),
+    }
+}
+
+fn rust_hex_str(value: u64, ty: PrimitiveType) -> String {
+    match ty {
+        PrimitiveType::U8 | PrimitiveType::I8 => format!("0x{:02X}", value),
+        PrimitiveType::U16 | PrimitiveType::I16 => format!("0x{:04X}", value),
+        PrimitiveType::U32 | PrimitiveType::I32 => format!("0x{:08X}", value),
+        PrimitiveType::U64 | PrimitiveType::I64 => format!("0x{:016X}", value),
+        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Bytes => {
+            format!("0x{:X}", value)
+        }
     }
 }
 
@@ -1154,6 +1290,25 @@ fn literal_str(lit: &Literal) -> String {
     }
 }
 
+fn typed_literal_str(lit: &Literal, ty: &TypeExpr) -> String {
+    match (lit, &ty.base) {
+        (Literal::Hex(n), BaseType::Primitive(p)) => c_hex_str(*n, *p),
+        _ => literal_str(lit),
+    }
+}
+
+fn c_hex_str(value: u64, ty: PrimitiveType) -> String {
+    match ty {
+        PrimitiveType::U8 | PrimitiveType::I8 => format!("0x{:02X}U", value),
+        PrimitiveType::U16 | PrimitiveType::I16 => format!("0x{:04X}U", value),
+        PrimitiveType::U32 | PrimitiveType::I32 => format!("0x{:08X}U", value),
+        PrimitiveType::U64 | PrimitiveType::I64 => format!("0x{:016X}U", value),
+        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Bytes => {
+            format!("0x{:X}U", value)
+        }
+    }
+}
+
 fn non_fixed_type_str(ty: &TypeExpr, namespace: &[String]) -> String {
     if ty.base == BaseType::String {
         return match &ty.array {
@@ -1208,6 +1363,16 @@ fn c_decl_type_name(name: &str, namespace: &[String]) -> String {
     let mut segments = namespace.to_vec();
     segments.push(name.to_string());
     format!("{}_t", segments.join("_"))
+}
+
+fn c_enum_variant_prefix(name: &str, namespace: &[String]) -> String {
+    let mut segments = namespace.to_vec();
+    segments.push(name.to_string());
+    segments
+        .iter()
+        .map(|segment| to_screaming_snake(segment))
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 fn c_ref_type_name(segments: &[String], namespace: &[String]) -> String {
@@ -1657,6 +1822,21 @@ mod tests {
     }
 
     #[test]
+    fn c_namespaces_represented_enum_variant_constants() {
+        let file = parse(
+            "namespace camera_app\nenum u8 CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
+        )
+        .unwrap();
+        let out = try_generate_c(&file).unwrap();
+        assert!(out.contains("typedef uint8_t camera_app_CameraMode_t;"));
+        assert!(out.contains("#define CAMERA_APP_CAMERA_MODE_IDLE  ((camera_app_CameraMode_t)0)"));
+        assert!(
+            out.contains("#define CAMERA_APP_CAMERA_MODE_STREAMING  ((camera_app_CameraMode_t)1)")
+        );
+        assert!(out.contains("    camera_app_CameraMode_t mode;"));
+    }
+
+    #[test]
     fn c_rejects_represented_enum_missing_value() {
         let file = parse("enum u8 CameraMode { Idle Streaming = 1 }").unwrap();
         let err = try_generate_c(&file).unwrap_err();
@@ -1736,7 +1916,7 @@ mod tests {
     #[test]
     fn const_emits_define() {
         let out = codegen("const NAV_TLM_MID: u16 = 0x0801");
-        assert!(out.contains("#define NAV_TLM_MID  0x801U"));
+        assert!(out.contains("#define NAV_TLM_MID  0x0801U"));
     }
 
     #[test]
@@ -2026,9 +2206,12 @@ mod tests {
 
     #[test]
     fn rust_const_uses_declared_type() {
-        let out = rust_codegen("const PI: f64 = 3.14\nconst ENABLED: bool = true");
+        let out = rust_codegen(
+            "const PI: f64 = 3.14\nconst ENABLED: bool = true\nconst NAV_TLM_MID: u16 = 0x0801",
+        );
         assert!(out.contains("pub const PI: f64 = 3.14;"));
         assert!(out.contains("pub const ENABLED: bool = true;"));
+        assert!(out.contains("pub const NAV_TLM_MID: u16 = 0x0801;"));
     }
 
     #[test]
@@ -2068,5 +2251,9 @@ mod tests {
         assert_eq!(to_screaming_snake("NavTelemetry"), "NAV_TELEMETRY");
         assert_eq!(to_screaming_snake("PoseStamped"), "POSE_STAMPED");
         assert_eq!(to_screaming_snake("Foo"), "FOO");
+        assert_eq!(
+            c_enum_variant_prefix("SensorMode", &["demo_msgs".to_string()]),
+            "DEMO_MSGS_SENSOR_MODE"
+        );
     }
 }

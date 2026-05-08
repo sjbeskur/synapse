@@ -1,0 +1,33 @@
+namespace payload_app
+
+import "mission_ids.syn"
+
+/// Payload acquisition state.
+enum u8 PayloadState {
+    /// Payload is idle.
+    Idle = 0
+    /// Payload is collecting science data.
+    Collecting = 1
+    /// Payload is paused for downlink or storage pressure.
+    Paused = 2
+}
+
+/// Payload status packet.
+@mid(demo_mission_ids::PAYLOAD_STATUS_TLM_MID)
+telemetry PayloadStatus {
+    /// Current payload state.
+    state: PayloadState
+    /// Science packets produced since boot.
+    science_packets: u32
+    /// Storage utilization percentage.
+    storage_percent: u8
+}
+
+/// Start payload acquisition.
+@mid(demo_mission_ids::PAYLOAD_CMD_MID)
+@cc(demo_mission_ids::PAYLOAD_START_ACQUISITION_CC)
+command StartAcquisition {
+    /// Acquisition duration in seconds.
+    duration_s: u32
+}
+

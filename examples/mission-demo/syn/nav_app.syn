@@ -1,0 +1,43 @@
+namespace nav_app
+
+import "mission_ids.syn"
+
+/// Current navigation operating mode.
+enum u8 NavMode {
+    /// Initializing sensors and filters.
+    Init = 0
+    /// Slewing toward a target attitude.
+    Slew = 1
+    /// Tracking a target attitude.
+    Track = 2
+}
+
+/// Three-axis vector in the navigation frame.
+struct Vec3 {
+    /// X component.
+    x: f32
+    /// Y component.
+    y: f32
+    /// Z component.
+    z: f32
+}
+
+/// Navigation state estimate.
+@mid(demo_mission_ids::NAV_STATE_TLM_MID)
+telemetry NavState {
+    /// Estimated position.
+    position: Vec3
+    /// Estimated velocity.
+    velocity: Vec3
+    /// Current navigation mode.
+    mode: NavMode
+}
+
+/// Request a new navigation mode.
+@mid(demo_mission_ids::NAV_CMD_MID)
+@cc(demo_mission_ids::NAV_SET_MODE_CC)
+command SetNavMode {
+    /// Requested mode.
+    mode: NavMode
+}
+

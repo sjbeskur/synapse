@@ -61,7 +61,7 @@ enum u8 CameraMode {
 }
 ```
 
-Represented enums generate fixed-width integer aliases and named constants. The representation must be an integer primitive: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, or `u64`. Every variant in a represented enum must have an explicit value, and values must fit the selected representation.
+Represented enums generate fixed-width integer aliases and named constants. In C, variant macros include namespace ownership when the file has a namespace, for example `CAMERA_APP_CAMERA_MODE_STANDBY`. The representation must be an integer primitive: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, or `u64`. Every variant in a represented enum must have an explicit value, and values must fit the selected representation.
 
 Unrepresented enums still parse, but cFS codegen rejects them when used as field types because they do not define an ABI width.
 
