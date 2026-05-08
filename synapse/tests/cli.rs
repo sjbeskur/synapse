@@ -174,3 +174,26 @@ fn check_accepts_multiple_roots_and_rejects_mission_mid_conflicts() {
     assert!(stderr.contains("nav_app::NavState"));
     assert!(stderr.contains("payload_app::PayloadStatus"));
 }
+
+#[test]
+fn mission_demo_validates_multiple_roots() {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg(repo.join("examples/mission-demo/syn/nav_app.syn"))
+        .arg(repo.join("examples/mission-demo/syn/camera_app.syn"))
+        .arg(repo.join("examples/mission-demo/syn/payload_app.syn"))
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        output.status.success(),
+        "synapse failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

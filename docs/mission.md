@@ -149,21 +149,23 @@ Mission-wide validation makes a set of apps safe together.
 
 That is the game-changing part for a cFS-focused message utility. It moves Synapse toward the role ROS 2 message packages play in a robot system: a central contract for messages, IDs, namespaces, and generated language bindings.
 
-## Possible User Interfaces
+## User Interface
 
-The smallest first version extends `check` to accept multiple roots:
+The implemented `0.2.x` interface extends `check` to accept multiple roots:
 
 ```bash
 synapse check mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn mission/radio/radio_msgs.syn
 ```
 
-A later version could add a mission manifest:
+## Proposed Future Manifest
+
+The following TOML shape is not implemented. It is a design candidate for a later mission manifest once Synapse supports range ownership and repeatable mission configuration:
 
 ```bash
 synapse mission check mission.synapse.toml
 ```
 
-Example manifest shape:
+Possible manifest shape:
 
 ```toml
 [mission]
@@ -186,7 +188,7 @@ telemetry = "0x0880..0x08BF"
 command = "0x1880..0x18BF"
 ```
 
-The multi-root command is the first implemented step. The manifest is useful once range ownership and repeatable mission configuration are ready.
+For now, use multi-root `synapse check` as the supported mission validation interface.
 
 ## Implementation Plan
 

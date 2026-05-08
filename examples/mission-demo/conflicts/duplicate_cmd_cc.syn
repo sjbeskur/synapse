@@ -1,0 +1,12 @@
+namespace radio_conflict
+
+import "../syn/mission_ids.syn"
+
+/// Intentionally reuses camera_app::SetCameraMode MID/CC.
+@mid(demo_mission_ids::CAMERA_CMD_MID)
+@cc(demo_mission_ids::CAMERA_SET_MODE_CC)
+command SetRadioMode {
+    /// Requested radio mode.
+    mode: u8
+}
+
