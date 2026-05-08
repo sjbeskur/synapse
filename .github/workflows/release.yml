@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   archive:
-    name: Build ${{ matrix.artifact }}
+    name: Build ${{ matrix.archive }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -21,14 +21,14 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: synapse-linux-x86_64
             archive: synapse-linux-x86_64.tar.gz
+            bin: synapse
           - os: macos-13
-            artifact: synapse-macos-x86_64
             archive: synapse-macos-x86_64.tar.gz
+            bin: synapse
           - os: windows-latest
-            artifact: synapse-windows-x86_64.exe
             archive: synapse-windows-x86_64.zip
+            bin: synapse.exe
 
     steps:
       - name: Checkout
@@ -44,16 +44,16 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
-          cp target/release/synapse "dist/${{ matrix.artifact }}"
-          tar -C dist -czf "dist/${{ matrix.archive }}" "${{ matrix.artifact }}"
+          cp target/release/synapse dist/synapse
+          tar -C dist -czf "dist/${{ matrix.archive }}" synapse
 
       - name: Package Windows binary
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/synapse.exe "dist/${{ matrix.artifact }}"
-          Compress-Archive -Path "dist/${{ matrix.artifact }}" -DestinationPath "dist/${{ matrix.archive }}"
+          Copy-Item target/release/synapse.exe dist/synapse.exe
+          Compress-Archive -Path dist/synapse.exe -DestinationPath "dist/${{ matrix.archive }}"
 
       - name: Upload release archive
         uses: softprops/action-gh-release@v2
