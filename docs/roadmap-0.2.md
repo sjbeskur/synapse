@@ -100,10 +100,10 @@ Direction:
 - Allow commands to share a literal MID when literal command codes differ.
 - Validate command/telemetry MID bit patterns when the MID is a literal - implemented as a cFS codegen error.
 - Resolve local integer constants used in `@mid(...)` for range and duplicate validation - implemented.
+- Resolve directly imported integer constants used in `@mid(...)` for range and duplicate validation - implemented.
 
 Open questions:
 
-- How should validation work for imported symbolic MIDs such as `@mid(nav_app::NAV_TLM_MID)`?
 - Should validation be per-file for `0.2.x` and mission-wide later?
 
 ## Command Codes
@@ -186,7 +186,8 @@ Direction:
 - Reject unqualified references to imported types with a namespace-qualified suggestion - implemented.
 - Load and validate transitive import graphs - implemented.
 - Generate the root file plus transitive imports in dependency order through CLI `-o` or library `generate_files` - implemented.
-- Keep imported constant resolution deferred.
+- Resolve directly imported integer constants in attributes - implemented.
+- Require a direct import for constants used in attributes; transitive-only constant references are rejected - implemented.
 
 Open questions:
 

@@ -1,0 +1,42 @@
+namespace demo_msgs
+
+import "mission_ids.syn"
+
+/// Demo sensor operating mode encoded as one byte.
+enum u8 SensorMode {
+    /// Powered but idle.
+    Standby = 0
+    /// Producing science samples.
+    Science = 1
+    /// Entered a conservative safe mode.
+    Safe = 2
+}
+
+/// Stable identifier for one demo sensor.
+struct SensorId {
+    /// Mission-defined sensor name.
+    name: string[<=16]
+}
+
+/// Request a new operating mode for one sensor.
+@mid(mission_ids::SENSOR_CMD_MID)
+@cc(mission_ids::SET_SENSOR_MODE_CC)
+command SetSensorMode {
+    /// Sensor to configure.
+    sensor: SensorId
+    /// Requested mode.
+    mode: SensorMode
+}
+
+/// Current sensor status.
+@mid(mission_ids::SENSOR_STATUS_MID)
+telemetry SensorStatus {
+    /// Sensor that produced this status.
+    sensor: SensorId
+    /// Current mode.
+    mode: SensorMode
+    /// Number of samples produced since boot.
+    sample_count: u32
+    /// Current board temperature.
+    temperature_c: f32
+}

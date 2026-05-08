@@ -16,10 +16,11 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [x] Reject duplicate telemetry literal MIDs and command literal MID/CC pairs.
 - [x] Validate literal MID command/telemetry bit patterns.
 - [x] Emit command-code constants for commands.
-- [ ] Enum ABI representation for C and Rust.
+- [x] Enum ABI representation for C and Rust.
 - [x] Document bounded string storage and null-termination semantics.
 - [x] Validate direct imports and qualified type references for path-based generation.
-- [ ] Transitive import resolution and dependency graph validation.
+- [x] Transitive import resolution and dependency graph validation.
+- [x] Imported/scoped constant resolution for attributes, e.g. `@mid(nav_app::NAV_TLM_MID)`.
 - [x] Add deterministic generated file headers.
 
 ## Explore MID Ownership and Validation

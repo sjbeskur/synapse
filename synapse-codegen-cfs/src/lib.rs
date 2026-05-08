@@ -18,6 +18,9 @@ pub const PREAMBLE: &str = "\
 
 ";
 
+/// Resolved integer constants visible to a file from imported namespaces.
+pub type ResolvedConstants = HashMap<Vec<String>, u64>;
+
 /// Options for Rust cFS binding generation.
 pub struct RustOptions<'a> {
     /// Module path prefix for the cFS header types.
@@ -72,6 +75,8 @@ pub enum CodegenError {
     MissingMid { packet: String },
     /// Message IDs are only meaningful for cFS command and telemetry packets.
     MessageIdUnsupported { item: String },
+    /// Message IDs must resolve to non-negative integers for cFS codegen.
+    MessageIdValueUnsupported { packet: String },
     /// cFS command packets require an explicit command code.
     MissingCommandCode { packet: String },
     /// Command codes are only meaningful for cFS command packets.
@@ -162,6 +167,10 @@ impl fmt::Display for CodegenError {
                 f,
                 "`@mid(...)` is only supported on command and telemetry packets, found on `{item}`"
             ),
+            CodegenError::MessageIdValueUnsupported { packet } => write!(
+                f,
+                "packet `{packet}` has unresolved or non-integer `@mid(...)`; cFS codegen requires an integer, hex, local integer constant, or imported integer constant message ID"
+            ),
             CodegenError::MissingCommandCode { packet } => {
                 write!(f, "command `{packet}` is missing required `@cc(...)`")
             }
@@ -227,10 +236,19 @@ pub fn generate_c(file: &SynFile) -> String {
 
 /// Try to generate a NASA cFS C header (`*_msg.h` + MID `#define`s`) from a parsed Synapse file.
 pub fn try_generate_c(file: &SynFile) -> Result<String, CodegenError> {
-    validate_supported(file)?;
+    try_generate_c_with_constants(file, &ResolvedConstants::new())
+}
+
+/// Try to generate a C header with additional imported constants available for attributes.
+pub fn try_generate_c_with_constants(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+) -> Result<String, CodegenError> {
+    let constants = const_context(file, imported_constants);
+    validate_supported(file, &constants)?;
     let mut out = String::from(PREAMBLE);
     emit_c_imports(file, &mut out);
-    emit_items(file, &mut out);
+    emit_items(file, &mut out, &constants);
     Ok(out)
 }
 
@@ -245,18 +263,36 @@ pub fn generate_rust(file: &SynFile, opts: &RustOptions) -> String {
 
 /// Try to generate `#[repr(C)]` Rust structs compatible with NASA cFS bindings.
 pub fn try_generate_rust(file: &SynFile, opts: &RustOptions) -> Result<String, CodegenError> {
-    validate_supported(file)?;
+    try_generate_rust_with_constants(file, opts, &ResolvedConstants::new())
+}
+
+/// Try to generate Rust bindings with additional imported constants available for attributes.
+pub fn try_generate_rust_with_constants(
+    file: &SynFile,
+    opts: &RustOptions,
+    imported_constants: &ResolvedConstants,
+) -> Result<String, CodegenError> {
+    let constants = const_context(file, imported_constants);
+    validate_supported(file, &constants)?;
     let mut out = format!("// {GENERATED_BANNER}\n\n");
     emit_rust_imports(file, &mut out);
-    emit_rust_items(file, opts, &mut out);
+    emit_rust_items(file, opts, &mut out, &constants);
     Ok(out)
+}
+
+/// Resolve this file's integer constants, including aliases to visible imported constants.
+pub fn resolve_integer_constants(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+) -> ResolvedConstants {
+    let constants = const_context(file, imported_constants);
+    constants.resolved_local_constants()
 }
 
 // ── Item emission ─────────────────────────────────────────────────────────────
 
-fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
+fn validate_supported(file: &SynFile, constants: &ConstContext<'_>) -> Result<(), CodegenError> {
     let enum_defs = enum_defs(file);
-    let const_defs = const_defs(file);
     let mut telemetry_mids = HashMap::new();
     let mut command_codes = HashMap::new();
     for item in &file.items {
@@ -266,7 +302,7 @@ fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
                 validate_fields(&s.name, &s.fields, &enum_defs)?
             }
             Item::Command(m) | Item::Telemetry(m) => {
-                validate_packet(m, &const_defs, &mut telemetry_mids, &mut command_codes)?;
+                validate_packet(m, constants, &mut telemetry_mids, &mut command_codes)?;
                 validate_fields(&m.name, &m.fields, &enum_defs)?
             }
             Item::Message(m) => {
@@ -281,20 +317,46 @@ fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
     Ok(())
 }
 
-fn const_defs(file: &SynFile) -> HashMap<Vec<String>, &ConstDecl> {
+struct ConstContext<'a> {
+    local_defs: HashMap<Vec<String>, &'a ConstDecl>,
+    imported_values: &'a ResolvedConstants,
+}
+
+fn const_context<'a>(
+    file: &'a SynFile,
+    imported_values: &'a ResolvedConstants,
+) -> ConstContext<'a> {
     let namespace = file_namespace(file);
-    let mut defs = HashMap::new();
+    let mut local_defs = HashMap::new();
     for item in &file.items {
         if let Item::Const(c) = item {
-            defs.insert(vec![c.name.clone()], c);
+            local_defs.insert(vec![c.name.clone()], c);
             if !namespace.is_empty() {
                 let mut qualified = namespace.clone();
                 qualified.push(c.name.clone());
-                defs.insert(qualified, c);
+                local_defs.insert(qualified, c);
             }
         }
     }
-    defs
+    ConstContext {
+        local_defs,
+        imported_values,
+    }
+}
+
+impl ConstContext<'_> {
+    fn resolved_local_constants(&self) -> ResolvedConstants {
+        self.local_defs
+            .keys()
+            .filter_map(|segments| {
+                resolve_ident_to_u64(segments, self).map(|value| (segments.clone(), value))
+            })
+            .collect()
+    }
+
+    fn is_local_bare_ident(&self, segments: &[String]) -> bool {
+        segments.len() == 1 && self.local_defs.contains_key(segments)
+    }
 }
 
 fn file_namespace(file: &SynFile) -> Vec<String> {
@@ -365,7 +427,7 @@ fn enum_repr_range(repr: PrimitiveType) -> Option<(i64, i64)> {
 
 fn validate_packet(
     packet: &MessageDef,
-    const_defs: &HashMap<Vec<String>, &ConstDecl>,
+    constants: &ConstContext<'_>,
     telemetry_mids: &mut HashMap<u64, String>,
     command_codes: &mut HashMap<(u64, u64), String>,
 ) -> Result<(), CodegenError> {
@@ -391,7 +453,7 @@ fn validate_packet(
     }
     let cc_value = if packet.kind == PacketKind::Command {
         let cc = cc.expect("command code was checked above");
-        Some(resolve_literal_to_u64(cc, const_defs).ok_or_else(|| {
+        Some(resolve_literal_to_u64(cc, constants).ok_or_else(|| {
             CodegenError::CommandCodeValueUnsupported {
                 packet: packet.name.clone(),
             }
@@ -400,34 +462,37 @@ fn validate_packet(
         None
     };
 
-    if let Some(value) = resolve_literal_to_u64(mid, const_defs) {
-        validate_mid_range(packet, value, mid)?;
-        match packet.kind {
-            PacketKind::Command => {
-                let cc = cc.expect("command code was checked above");
-                let cc_value = cc_value.expect("command code value was checked above");
-                if let Some(first_packet) =
-                    command_codes.insert((value, cc_value), packet.name.clone())
-                {
-                    return Err(CodegenError::DuplicateCommandCode {
-                        mid: literal_mid_str(mid),
-                        cc: literal_cc_str(cc),
-                        first_packet,
-                        second_packet: packet.name.clone(),
-                    });
-                }
-            }
-            PacketKind::Telemetry => {
-                if let Some(first_packet) = telemetry_mids.insert(value, packet.name.clone()) {
-                    return Err(CodegenError::DuplicateMid {
-                        mid: literal_mid_str(mid),
-                        first_packet,
-                        second_packet: packet.name.clone(),
-                    });
-                }
-            }
-            PacketKind::Message => {}
+    let value = resolve_literal_to_u64(mid, constants).ok_or_else(|| {
+        CodegenError::MessageIdValueUnsupported {
+            packet: packet.name.clone(),
         }
+    })?;
+
+    validate_mid_range(packet, value, mid, constants)?;
+    match packet.kind {
+        PacketKind::Command => {
+            let cc = cc.expect("command code was checked above");
+            let cc_value = cc_value.expect("command code value was checked above");
+            if let Some(first_packet) = command_codes.insert((value, cc_value), packet.name.clone())
+            {
+                return Err(CodegenError::DuplicateCommandCode {
+                    mid: literal_mid_str(mid, constants),
+                    cc: literal_cc_str(cc, constants),
+                    first_packet,
+                    second_packet: packet.name.clone(),
+                });
+            }
+        }
+        PacketKind::Telemetry => {
+            if let Some(first_packet) = telemetry_mids.insert(value, packet.name.clone()) {
+                return Err(CodegenError::DuplicateMid {
+                    mid: literal_mid_str(mid, constants),
+                    first_packet,
+                    second_packet: packet.name.clone(),
+                });
+            }
+        }
+        PacketKind::Message => {}
     }
 
     Ok(())
@@ -447,7 +512,12 @@ fn validate_plain_item_attrs(item_name: &str, attrs: &[Attribute]) -> Result<(),
     Ok(())
 }
 
-fn validate_mid_range(packet: &MessageDef, value: u64, mid: &Literal) -> Result<(), CodegenError> {
+fn validate_mid_range(
+    packet: &MessageDef,
+    value: u64,
+    mid: &Literal,
+    constants: &ConstContext<'_>,
+) -> Result<(), CodegenError> {
     let command_bit_set = (value & 0x1000) != 0;
     let expected = match packet.kind {
         PacketKind::Command if !command_bit_set => Some("command MID with bit 0x1000 set"),
@@ -458,7 +528,7 @@ fn validate_mid_range(packet: &MessageDef, value: u64, mid: &Literal) -> Result<
     if let Some(expected) = expected {
         return Err(CodegenError::MidRangeMismatch {
             packet: packet.name.clone(),
-            mid: literal_mid_str(mid),
+            mid: literal_mid_str(mid, constants),
             expected,
         });
     }
@@ -554,7 +624,7 @@ fn emit_rust_imports(file: &SynFile, out: &mut String) {
     }
 }
 
-fn emit_items(file: &SynFile, out: &mut String) {
+fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
     // First pass: emit #define MID lines for Software Bus packets with @mid
     let mut has_mids = false;
     for item in &file.items {
@@ -565,7 +635,7 @@ fn emit_items(file: &SynFile, out: &mut String) {
                     has_mids = true;
                 }
                 let define_name = to_screaming_snake(&m.name);
-                let mid_str = literal_mid_str(mid);
+                let mid_str = literal_mid_str(mid, constants);
                 out.push_str(&format!("#define {}_MID  {}\n", define_name, mid_str));
             }
         }
@@ -583,7 +653,7 @@ fn emit_items(file: &SynFile, out: &mut String) {
                     has_ccs = true;
                 }
                 let define_name = to_screaming_snake(&m.name);
-                let cc_str = literal_cc_str(cc);
+                let cc_str = literal_cc_str(cc, constants);
                 out.push_str(&format!("#define {}_CC   {}\n", define_name, cc_str));
             }
         }
@@ -691,7 +761,12 @@ fn emit_message(out: &mut String, m: &MessageDef, namespace: &[String]) {
 
 // ── Rust emission ─────────────────────────────────────────────────────────────
 
-fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
+fn emit_rust_items(
+    file: &SynFile,
+    opts: &RustOptions,
+    out: &mut String,
+    constants: &ConstContext<'_>,
+) {
     // First pass: MID consts for Software Bus packets with @mid
     let mut has_mids = false;
     for item in &file.items {
@@ -702,7 +777,7 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
                     has_mids = true;
                 }
                 let const_name = format!("{}_MID", to_screaming_snake(&m.name));
-                let val = rust_mid_str(mid);
+                let val = rust_mid_str(mid, constants);
                 out.push_str(&format!("pub const {}: u16 = {};\n", const_name, val));
             }
         }
@@ -720,7 +795,7 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
                     has_ccs = true;
                 }
                 let const_name = format!("{}_CC", to_screaming_snake(&m.name));
-                let val = rust_cc_str(cc);
+                let val = rust_cc_str(cc, constants);
                 out.push_str(&format!("pub const {}: u16 = {};\n", const_name, val));
             }
         }
@@ -864,19 +939,26 @@ fn rust_primitive_str(p: PrimitiveType) -> &'static str {
     }
 }
 
-fn rust_mid_str(lit: &Literal) -> String {
+fn rust_mid_str(lit: &Literal, constants: &ConstContext<'_>) -> String {
     match lit {
         Literal::Hex(n) => format!("0x{:04X}", n),
         Literal::Int(n) => n.to_string(),
-        Literal::Ident(segs) => segs.join("::"),
+        Literal::Ident(segs) if constants.is_local_bare_ident(segs) => segs.join("::"),
+        Literal::Ident(segs) => resolve_ident_to_u64(segs, constants)
+            .map(|value| format!("0x{:04X}", value))
+            .unwrap_or_else(|| segs.join("::")),
         other => rust_literal_str(other),
     }
 }
 
-fn rust_cc_str(lit: &Literal) -> String {
+fn rust_cc_str(lit: &Literal, constants: &ConstContext<'_>) -> String {
     match lit {
         Literal::Hex(n) => format!("0x{:X}", n),
         Literal::Int(n) => n.to_string(),
+        Literal::Ident(segs) if constants.is_local_bare_ident(segs) => segs.join("::"),
+        Literal::Ident(segs) => resolve_ident_to_u64(segs, constants)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| segs.join("::")),
         other => rust_literal_str(other),
     }
 }
@@ -933,31 +1015,40 @@ fn literal_to_u64(lit: &Literal) -> Option<u64> {
     }
 }
 
-fn resolve_literal_to_u64(
-    lit: &Literal,
-    const_defs: &HashMap<Vec<String>, &ConstDecl>,
-) -> Option<u64> {
-    resolve_literal_to_u64_inner(lit, const_defs, &mut Vec::new())
+fn resolve_literal_to_u64(lit: &Literal, constants: &ConstContext<'_>) -> Option<u64> {
+    resolve_literal_to_u64_inner(lit, constants, &mut Vec::new())
 }
 
 fn resolve_literal_to_u64_inner(
     lit: &Literal,
-    const_defs: &HashMap<Vec<String>, &ConstDecl>,
+    constants: &ConstContext<'_>,
     seen: &mut Vec<Vec<String>>,
 ) -> Option<u64> {
     match lit {
-        Literal::Ident(segments) => {
-            if seen.iter().any(|s| s == segments) {
-                return None;
-            }
-            let c = const_defs.get(segments)?;
-            seen.push(segments.clone());
-            let resolved = resolve_literal_to_u64_inner(&c.value, const_defs, seen);
-            seen.pop();
-            resolved
-        }
+        Literal::Ident(segments) => resolve_ident_to_u64_inner(segments, constants, seen),
         other => literal_to_u64(other),
     }
+}
+
+fn resolve_ident_to_u64(segments: &[String], constants: &ConstContext<'_>) -> Option<u64> {
+    resolve_ident_to_u64_inner(segments, constants, &mut Vec::new())
+}
+
+fn resolve_ident_to_u64_inner(
+    segments: &[String],
+    constants: &ConstContext<'_>,
+    seen: &mut Vec<Vec<String>>,
+) -> Option<u64> {
+    if seen.iter().any(|s| s == segments) {
+        return None;
+    }
+    if let Some(c) = constants.local_defs.get(segments) {
+        seen.push(segments.to_vec());
+        let resolved = resolve_literal_to_u64_inner(&c.value, constants, seen);
+        seen.pop();
+        return resolved;
+    }
+    constants.imported_values.get(segments).copied()
 }
 
 fn type_expr_display(ty: &TypeExpr) -> String {
@@ -1017,20 +1108,27 @@ fn emit_indented_doc_lines(out: &mut String, doc: &[String]) {
 }
 
 /// Format a MID literal for a `#define` line.
-fn literal_mid_str(lit: &Literal) -> String {
+fn literal_mid_str(lit: &Literal, constants: &ConstContext<'_>) -> String {
     match lit {
         Literal::Hex(n) => format!("0x{:04X}U", n),
         Literal::Int(n) => format!("{}U", n),
-        Literal::Ident(segs) => segs.join("::"),
+        Literal::Ident(segs) if constants.is_local_bare_ident(segs) => segs.join("::"),
+        Literal::Ident(segs) => resolve_ident_to_u64(segs, constants)
+            .map(|value| format!("0x{:04X}U", value))
+            .unwrap_or_else(|| segs.join("::")),
         other => literal_str(other),
     }
 }
 
 /// Format a command-code literal for a `#define` line.
-fn literal_cc_str(lit: &Literal) -> String {
+fn literal_cc_str(lit: &Literal, constants: &ConstContext<'_>) -> String {
     match lit {
         Literal::Hex(n) => format!("0x{:X}U", n),
         Literal::Int(n) => format!("{}U", n),
+        Literal::Ident(segs) if constants.is_local_bare_ident(segs) => segs.join("::"),
+        Literal::Ident(segs) => resolve_ident_to_u64(segs, constants)
+            .map(|value| format!("{}U", value))
+            .unwrap_or_else(|| segs.join("::")),
         other => literal_str(other),
     }
 }
@@ -1335,12 +1433,42 @@ mod tests {
     }
 
     #[test]
+    fn c_rejects_unresolved_symbolic_mid() {
+        let file = parse("@mid(NAV_TLM_MID)\ntelemetry Status { x: f32 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::MessageIdValueUnsupported {
+                packet: "Status".to_string(),
+            }
+        );
+    }
+
+    #[test]
     fn c_resolves_local_symbolic_mid_and_command_code() {
         let out = codegen(
             "const SET_MODE_MID_VALUE: u16 = 0x1880\nconst SET_MODE_CODE: u16 = 1\n@mid(SET_MODE_MID_VALUE)\n@cc(SET_MODE_CODE)\ncommand SetMode { mode: u8 }",
         );
         assert!(out.contains("#define SET_MODE_MID  SET_MODE_MID_VALUE"));
         assert!(out.contains("#define SET_MODE_CC   SET_MODE_CODE"));
+    }
+
+    #[test]
+    fn c_resolves_imported_symbolic_mid_and_command_code() {
+        let file = parse(
+            "@mid(nav_app::SET_MODE_MID_VALUE)\n@cc(nav_app::SET_MODE_CODE)\ncommand SetMode { mode: u8 }",
+        )
+        .unwrap();
+        let mut constants = ResolvedConstants::new();
+        constants.insert(
+            vec!["nav_app".to_string(), "SET_MODE_MID_VALUE".to_string()],
+            0x1880,
+        );
+        constants.insert(vec!["nav_app".to_string(), "SET_MODE_CODE".to_string()], 2);
+
+        let out = try_generate_c_with_constants(&file, &constants).unwrap();
+        assert!(out.contains("#define SET_MODE_MID  0x1880U"));
+        assert!(out.contains("#define SET_MODE_CC   2U"));
     }
 
     #[test]
@@ -1702,6 +1830,25 @@ mod tests {
         assert!(out.contains("pub const SET_MODE_CC: u16 = 2;"));
         assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
         assert!(!out.contains("CFE_MSG_TelemetryHeader_t"));
+    }
+
+    #[test]
+    fn rust_resolves_imported_symbolic_mid_and_command_code() {
+        let file = parse(
+            "@mid(nav_app::SET_MODE_MID_VALUE)\n@cc(nav_app::SET_MODE_CODE)\ncommand SetMode { mode: u8 }",
+        )
+        .unwrap();
+        let mut constants = ResolvedConstants::new();
+        constants.insert(
+            vec!["nav_app".to_string(), "SET_MODE_MID_VALUE".to_string()],
+            0x1880,
+        );
+        constants.insert(vec!["nav_app".to_string(), "SET_MODE_CODE".to_string()], 2);
+
+        let out =
+            try_generate_rust_with_constants(&file, &RustOptions::default(), &constants).unwrap();
+        assert!(out.contains("pub const SET_MODE_MID: u16 = 0x1880;"));
+        assert!(out.contains("pub const SET_MODE_CC: u16 = 2;"));
     }
 
     #[test]

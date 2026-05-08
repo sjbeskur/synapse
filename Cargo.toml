@@ -4,6 +4,7 @@ members = [
     "synapse-codegen-cfs",
     "synapse",
     "synapse-integration-tests",
+    "examples/rust-canary",
     "cfs-sys",
 ]
 default-members = [
@@ -11,5 +12,6 @@ default-members = [
     "synapse-codegen-cfs",
     "synapse",
     "synapse-integration-tests",
+    "examples/rust-canary",
 ]
 resolver = "2"

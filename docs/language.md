@@ -39,7 +39,7 @@ Imports generate C `#include` lines and Rust `use crate::...` lines. Path-based 
 
 Imported type references should be namespace-qualified. For example, after `import "std_msgs.syn"`, use `std_msgs::Header` rather than bare `Header`. Bare type references are reserved for declarations in the current file.
 
-Each file can reference only its local declarations and directly imported namespaces. Transitive imports are loaded and validated so dependency files are checked, but a root file must directly import any namespace it references. CLI output-directory generation emits the root file plus its transitive imports in dependency order by default; add `--single-file` to emit only the requested root file. In library code, use `generate_files` for the import closure and `generate_file` for only the root. Imported constants in attributes are not resolved yet.
+Each file can reference only its local declarations and directly imported namespaces. Transitive imports are loaded and validated so dependency files are checked, but a root file must directly import any namespace it references. CLI output-directory generation emits the root file plus its transitive imports in dependency order by default; add `--single-file` to emit only the requested root file. In library code, use `generate_files` for the import closure and `generate_file` for only the root. Integer constants from directly imported namespaces may be used in attributes such as `@mid(nav_app::NAV_TLM_MID)`.
 
 ### `struct`
 
@@ -112,7 +112,7 @@ command SetMode {
 
 The cFS generator requires `@mid(...)` on `command` and `telemetry` items and requires `@cc(...)` on `command` items. It emits message ID constants for both packet kinds and command-code constants for commands.
 
-Missing MIDs, missing command codes, duplicate telemetry MIDs, duplicate command MID/CC pairs, and command/telemetry bit-pattern mismatches are cFS codegen errors when values are literal or resolve to local integer constants. Local constants may be used in attributes, for example `@mid(NAV_TLM_MID)` or `@cc(SET_MODE_CC)`. Imported constants in attributes are not resolved yet.
+Missing MIDs, unresolved symbolic MIDs, missing command codes, duplicate telemetry MIDs, duplicate command MID/CC pairs, and command/telemetry bit-pattern mismatches are cFS codegen errors when values are literal or resolve to visible integer constants. Local constants may be used in attributes, for example `@mid(NAV_TLM_MID)` or `@cc(SET_MODE_CC)`. Directly imported namespace constants may also be used, for example `@mid(nav_app::NAV_TLM_MID)`.
 
 ### Primitive Types
 
@@ -204,7 +204,7 @@ Unbounded strings parse into the AST, but cFS codegen rejects them because they 
 const MAX_CAMERAS: u8 = 4
 ```
 
-Constants generate C `#define`s and Rust `pub const`s. Constant resolution is still limited, especially when constants are used inside attributes such as `@mid(nav_app::NAV_TLM_MID)`.
+Constants generate C `#define`s and Rust `pub const`s. Integer constants can be used by local or directly importing files in `@mid(...)` and `@cc(...)` attributes. Transitive-only constants are not visible unless the file imports their namespace directly.
 
 ### Legacy `message`
 

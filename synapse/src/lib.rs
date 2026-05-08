@@ -85,17 +85,31 @@ pub fn generate_str(source: &str, lang: Lang) -> Result<String, Error> {
 pub fn generate_path(input: impl AsRef<Path>, lang: Lang) -> Result<String, Error> {
     let graph = load_import_graph(input.as_ref())?;
     validate_import_graph(&graph)?;
+    let units_by_path = units_by_path(&graph);
     let root = graph
         .units
         .last()
         .expect("import graph always contains the root input");
-    generate_parsed(&root.file, lang)
+    let imported_constants = imported_constants_for_unit(root, &units_by_path)?;
+    generate_parsed_with_constants(&root.file, lang, &imported_constants)
 }
 
 fn generate_parsed(file: &SynFile, lang: Lang) -> Result<String, Error> {
+    generate_parsed_with_constants(file, lang, &synapse_codegen_cfs::ResolvedConstants::new())
+}
+
+fn generate_parsed_with_constants(
+    file: &SynFile,
+    lang: Lang,
+    imported_constants: &synapse_codegen_cfs::ResolvedConstants,
+) -> Result<String, Error> {
     let output = match lang {
-        Lang::C => synapse_codegen_cfs::try_generate_c(file)?,
-        Lang::Rust => synapse_codegen_cfs::try_generate_rust(file, &Default::default())?,
+        Lang::C => synapse_codegen_cfs::try_generate_c_with_constants(file, imported_constants)?,
+        Lang::Rust => synapse_codegen_cfs::try_generate_rust_with_constants(
+            file,
+            &Default::default(),
+            imported_constants,
+        )?,
     };
     Ok(output)
 }
@@ -138,13 +152,15 @@ pub fn generate_files(
 ) -> Result<Vec<PathBuf>, Error> {
     let graph = load_import_graph(input.as_ref())?;
     validate_import_graph(&graph)?;
+    let units_by_path = units_by_path(&graph);
 
     let out_dir = out_dir.as_ref();
     fs::create_dir_all(out_dir)?;
 
     let mut written = Vec::new();
     for unit in &graph.units {
-        let output = generate_parsed(&unit.file, lang)?;
+        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
+        let output = generate_parsed_with_constants(&unit.file, lang, &imported_constants)?;
         let out_path = output_path_for(&unit.path, out_dir, lang)?;
         fs::write(&out_path, output)?;
         written.push(out_path);
@@ -228,15 +244,70 @@ fn canonicalize_import_path(path: &Path) -> Result<PathBuf, Error> {
 }
 
 fn validate_import_graph(graph: &ImportGraph) -> Result<(), Error> {
-    let units_by_path = graph
-        .units
-        .iter()
-        .map(|unit| (unit.path.clone(), unit))
-        .collect::<HashMap<_, _>>();
+    let units_by_path = units_by_path(graph);
     for unit in &graph.units {
         validate_import_unit(unit, &units_by_path)?;
     }
     Ok(())
+}
+
+fn units_by_path(graph: &ImportGraph) -> HashMap<PathBuf, &ParsedUnit> {
+    graph
+        .units
+        .iter()
+        .map(|unit| (unit.path.clone(), unit))
+        .collect()
+}
+
+fn imported_constants_for_unit(
+    unit: &ParsedUnit,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+) -> Result<synapse_codegen_cfs::ResolvedConstants, Error> {
+    let base_dir = unit.path.parent().unwrap_or_else(|| Path::new(""));
+    let mut constants = synapse_codegen_cfs::ResolvedConstants::new();
+
+    for item in &unit.file.items {
+        let Item::Import(import) = item else {
+            continue;
+        };
+
+        let import_path = canonicalize_import_path(&base_dir.join(&import.path))?;
+        let imported = units_by_path
+            .get(&import_path)
+            .expect("import graph loader parsed direct imports");
+        constants.extend(exported_constants_for_unit(imported, units_by_path)?);
+    }
+
+    Ok(constants)
+}
+
+fn exported_constants_for_unit(
+    unit: &ParsedUnit,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+) -> Result<synapse_codegen_cfs::ResolvedConstants, Error> {
+    let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
+    let resolved = synapse_codegen_cfs::resolve_integer_constants(&unit.file, &imported_constants);
+    let local_namespace = namespace(&unit.file);
+    let mut exported = synapse_codegen_cfs::ResolvedConstants::new();
+
+    for item in &unit.file.items {
+        let Item::Const(c) = item else {
+            continue;
+        };
+
+        let key = if local_namespace.is_empty() {
+            vec![c.name.clone()]
+        } else {
+            let mut qualified = local_namespace.clone();
+            qualified.push(c.name.clone());
+            qualified
+        };
+        if let Some(value) = resolved.get(&key) {
+            exported.insert(key, *value);
+        }
+    }
+
+    Ok(exported)
 }
 
 fn validate_import_unit(
@@ -563,6 +634,103 @@ telemetry CameraStatus {
         let out = generate_path(&input, Lang::C).unwrap();
         assert!(out.contains("#include \"std_msgs.h\""));
         assert!(out.contains("std_msgs_Header_t header;"));
+    }
+
+    #[test]
+    fn generate_path_resolves_imported_constants_in_attrs() {
+        let dir = test_dir("resolves-imported-constants-in-attrs");
+        fs::write(
+            dir.join("nav_ids.syn"),
+            "namespace nav_ids\nconst NAV_STATE_MID: u16 = 0x0801",
+        )
+        .unwrap();
+        let input = dir.join("nav.syn");
+        fs::write(
+            &input,
+            r#"namespace nav_app
+import "nav_ids.syn"
+@mid(nav_ids::NAV_STATE_MID)
+telemetry NavState {
+    x: f64
+}
+"#,
+        )
+        .unwrap();
+
+        let out = generate_path(&input, Lang::C).unwrap();
+        assert!(out.contains("#define NAV_STATE_MID  0x0801U"));
+    }
+
+    #[test]
+    fn generate_path_resolves_imported_alias_constants_in_attrs() {
+        let dir = test_dir("resolves-imported-alias-constants-in-attrs");
+        fs::write(
+            dir.join("mission_ids.syn"),
+            "namespace mission_ids\nconst NAV_CMD_MID: u16 = 0x1880",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("nav_ids.syn"),
+            r#"namespace nav_ids
+import "mission_ids.syn"
+const SET_MODE_MID: u16 = mission_ids::NAV_CMD_MID
+const SET_MODE_CC: u16 = 2
+"#,
+        )
+        .unwrap();
+        let input = dir.join("nav.syn");
+        fs::write(
+            &input,
+            r#"namespace nav_app
+import "nav_ids.syn"
+@mid(nav_ids::SET_MODE_MID)
+@cc(nav_ids::SET_MODE_CC)
+command SetMode {
+    mode: u8
+}
+"#,
+        )
+        .unwrap();
+
+        let out = generate_path(&input, Lang::Rust).unwrap();
+        assert!(out.contains("pub const SET_MODE_MID: u16 = 0x1880;"));
+        assert!(out.contains("pub const SET_MODE_CC: u16 = 2;"));
+    }
+
+    #[test]
+    fn generate_path_rejects_transitive_only_constant_refs() {
+        let dir = test_dir("rejects-transitive-only-constant-refs");
+        fs::write(
+            dir.join("mission_ids.syn"),
+            "namespace mission_ids\nconst NAV_STATE_MID: u16 = 0x0801",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("nav_ids.syn"),
+            r#"namespace nav_ids
+import "mission_ids.syn"
+const LOCAL_MID: u16 = mission_ids::NAV_STATE_MID
+"#,
+        )
+        .unwrap();
+        let input = dir.join("nav.syn");
+        fs::write(
+            &input,
+            r#"namespace nav_app
+import "nav_ids.syn"
+@mid(mission_ids::NAV_STATE_MID)
+telemetry NavState {
+    x: f64
+}
+"#,
+        )
+        .unwrap();
+
+        let err = generate_path(&input, Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "packet `NavState` has unresolved or non-integer `@mid(...)`; cFS codegen requires an integer, hex, local integer constant, or imported integer constant message ID"
+        );
     }
 
     #[test]
