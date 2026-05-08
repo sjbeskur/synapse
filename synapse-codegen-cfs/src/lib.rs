@@ -709,7 +709,7 @@ fn emit_enum(out: &mut String, e: &EnumDef, namespace: &[String]) {
     emit_doc_lines(out, &e.doc);
     out.push_str(&format!("typedef {} {};\n", primitive_str(repr), type_name));
 
-    let enum_prefix = to_screaming_snake(&e.name);
+    let enum_prefix = c_enum_variant_prefix(&e.name, namespace);
     for variant in &e.variants {
         emit_doc_lines(out, &variant.doc);
         let value = variant
@@ -1248,6 +1248,16 @@ fn c_decl_type_name(name: &str, namespace: &[String]) -> String {
     format!("{}_t", segments.join("_"))
 }
 
+fn c_enum_variant_prefix(name: &str, namespace: &[String]) -> String {
+    let mut segments = namespace.to_vec();
+    segments.push(name.to_string());
+    segments
+        .iter()
+        .map(|segment| to_screaming_snake(segment))
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
 fn c_ref_type_name(segments: &[String], namespace: &[String]) -> String {
     let resolved = if segments.len() == 1 && !namespace.is_empty() {
         let mut resolved = namespace.to_vec();
@@ -1695,6 +1705,21 @@ mod tests {
     }
 
     #[test]
+    fn c_namespaces_represented_enum_variant_constants() {
+        let file = parse(
+            "namespace camera_app\nenum u8 CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
+        )
+        .unwrap();
+        let out = try_generate_c(&file).unwrap();
+        assert!(out.contains("typedef uint8_t camera_app_CameraMode_t;"));
+        assert!(out.contains("#define CAMERA_APP_CAMERA_MODE_IDLE  ((camera_app_CameraMode_t)0)"));
+        assert!(
+            out.contains("#define CAMERA_APP_CAMERA_MODE_STREAMING  ((camera_app_CameraMode_t)1)")
+        );
+        assert!(out.contains("    camera_app_CameraMode_t mode;"));
+    }
+
+    #[test]
     fn c_rejects_represented_enum_missing_value() {
         let file = parse("enum u8 CameraMode { Idle Streaming = 1 }").unwrap();
         let err = try_generate_c(&file).unwrap_err();
@@ -2109,5 +2134,9 @@ mod tests {
         assert_eq!(to_screaming_snake("NavTelemetry"), "NAV_TELEMETRY");
         assert_eq!(to_screaming_snake("PoseStamped"), "POSE_STAMPED");
         assert_eq!(to_screaming_snake("Foo"), "FOO");
+        assert_eq!(
+            c_enum_variant_prefix("SensorMode", &["demo_msgs".to_string()]),
+            "DEMO_MSGS_SENSOR_MODE"
+        );
     }
 }

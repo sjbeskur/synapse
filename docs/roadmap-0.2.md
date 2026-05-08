@@ -143,14 +143,11 @@ Direction:
 - Generate fixed-width C typedefs and Rust type aliases.
 - Generate named constants for variants.
 - Require explicit variant values and validate them against the representation range.
+- Include namespace ownership in generated C enum variant macros when a namespace exists - implemented.
 
 Options:
 
 - Revisit native C `typedef enum` and Rust `#[repr(...)] enum` later if the stronger type identity is worth the ABI risk and extra generation rules.
-
-Open questions:
-
-- Should generated C constant names include the namespace when two generated headers are commonly included together?
 
 ## Strings
 

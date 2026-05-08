@@ -31,6 +31,7 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [ ] Decide whether generated C docs should stay as `///` or switch to Doxygen block comments.
 - [ ] Add schema hash or generation timestamp to the file banner so stale headers are detectable.
 - [x] Normalize hex formatting for typed integer constants and packet MID constants.
+- [x] Include namespace ownership in generated C enum variant macros.
 
 ### CFE_Span_t for arrays
 
