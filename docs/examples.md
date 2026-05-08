@@ -20,6 +20,7 @@ Checked-in generated geometry output is available in:
 Regenerate those files with:
 
 ```bash
+cargo run -p cfs-synapse -- check synapse-integration-tests/syn/geometry_msgs.syn
 cargo run -p cfs-synapse -- --lang c -o generated synapse-integration-tests/syn/geometry_msgs.syn
 cargo run -p cfs-synapse -- --lang rust -o generated synapse-integration-tests/syn/geometry_msgs.syn
 ```

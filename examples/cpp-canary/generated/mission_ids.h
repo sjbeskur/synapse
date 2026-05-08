@@ -3,7 +3,7 @@
 #include "cfe.h"
 
 /// Telemetry MID for the demo sensor status packet.
-#define DEMO_SENSOR_STATUS_TLM_MID  0x801U
+#define DEMO_SENSOR_STATUS_TLM_MID  0x0801U
 
 /// Command MID shared by demo sensor commands.
 #define DEMO_SENSOR_CMD_MID  0x1880U

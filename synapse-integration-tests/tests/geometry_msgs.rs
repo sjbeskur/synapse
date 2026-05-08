@@ -152,8 +152,8 @@ fn cfs_c_codegen_camera_msgs() {
     assert!(out.contains("#define CAMERA_STATUS_MID  0x0881U"));
     assert!(out.contains("#define CAMERA_CALIBRATION_STATUS_MID  0x0882U"));
     assert!(out.contains("typedef uint8_t camera_app_CameraMode_t;"));
-    assert!(out.contains("#define CAMERA_MODE_STANDBY  ((camera_app_CameraMode_t)0)"));
-    assert!(out.contains("#define CAMERA_MODE_FAULT  ((camera_app_CameraMode_t)4)"));
+    assert!(out.contains("#define CAMERA_APP_CAMERA_MODE_STANDBY  ((camera_app_CameraMode_t)0)"));
+    assert!(out.contains("#define CAMERA_APP_CAMERA_MODE_FAULT  ((camera_app_CameraMode_t)4)"));
     assert!(out.contains("} camera_app_CameraId_t;"));
     assert!(out.contains("} camera_app_CameraCalibration_t;"));
     assert!(out.contains("    camera_app_CameraId_t camera;"));
@@ -176,9 +176,9 @@ fn cfs_c_codegen_postcard_msgs() {
     let postcard = synapse_codegen_cfs::generate_c(&read_and_parse("postcard.syn"));
 
     assert!(frame.contains("typedef uint8_t frame_descriptor_PixelFormat_t;"));
-    assert!(
-        frame.contains("#define PIXEL_FORMAT_BAYER_RGGB8  ((frame_descriptor_PixelFormat_t)3)")
-    );
+    assert!(frame.contains(
+        "#define FRAME_DESCRIPTOR_PIXEL_FORMAT_BAYER_RGGB8  ((frame_descriptor_PixelFormat_t)3)"
+    ));
     assert!(frame.contains("} frame_descriptor_FrameDescriptor_t;"));
     assert!(frame.contains("    uint32_t sequence;"));
     assert!(frame.contains("    uint64_t timestamp_us;"));
@@ -290,8 +290,8 @@ typedef struct {
 
 int check_camera_mode(void) {
     camera_app_SetCameraMode_t cmd = {0};
-    cmd.mode = CAMERA_MODE_PREVIEW;
-    return cmd.mode == CAMERA_MODE_PREVIEW ? 0 : 1;
+    cmd.mode = CAMERA_APP_CAMERA_MODE_PREVIEW;
+    return cmd.mode == CAMERA_APP_CAMERA_MODE_PREVIEW ? 0 : 1;
 }
 "#,
     )
@@ -358,7 +358,7 @@ int check_postcard(void) {
     postcard.fd.exposure_us = 1000U;
     postcard.fd.gamma = 1.0f;
     postcard.fd.gain = 2.0f;
-    postcard.fd.pixel_format = PIXEL_FORMAT_MONO8;
+    postcard.fd.pixel_format = FRAME_DESCRIPTOR_PIXEL_FORMAT_MONO8;
     return postcard.image[0];
 }
 "#,

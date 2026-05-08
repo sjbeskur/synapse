@@ -21,15 +21,18 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 - [x] Validate direct imports and qualified type references for path-based generation.
 - [x] Transitive import resolution and dependency graph validation.
 - [x] Imported/scoped constant resolution for attributes, e.g. `@mid(nav_app::NAV_TLM_MID)`.
+- [x] Add validation-only `synapse check` CLI and library API.
 - [x] Add deterministic generated file headers.
 
 ## Rough Edges
 
 ### Codegen output quality
 
-- [ ] Emit `///` doc comments into generated C (`/* ... */`) and Rust (`/// ...`) output. The AST already captures them; they just aren't wired to the emitters.
+- [x] Emit parsed `///` doc comments into generated C and Rust output.
+- [ ] Decide whether generated C docs should stay as `///` or switch to Doxygen block comments.
 - [ ] Add schema hash or generation timestamp to the file banner so stale headers are detectable.
-- [ ] Normalize hex formatting: C MID defines use `0x{:04X}U`, but Rust uses `0x{:04X}` for MID and `0x{:X}` for CC. Pick one convention per target.
+- [x] Normalize hex formatting for typed integer constants and packet MID constants.
+- [x] Include namespace ownership in generated C enum variant macros.
 
 ### CFE_Span_t for arrays
 

@@ -19,7 +19,7 @@ demo_msgs_SensorId_t sensor_id(const char* name) {
 int main() {
     demo_msgs_SetSensorMode_t cmd{};
     cmd.sensor = sensor_id("imu_0");
-    cmd.mode = SENSOR_MODE_SCIENCE;
+    cmd.mode = DEMO_MSGS_SENSOR_MODE_SCIENCE;
 
     demo_msgs_SensorStatus_t status{};
     status.sensor = sensor_id("imu_0");

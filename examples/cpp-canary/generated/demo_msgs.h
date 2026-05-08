@@ -14,11 +14,11 @@
 /// Demo sensor operating mode encoded as one byte.
 typedef uint8_t demo_msgs_SensorMode_t;
 /// Powered but idle.
-#define SENSOR_MODE_STANDBY  ((demo_msgs_SensorMode_t)0)
+#define DEMO_MSGS_SENSOR_MODE_STANDBY  ((demo_msgs_SensorMode_t)0)
 /// Producing science samples.
-#define SENSOR_MODE_SCIENCE  ((demo_msgs_SensorMode_t)1)
+#define DEMO_MSGS_SENSOR_MODE_SCIENCE  ((demo_msgs_SensorMode_t)1)
 /// Entered a conservative safe mode.
-#define SENSOR_MODE_SAFE  ((demo_msgs_SensorMode_t)2)
+#define DEMO_MSGS_SENSOR_MODE_SAFE  ((demo_msgs_SensorMode_t)2)
 
 /// Stable identifier for one demo sensor.
 typedef struct {

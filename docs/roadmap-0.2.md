@@ -143,14 +143,11 @@ Direction:
 - Generate fixed-width C typedefs and Rust type aliases.
 - Generate named constants for variants.
 - Require explicit variant values and validate them against the representation range.
+- Include namespace ownership in generated C enum variant macros when a namespace exists - implemented.
 
 Options:
 
 - Revisit native C `typedef enum` and Rust `#[repr(...)] enum` later if the stronger type identity is worth the ABI risk and extra generation rules.
-
-Open questions:
-
-- Should generated C constant names include the namespace when two generated headers are commonly included together?
 
 ## Strings
 
@@ -188,6 +185,7 @@ Direction:
 - Generate the root file plus transitive imports in dependency order through CLI `-o` or library `generate_files` - implemented.
 - Resolve directly imported integer constants in attributes - implemented.
 - Require a direct import for constants used in attributes; transitive-only constant references are rejected - implemented.
+- Add CLI and library validation-only checks for CI/preflight workflows - implemented.
 
 Open questions:
 
