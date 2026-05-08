@@ -1,7 +1,7 @@
 [package]
 name = "cfs-synapse-parser"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Parser for the Synapse NASA cFS-friendly IDL"
 repository = "https://github.com/sjbeskur/synapse"
 readme = "../README.md"
