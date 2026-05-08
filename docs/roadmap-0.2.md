@@ -99,10 +99,11 @@ Direction:
 - Detect duplicate telemetry literal MIDs in a generated file - implemented as a cFS codegen error.
 - Allow commands to share a literal MID when literal command codes differ.
 - Validate command/telemetry MID bit patterns when the MID is a literal - implemented as a cFS codegen error.
+- Resolve local integer constants used in `@mid(...)` for range and duplicate validation - implemented.
 
 Open questions:
 
-- How should validation work for symbolic MIDs such as `@mid(nav_app::NAV_TLM_MID)`?
+- How should validation work for imported symbolic MIDs such as `@mid(nav_app::NAV_TLM_MID)`?
 - Should validation be per-file for `0.2.x` and mission-wide later?
 
 ## Command Codes
@@ -125,10 +126,11 @@ Direction:
 - Emit `_CC` constants beside command `_MID` constants.
 - Reject `@cc(...)` on telemetry, struct, and table items.
 - Reject duplicate literal command MID/CC pairs.
+- Resolve local integer constants used in `@cc(...)` for duplicate validation - implemented.
 
 Open questions:
 
-- Should symbolic command codes be allowed after constant resolution exists?
+- Should imported symbolic command codes be allowed after import-graph constant resolution exists?
 - Should command codes be grouped by app/namespace in generated output?
 
 ## Enum ABI Representation

@@ -112,7 +112,7 @@ command SetMode {
 
 The cFS generator requires `@mid(...)` on `command` and `telemetry` items and requires `@cc(...)` on `command` items. It emits message ID constants for both packet kinds and command-code constants for commands.
 
-Missing MIDs, missing command codes, duplicate telemetry literal MIDs, duplicate command literal MID/CC pairs, and literal command/telemetry bit-pattern mismatches are cFS codegen errors. Symbolic MIDs such as `@mid(NAV_TLM_MID)` are not range-validated until constant resolution is implemented.
+Missing MIDs, missing command codes, duplicate telemetry MIDs, duplicate command MID/CC pairs, and command/telemetry bit-pattern mismatches are cFS codegen errors when values are literal or resolve to local integer constants. Local constants may be used in attributes, for example `@mid(NAV_TLM_MID)` or `@cc(SET_MODE_CC)`. Imported constants in attributes are not resolved yet.
 
 ### Primitive Types
 

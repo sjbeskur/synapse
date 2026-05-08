@@ -171,7 +171,7 @@ impl fmt::Display for CodegenError {
             ),
             CodegenError::CommandCodeValueUnsupported { packet } => write!(
                 f,
-                "command `{packet}` has non-literal `@cc(...)`; cFS codegen requires an integer or hex command code"
+                "command `{packet}` has unresolved or non-integer `@cc(...)`; cFS codegen requires an integer, hex, or local integer constant command code"
             ),
             CodegenError::DuplicateMid {
                 mid,
@@ -256,6 +256,7 @@ pub fn try_generate_rust(file: &SynFile, opts: &RustOptions) -> Result<String, C
 
 fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
     let enum_defs = enum_defs(file);
+    let const_defs = const_defs(file);
     let mut telemetry_mids = HashMap::new();
     let mut command_codes = HashMap::new();
     for item in &file.items {
@@ -265,7 +266,7 @@ fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
                 validate_fields(&s.name, &s.fields, &enum_defs)?
             }
             Item::Command(m) | Item::Telemetry(m) => {
-                validate_packet(m, &mut telemetry_mids, &mut command_codes)?;
+                validate_packet(m, &const_defs, &mut telemetry_mids, &mut command_codes)?;
                 validate_fields(&m.name, &m.fields, &enum_defs)?
             }
             Item::Message(m) => {
@@ -278,6 +279,32 @@ fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
         }
     }
     Ok(())
+}
+
+fn const_defs(file: &SynFile) -> HashMap<Vec<String>, &ConstDecl> {
+    let namespace = file_namespace(file);
+    let mut defs = HashMap::new();
+    for item in &file.items {
+        if let Item::Const(c) = item {
+            defs.insert(vec![c.name.clone()], c);
+            if !namespace.is_empty() {
+                let mut qualified = namespace.clone();
+                qualified.push(c.name.clone());
+                defs.insert(qualified, c);
+            }
+        }
+    }
+    defs
+}
+
+fn file_namespace(file: &SynFile) -> Vec<String> {
+    file.items
+        .iter()
+        .find_map(|item| match item {
+            Item::Namespace(ns) => Some(ns.name.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 fn enum_defs(file: &SynFile) -> HashMap<String, &EnumDef> {
@@ -338,6 +365,7 @@ fn enum_repr_range(repr: PrimitiveType) -> Option<(i64, i64)> {
 
 fn validate_packet(
     packet: &MessageDef,
+    const_defs: &HashMap<Vec<String>, &ConstDecl>,
     telemetry_mids: &mut HashMap<u64, String>,
     command_codes: &mut HashMap<(u64, u64), String>,
 ) -> Result<(), CodegenError> {
@@ -363,16 +391,16 @@ fn validate_packet(
     }
     let cc_value = if packet.kind == PacketKind::Command {
         let cc = cc.expect("command code was checked above");
-        Some(
-            literal_to_u64(cc).ok_or_else(|| CodegenError::CommandCodeValueUnsupported {
+        Some(resolve_literal_to_u64(cc, const_defs).ok_or_else(|| {
+            CodegenError::CommandCodeValueUnsupported {
                 packet: packet.name.clone(),
-            })?,
-        )
+            }
+        })?)
     } else {
         None
     };
 
-    if let Some(value) = literal_to_u64(mid) {
+    if let Some(value) = resolve_literal_to_u64(mid, const_defs) {
         validate_mid_range(packet, value, mid)?;
         match packet.kind {
             PacketKind::Command => {
@@ -905,6 +933,33 @@ fn literal_to_u64(lit: &Literal) -> Option<u64> {
     }
 }
 
+fn resolve_literal_to_u64(
+    lit: &Literal,
+    const_defs: &HashMap<Vec<String>, &ConstDecl>,
+) -> Option<u64> {
+    resolve_literal_to_u64_inner(lit, const_defs, &mut Vec::new())
+}
+
+fn resolve_literal_to_u64_inner(
+    lit: &Literal,
+    const_defs: &HashMap<Vec<String>, &ConstDecl>,
+    seen: &mut Vec<Vec<String>>,
+) -> Option<u64> {
+    match lit {
+        Literal::Ident(segments) => {
+            if seen.iter().any(|s| s == segments) {
+                return None;
+            }
+            let c = const_defs.get(segments)?;
+            seen.push(segments.clone());
+            let resolved = resolve_literal_to_u64_inner(&c.value, const_defs, seen);
+            seen.pop();
+            resolved
+        }
+        other => literal_to_u64(other),
+    }
+}
+
 fn type_expr_display(ty: &TypeExpr) -> String {
     let mut out = base_type_display(&ty.base);
     match &ty.array {
@@ -1268,13 +1323,57 @@ mod tests {
     }
 
     #[test]
-    fn c_rejects_symbolic_command_code() {
+    fn c_rejects_unresolved_symbolic_command_code() {
         let file = parse("@mid(0x1880)\n@cc(SET_MODE_CC)\ncommand SetMode { mode: u8 }").unwrap();
         let err = try_generate_c(&file).unwrap_err();
         assert_eq!(
             err,
             CodegenError::CommandCodeValueUnsupported {
                 packet: "SetMode".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn c_resolves_local_symbolic_mid_and_command_code() {
+        let out = codegen(
+            "const SET_MODE_MID_VALUE: u16 = 0x1880\nconst SET_MODE_CODE: u16 = 1\n@mid(SET_MODE_MID_VALUE)\n@cc(SET_MODE_CODE)\ncommand SetMode { mode: u8 }",
+        );
+        assert!(out.contains("#define SET_MODE_MID  SET_MODE_MID_VALUE"));
+        assert!(out.contains("#define SET_MODE_CC   SET_MODE_CODE"));
+    }
+
+    #[test]
+    fn c_validates_local_symbolic_mid_range() {
+        let file = parse(
+            "const SET_MODE_MID_VALUE: u16 = 0x0801\n@mid(SET_MODE_MID_VALUE)\n@cc(1)\ncommand SetMode { mode: u8 }",
+        )
+        .unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::MidRangeMismatch {
+                packet: "SetMode".to_string(),
+                mid: "SET_MODE_MID_VALUE".to_string(),
+                expected: "command MID with bit 0x1000 set",
+            }
+        );
+    }
+
+    #[test]
+    fn c_detects_duplicate_local_symbolic_command_codes() {
+        let file = parse(
+            "const CMD_MID: u16 = 0x1880\nconst SET_CC: u16 = 1\n@mid(CMD_MID)\n@cc(SET_CC)\ncommand A { x: u8 }\n@mid(CMD_MID)\n@cc(SET_CC)\ncommand B { x: u8 }",
+        )
+        .unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::DuplicateCommandCode {
+                mid: "CMD_MID".to_string(),
+                cc: "SET_CC".to_string(),
+                first_packet: "A".to_string(),
+                second_packet: "B".to_string(),
             }
         );
     }
