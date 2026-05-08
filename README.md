@@ -89,11 +89,15 @@ CFS_ROOT=/path/to/cFS just test-cfs
 
 ```bash
 synapse check <file.syn> [more-roots.syn ...]
+synapse doc [-o <out-dir>] <file.syn> [more-roots.syn ...]
+synapse registry [--format <json|csv>] [-o <file>] <file.syn> [more-roots.syn ...]
 synapse --lang <c|rust> [-o <out-dir>] <file.syn>
 synapse generate --lang <c|rust> [-o <out-dir>] <file.syn>
 ```
 
 - `check` validates input roots, their import graphs, and cFS codegen support without writing generated output. Multiple roots are checked together for mission-wide telemetry MID and command MID/CC conflicts.
+- `doc` generates static HTML documentation for input roots, their import graphs, packet IDs, command codes, fields, types, and doc comments. Without `-o`, HTML is written to stdout; with `-o`, Synapse writes `index.html`.
+- `registry` emits a validated packet registry for input roots as JSON or CSV. Without `-o`, registry output is written to stdout.
 - `--lang c` generates a cFS C header (`.h`) that includes `cfe.h`.
 - `--lang rust` generates Rust `#[repr(C)]` bindings (`.rs`) that reference `cfs_sys` header types by default.
 - Without `-o`, generated code is written to stdout.

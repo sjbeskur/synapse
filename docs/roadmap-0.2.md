@@ -205,3 +205,31 @@ Open questions:
 
 - Should generated headers eventually include the Synapse package version?
 - Should generated C headers include include guards in addition to `#pragma once`?
+
+## Registry And Documentation Outputs
+
+Status: Accepted
+
+Direction:
+
+- Keep `.syn` files as the source of truth for message contracts.
+- Use the mission registry as an exportable artifact, not as a replacement for `.syn` definitions.
+- Add a machine-readable registry output for database ingestion, ICD tooling, dashboards, and other external systems - implemented for packet-level JSON and CSV through `synapse registry`.
+- Keep CSV as an export/report format for packet tables, while avoiding CSV as the primary message-definition format.
+- Add generated documentation output built from namespaces, imports, packet IDs, command codes, fields, types, and doc comments - implemented as single-file static HTML through `synapse doc`.
+- Keep these outputs in Synapse's boundary: generate and validate message-contract artifacts; do not become the database, web service, ground system, or mission configuration platform.
+
+Possible CLI shape:
+
+```bash
+synapse registry root_a.syn root_b.syn --format json
+synapse registry root_a.syn root_b.syn --format csv -o packets.csv
+synapse doc root_a.syn root_b.syn -o site/
+```
+
+Open questions:
+
+- Should generated HTML eventually support multi-page output in addition to the single-file `index.html`?
+- Should JSON include fully resolved numeric values only, or both resolved values and original symbolic expressions?
+- Should later registry versions include all imported packets, only explicit roots, or both with ownership metadata?
+- What schema stability promise should registry JSON make across minor releases?

@@ -1,11 +1,16 @@
+mod docs;
+mod errors;
+mod registry;
+
 use std::{
     collections::{HashMap, HashSet},
-    error::Error as StdError,
-    fmt, fs,
+    fs,
     path::{Path, PathBuf},
 };
 
 use synapse_parser::ast::{BaseType, FieldDef, Item, SynFile};
+
+pub use errors::Error;
 
 /// Target language for Synapse code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +21,15 @@ pub enum Lang {
     Rust,
 }
 
+/// Machine-readable packet registry output format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistryFormat {
+    /// JSON object with a `packets` array.
+    Json,
+    /// CSV table with one packet per row.
+    Csv,
+}
+
 impl Lang {
     /// File extension used for this generated language.
     pub fn extension(self) -> &'static str {
@@ -23,57 +37,6 @@ impl Lang {
             Lang::C => "h",
             Lang::Rust => "rs",
         }
-    }
-}
-
-/// Error type returned by the Synapse library facade.
-#[derive(Debug)]
-pub enum Error {
-    Io(std::io::Error),
-    Parse(Box<pest::error::Error<synapse_parser::synapse::Rule>>),
-    Codegen(synapse_codegen_cfs::CodegenError),
-    Import(String),
-    Mission(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Io(e) => write!(f, "{e}"),
-            Error::Parse(e) => write!(f, "{e}"),
-            Error::Codegen(e) => write!(f, "{e}"),
-            Error::Import(e) => write!(f, "{e}"),
-            Error::Mission(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl StdError for Error {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Error::Io(e) => Some(e),
-            Error::Parse(e) => Some(e),
-            Error::Codegen(e) => Some(e),
-            Error::Import(_) | Error::Mission(_) => None,
-        }
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
-        Error::Io(value)
-    }
-}
-
-impl From<pest::error::Error<synapse_parser::synapse::Rule>> for Error {
-    fn from(value: pest::error::Error<synapse_parser::synapse::Rule>) -> Self {
-        Error::Parse(Box::new(value))
-    }
-}
-
-impl From<synapse_codegen_cfs::CodegenError> for Error {
-    fn from(value: synapse_codegen_cfs::CodegenError) -> Self {
-        Error::Codegen(value)
     }
 }
 
@@ -126,6 +89,99 @@ where
     validate_mission_registry(&graph, &units_by_path)?;
 
     Ok(())
+}
+
+/// Generate static HTML documentation from one or more `.syn` input paths.
+pub fn generate_docs<I, P>(inputs: I) -> Result<String, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let inputs = inputs
+        .into_iter()
+        .map(|input| input.as_ref().to_path_buf())
+        .collect::<Vec<_>>();
+    if inputs.is_empty() {
+        return Err(Error::Mission(
+            "doc requires at least one input .syn file".to_string(),
+        ));
+    }
+
+    let graph = load_import_graphs(&inputs)?;
+    validate_import_graph(&graph)?;
+    let units_by_path = units_by_path(&graph);
+
+    for unit in &graph.units {
+        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
+        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
+    }
+    validate_mission_registry(&graph, &units_by_path)?;
+
+    docs::render_html_docs(&graph, &units_by_path)
+}
+
+/// Generate static HTML documentation and write it to `out_dir/index.html`.
+pub fn write_docs<I, P>(inputs: I, out_dir: impl AsRef<Path>) -> Result<PathBuf, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let output = generate_docs(inputs)?;
+    let out_dir = out_dir.as_ref();
+    fs::create_dir_all(out_dir)?;
+    let out_path = out_dir.join("index.html");
+    fs::write(&out_path, output)?;
+    Ok(out_path)
+}
+
+/// Generate a machine-readable packet registry from one or more `.syn` input paths.
+pub fn generate_registry<I, P>(inputs: I, format: RegistryFormat) -> Result<String, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let inputs = inputs
+        .into_iter()
+        .map(|input| input.as_ref().to_path_buf())
+        .collect::<Vec<_>>();
+    if inputs.is_empty() {
+        return Err(Error::Mission(
+            "registry requires at least one input .syn file".to_string(),
+        ));
+    }
+
+    let graph = load_import_graphs(&inputs)?;
+    validate_import_graph(&graph)?;
+    let units_by_path = units_by_path(&graph);
+
+    for unit in &graph.units {
+        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
+        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
+    }
+    validate_mission_registry(&graph, &units_by_path)?;
+
+    registry::render_registry(&graph, &units_by_path, format)
+}
+
+/// Generate a machine-readable packet registry and write it to `output`.
+pub fn write_registry<I, P>(
+    inputs: I,
+    output: impl AsRef<Path>,
+    format: RegistryFormat,
+) -> Result<PathBuf, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let registry = generate_registry(inputs, format)?;
+    let output = output.as_ref();
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::write(output, registry)?;
+    Ok(output.to_path_buf())
 }
 
 /// Generate code from a `.syn` input path, validating the import graph rooted at that file.
@@ -476,7 +532,7 @@ fn packet_name(packet: &MissionPacket) -> String {
     }
 }
 
-fn format_mid(mid: u64) -> String {
+pub(crate) fn format_mid(mid: u64) -> String {
     format!("0x{mid:04X}")
 }
 
@@ -870,6 +926,115 @@ struct Root { unsupported: bad::Unsupported }
         .unwrap();
 
         check_paths([&camera, &radio]).unwrap();
+    }
+
+    #[test]
+    fn generate_docs_includes_packet_ids_fields_and_docs() {
+        let dir = test_dir("generate-docs");
+        fs::write(
+            dir.join("mission_ids.syn"),
+            "namespace mission_ids\nconst NAV_STATE_MID: u16 = 0x0801",
+        )
+        .unwrap();
+        let input = dir.join("nav.syn");
+        fs::write(
+            &input,
+            r#"namespace nav_app
+import "mission_ids.syn"
+/// Navigation mode.
+enum u8 NavMode {
+    /// Tracking target attitude.
+    Track = 1
+}
+/// Navigation state estimate.
+@mid(mission_ids::NAV_STATE_MID)
+telemetry NavState {
+    /// Current mode.
+    mode: NavMode
+}
+"#,
+        )
+        .unwrap();
+
+        let html = generate_docs([&input]).unwrap();
+        assert!(html.contains("Synapse Message Documentation"));
+        assert!(html.contains("nav_app"));
+        assert!(html.contains("NavState"));
+        assert!(html.contains("0x0801"));
+        assert!(html.contains("Current mode."));
+        assert!(html.contains("NavMode"));
+        assert!(html.contains("id=\"doc-search\""));
+        assert!(html.contains("data-search="));
+        assert!(html.contains("href=\"#"));
+        assert!(html.contains("href=\"file://"));
+        assert!(html.contains(">Source</a>"));
+    }
+
+    #[test]
+    fn write_docs_writes_index_html() {
+        let dir = test_dir("write-docs");
+        let input = dir.join("status.syn");
+        fs::write(
+            &input,
+            "namespace status_app\n@mid(0x0801)\ntelemetry Status { count: u32 }",
+        )
+        .unwrap();
+
+        let out_dir = dir.join("site");
+        let out_path = write_docs([&input], &out_dir).unwrap();
+        assert_eq!(out_path, out_dir.join("index.html"));
+        assert!(fs::read_to_string(out_path).unwrap().contains("status_app"));
+    }
+
+    #[test]
+    fn generate_registry_json_includes_packet_facts() {
+        let dir = test_dir("generate-registry-json");
+        fs::write(
+            dir.join("mission_ids.syn"),
+            "namespace mission_ids\nconst CMD_MID: u16 = 0x1880\nconst SET_MODE_CC: u16 = 2",
+        )
+        .unwrap();
+        let input = dir.join("camera.syn");
+        fs::write(
+            &input,
+            r#"namespace camera_app
+import "mission_ids.syn"
+@mid(mission_ids::CMD_MID)
+@cc(mission_ids::SET_MODE_CC)
+command SetMode {
+    mode: u8
+}
+"#,
+        )
+        .unwrap();
+
+        let json = generate_registry([&input], RegistryFormat::Json).unwrap();
+        assert!(json.contains("\"packets\""));
+        assert!(json.contains("\"namespace\": \"camera_app\""));
+        assert!(json.contains("\"qualified_name\": \"camera_app::SetMode\""));
+        assert!(json.contains("\"kind\": \"command\""));
+        assert!(json.contains("\"mid\": 6272"));
+        assert!(json.contains("\"mid_hex\": \"0x1880\""));
+        assert!(json.contains("\"cc\": 2"));
+    }
+
+    #[test]
+    fn write_registry_csv_writes_packet_rows() {
+        let dir = test_dir("write-registry-csv");
+        let input = dir.join("status.syn");
+        fs::write(
+            &input,
+            "namespace status_app\n@mid(0x0801)\ntelemetry Status { count: u32 }",
+        )
+        .unwrap();
+        let output = dir.join("registry.csv");
+
+        let out_path = write_registry([&input], &output, RegistryFormat::Csv).unwrap();
+        assert_eq!(out_path, output);
+        let csv = fs::read_to_string(out_path).unwrap();
+        assert!(csv.starts_with("namespace,name,qualified_name,kind,source,mid,mid_hex,cc"));
+        assert!(csv.contains("\"status_app\",\"Status\",\"status_app::Status\",\"telemetry\""));
+        assert!(csv.contains("\"2049\",\"0x0801\""));
     }
 
     #[test]

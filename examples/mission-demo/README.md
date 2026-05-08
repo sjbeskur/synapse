@@ -47,3 +47,29 @@ Expected result:
 duplicate command MID/CC pair `0x1881`/`1`
 ```
 
+## Generate HTML Documentation
+
+```bash
+cargo run -p cfs-synapse -- doc -o /tmp/synapse-mission-docs \
+  examples/mission-demo/syn/nav_app.syn \
+  examples/mission-demo/syn/camera_app.syn \
+  examples/mission-demo/syn/payload_app.syn
+```
+
+That writes `/tmp/synapse-mission-docs/index.html` with packet IDs, command codes, fields, types, and doc comments.
+
+## Export A Packet Registry
+
+```bash
+cargo run -p cfs-synapse -- registry --format json -o /tmp/synapse-mission-registry.json \
+  examples/mission-demo/syn/nav_app.syn \
+  examples/mission-demo/syn/camera_app.syn \
+  examples/mission-demo/syn/payload_app.syn
+
+cargo run -p cfs-synapse -- registry --format csv -o /tmp/synapse-mission-registry.csv \
+  examples/mission-demo/syn/nav_app.syn \
+  examples/mission-demo/syn/camera_app.syn \
+  examples/mission-demo/syn/payload_app.syn
+```
+
+Those commands write validated packet inventories for downstream databases, reports, or ICD tooling.
