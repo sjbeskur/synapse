@@ -317,7 +317,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.to_string(),
-            "enum field `Status.mode` with type `CameraMode` is not supported by cFS codegen yet"
+            "enum field `Status.mode` with type `CameraMode` needs an explicit integer representation for cFS codegen"
         );
     }
 

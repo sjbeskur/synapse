@@ -40,8 +40,8 @@ fn cfs_patterns_parse() {
 #[test]
 fn camera_msgs_parse() {
     let f = read_and_parse("camera_msgs.syn");
-    // namespace + import + 5 mode constants + 3 structs + table + 3 commands + 2 telemetry
-    assert_eq!(f.items.len(), 16);
+    // namespace + import + mode enum + 3 structs + table + 3 commands + 2 telemetry
+    assert_eq!(f.items.len(), 12);
 }
 
 #[test]
@@ -131,9 +131,13 @@ fn cfs_c_codegen_camera_msgs() {
     assert!(out.contains("#define UPDATE_INTRINSICS_CC   3U"));
     assert!(out.contains("#define CAMERA_STATUS_MID  0x0881U"));
     assert!(out.contains("#define CAMERA_CALIBRATION_STATUS_MID  0x0882U"));
+    assert!(out.contains("typedef uint8_t camera_app_CameraMode_t;"));
+    assert!(out.contains("#define CAMERA_MODE_STANDBY  ((camera_app_CameraMode_t)0)"));
+    assert!(out.contains("#define CAMERA_MODE_FAULT  ((camera_app_CameraMode_t)4)"));
     assert!(out.contains("} camera_app_CameraId_t;"));
     assert!(out.contains("} camera_app_CameraCalibration_t;"));
     assert!(out.contains("    camera_app_CameraId_t camera;"));
+    assert!(out.contains("    camera_app_CameraMode_t mode;"));
     assert!(out.contains("    camera_app_CameraIntrinsics_t intrinsics;"));
     assert!(out.contains("    double k[9];"));
     assert!(out.contains("    double distortion[5];"));
@@ -198,6 +202,69 @@ typedef struct {
     assert!(
         output.status.success(),
         "generated C did not compile\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn generated_c_camera_msgs_compiles() {
+    let std_msgs = synapse_codegen_cfs::generate_c(&read_and_parse("std_msgs.syn"));
+    let camera_msgs = synapse_codegen_cfs::generate_c(&read_and_parse("camera_msgs.syn"));
+
+    let dir = std::env::temp_dir().join(format!("synapse-camera-cc-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create temp camera cc dir");
+    fs::write(
+        dir.join("cfe.h"),
+        r#"
+#pragma once
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct {
+    uint8_t bytes[16];
+} CFE_MSG_TelemetryHeader_t;
+
+typedef struct {
+    uint8_t bytes[16];
+} CFE_MSG_CommandHeader_t;
+
+typedef struct {
+    const void *Data;
+    size_t Size;
+} CFE_Span_t;
+"#,
+    )
+    .expect("write cfe.h stub");
+    fs::write(dir.join("std_msgs.h"), std_msgs).expect("write std_msgs.h");
+    fs::write(dir.join("camera_msgs.h"), camera_msgs).expect("write camera_msgs.h");
+    fs::write(
+        dir.join("check.c"),
+        r#"
+#include "camera_msgs.h"
+
+int check_camera_mode(void) {
+    camera_app_SetCameraMode_t cmd = {0};
+    cmd.mode = CAMERA_MODE_PREVIEW;
+    return cmd.mode == CAMERA_MODE_PREVIEW ? 0 : 1;
+}
+"#,
+    )
+    .expect("write C camera check source");
+
+    let output = Command::new("cc")
+        .arg("-std=c99")
+        .arg("-fsyntax-only")
+        .arg("-I")
+        .arg(&dir)
+        .arg(dir.join("check.c"))
+        .output()
+        .expect("run cc");
+
+    assert!(
+        output.status.success(),
+        "generated camera C did not compile\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -276,10 +343,14 @@ fn cfs_rust_codegen_camera_msgs() {
     assert!(out.contains("pub const UPDATE_INTRINSICS_CC: u16 = 3;"));
     assert!(out.contains("pub const CAMERA_STATUS_MID: u16 = 0x0881;"));
     assert!(out.contains("pub const CAMERA_CALIBRATION_STATUS_MID: u16 = 0x0882;"));
+    assert!(out.contains("pub type CameraMode = u8;"));
+    assert!(out.contains("pub const CAMERA_MODE_STANDBY: CameraMode = 0;"));
+    assert!(out.contains("pub const CAMERA_MODE_FAULT: CameraMode = 4;"));
     assert!(out.contains("pub struct CameraCalibration {"));
     assert!(out.contains("pub struct CameraId {"));
     assert!(out.contains("pub struct UpdateIntrinsics {"));
     assert!(out.contains("    pub camera: CameraId,"));
+    assert!(out.contains("    pub mode: CameraMode,"));
     assert!(out.contains("    pub k: [f64; 9],"));
     assert!(out.contains("    pub distortion: [f64; 5],"));
     assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
@@ -344,6 +415,128 @@ pub mod geometry_msgs {{
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn generated_rust_camera_msgs_compiles() {
+    let opts = RustOptions::default();
+    let std_msgs = synapse_codegen_cfs::generate_rust(&read_and_parse("std_msgs.syn"), &opts);
+    let camera_msgs = synapse_codegen_cfs::generate_rust(&read_and_parse("camera_msgs.syn"), &opts);
+
+    let src = format!(
+        r#"
+pub mod cfs_sys {{
+    #[repr(C)]
+    pub struct CFE_MSG_TelemetryHeader_t {{
+        pub bytes: [u8; 16],
+    }}
+
+    #[repr(C)]
+    pub struct CFE_MSG_CommandHeader_t {{
+        pub bytes: [u8; 16],
+    }}
+}}
+
+pub mod std_msgs {{
+{std_msgs}
+}}
+
+pub mod camera_msgs {{
+    use crate::cfs_sys;
+{camera_msgs}
+}}
+
+pub fn selected_mode() -> camera_msgs::CameraMode {{
+    camera_msgs::CAMERA_MODE_PREVIEW
+}}
+"#
+    );
+
+    let dir = std::env::temp_dir().join(format!("synapse-camera-rustc-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create temp camera rustc dir");
+    let src_path = dir.join("generated_camera.rs");
+    let lib_path = dir.join("libgenerated_camera.rlib");
+    fs::write(&src_path, src).expect("write generated camera Rust test source");
+
+    let output = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg("--crate-type=lib")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&lib_path)
+        .output()
+        .expect("run rustc");
+
+    assert!(
+        output.status.success(),
+        "generated camera Rust did not compile\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn trybuild_generated_rust_camera_msgs_passes() {
+    let opts = RustOptions::default();
+    let std_msgs = synapse_codegen_cfs::generate_rust(&read_and_parse("std_msgs.syn"), &opts);
+    let camera_msgs = synapse_codegen_cfs::generate_rust(&read_and_parse("camera_msgs.syn"), &opts);
+
+    let src = format!(
+        r#"
+pub mod cfs_sys {{
+    #[repr(C)]
+    pub struct CFE_MSG_TelemetryHeader_t {{
+        pub bytes: [u8; 16],
+    }}
+
+    #[repr(C)]
+    pub struct CFE_MSG_CommandHeader_t {{
+        pub bytes: [u8; 16],
+    }}
+}}
+
+pub mod std_msgs {{
+{std_msgs}
+}}
+
+pub mod camera_msgs {{
+    use crate::cfs_sys;
+{camera_msgs}
+}}
+
+fn main() {{
+    let mode: camera_msgs::CameraMode = camera_msgs::CAMERA_MODE_PREVIEW;
+    let mut cmd = camera_msgs::SetCameraMode {{
+        cfs_header: cfs_sys::CFE_MSG_CommandHeader_t {{ bytes: [0; 16] }},
+        camera: camera_msgs::CameraId {{ name: [0; 32] }},
+        mode,
+    }};
+    cmd.mode = camera_msgs::CAMERA_MODE_CAPTURE;
+    let _status = camera_msgs::CameraStatus {{
+        cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t {{ bytes: [0; 16] }},
+        header: std_msgs::Header {{
+            stamp: std_msgs::Time {{ sec: 0, nsec: 0 }},
+            frame_id: core::ptr::null(),
+            seq: 0,
+        }},
+        camera: cmd.camera,
+        mode: cmd.mode,
+        exposure_us: 0,
+        gain: 0.0,
+        frame_count: 0,
+        dropped_frames: 0,
+    }};
+}}
+"#
+    );
+
+    let dir = std::env::temp_dir().join(format!("synapse-camera-trybuild-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create temp camera trybuild dir");
+    let src_path = dir.join("camera_generated_pass.rs");
+    fs::write(&src_path, src).expect("write camera trybuild source");
+
+    let t = trybuild::TestCases::new();
+    t.pass(src_path);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

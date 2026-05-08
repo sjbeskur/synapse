@@ -133,23 +133,22 @@ Open questions:
 
 ## Enum ABI Representation
 
-Status: Proposed
+Status: Implemented
 
 Direction:
 
-- Do not promise enum ABI support until representation is explicit.
+- Enum field ABI support requires an explicit integer representation, such as `enum u8 CameraMode`.
+- Generate fixed-width C typedefs and Rust type aliases.
+- Generate named constants for variants.
+- Require explicit variant values and validate them against the representation range.
 
 Options:
 
-- Generate C `typedef enum` and Rust `#[repr(...)] enum`.
-- Generate fixed-width integer constants and use explicit integer fields.
-- Add syntax for enum representation, such as `enum u8 CameraMode`.
+- Revisit native C `typedef enum` and Rust `#[repr(...)] enum` later if the stronger type identity is worth the ABI risk and extra generation rules.
 
 Open questions:
 
-- What is the safest default representation for cFS packets?
-- Should enum values require explicit discriminants?
-- Should enum fields in packets require an explicitly sized enum?
+- Should generated C constant names include the namespace when two generated headers are commonly included together?
 
 ## Strings
 

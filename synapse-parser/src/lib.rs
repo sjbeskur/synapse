@@ -279,6 +279,11 @@ mod synapse_tests {
         ));
     }
 
+    #[test]
+    fn represented_enum() {
+        assert!(parses_file("enum u8 DriveMode { Idle = 0 Driving = 1 }"));
+    }
+
     // =========================================================
     // Const
     // =========================================================

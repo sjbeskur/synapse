@@ -50,13 +50,26 @@ struct Point {
 
 Plain structs generate ABI-compatible C structs and Rust `#[repr(C)]` structs without cFS Software Bus headers.
 
+### `enum`
+
+```syn
+enum u8 CameraMode {
+    Standby = 0
+    Preview = 1
+}
+```
+
+Represented enums generate fixed-width integer aliases and named constants. The representation must be an integer primitive: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, or `u64`. Every variant in a represented enum must have an explicit value, and values must fit the selected representation.
+
+Unrepresented enums still parse, but cFS codegen rejects them when used as field types because they do not define an ABI width.
+
 ### `command`
 
 ```syn
 @mid(0x1880)
 @cc(1)
 command SetMode {
-    mode: u8
+    mode: CameraMode
 }
 ```
 
@@ -204,22 +217,7 @@ Use explicit `command` or `telemetry` for generated cFS packets.
 
 ## Parsed But Not Fully Generated
 
-These features are accepted by the parser but should not be relied on for generated cFS ABI output in `0.1.x`.
-
-### `enum`
-
-```syn
-enum CameraMode {
-    Standby = 0
-    Preview = 1
-}
-```
-
-Enums parse into the AST, but cFS C/Rust enum code generation is not yet complete.
-
-In `0.2.x`, cFS codegen rejects enum fields until a concrete ABI representation exists. Prefer explicit integer constants and integer payload fields for now.
-
-Review question for `0.2.x`: should enums generate C `typedef enum`, integer constants, or fixed-width integer aliases?
+These features are accepted by the parser but should not be relied on for generated cFS ABI output yet.
 
 ### Field Defaults
 

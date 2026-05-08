@@ -123,13 +123,24 @@ struct Point {
 
 Plain structs do not include a cFS message header. They are useful as nested payload types and other reusable C-compatible data.
 
+Use represented `enum`s for small named integer domains:
+
+```syn
+enum u8 CameraMode {
+    Standby = 0
+    Preview = 1
+}
+```
+
+Represented enums generate fixed-width C/Rust aliases and named constants. The explicit representation is what makes them safe to use in generated cFS packet and table fields.
+
 Use `command` for Software Bus packets sent to an app:
 
 ```syn
 @mid(0x1880)
 @cc(1)
 command SetMode {
-    mode: u8
+    mode: CameraMode
 }
 ```
 
@@ -165,13 +176,14 @@ The cFS generator currently emits:
 - `namespace` prefixes for generated C type names, such as `geometry_msgs_Point_t`.
 - `import` declarations as C `#include` lines or Rust `use crate::...` lines.
 - `const` declarations as C `#define`s or Rust `pub const`s.
+- Represented enums such as `enum u8 CameraMode` as fixed-width type aliases and constants.
 - `struct` and `table` definitions as plain data structs.
 - `command` and `telemetry` definitions as Software Bus packet structs with cFS headers.
 - Required `@mid(...)` attributes as message ID constants.
 - Required command `@cc(...)` attributes as command-code constants.
 - Fixed arrays, bounded strings, and namespaced type references.
 
-Enums are parsed into the AST, but enum fields are rejected by cFS codegen until a concrete ABI representation exists. Optional field markers, field defaults, dynamic arrays, and non-string bounded arrays are also parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer plain integer fields, fixed arrays, and bounded strings for generated packet payloads.
+Enums need an explicit integer representation when used in generated cFS fields, for example `enum u8 CameraMode`. Unrepresented enums, optional field markers, field defaults, dynamic arrays, and non-string bounded arrays are parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer represented enums, fixed arrays, and bounded strings for generated packet payloads.
 
 See `docs/language.md` for the current language status and `0.1.x` review checklist.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.
@@ -203,7 +215,7 @@ Sample `.syn` files live in `synapse-integration-tests/syn`.
 
 - `geometry_msgs.syn`: ROS-like geometry telemetry packets.
 - `cfs_patterns.syn`: minimal command, telemetry, and table examples.
-- `camera_msgs.syn`: camera control syntax coverage, including commands to set mode/exposure, a command to send updated intrinsics, telemetry for camera status, and a `CameraCalibration` table containing persistent calibration data. It also exercises mode constants and doc-comment support.
+- `camera_msgs.syn`: camera control syntax coverage, including a represented camera mode enum, commands to set mode/exposure, a command to send updated intrinsics, telemetry for camera status, and a `CameraCalibration` table containing persistent calibration data. It also exercises doc-comment support.
 
 See `docs/examples.md` for links to all sample `.syn` files and checked-in generated output.
 

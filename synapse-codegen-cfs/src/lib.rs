@@ -1,12 +1,8 @@
-use std::{
-    collections::{HashMap, HashSet},
-    error::Error as StdError,
-    fmt,
-};
+use std::{collections::HashMap, error::Error as StdError, fmt};
 
 use synapse_parser::ast::{
-    ArraySuffix, Attribute, BaseType, ConstDecl, FieldDef, Item, Literal, MessageDef, PacketKind,
-    PrimitiveType, StructDef, SynFile, TypeExpr,
+    ArraySuffix, Attribute, BaseType, ConstDecl, EnumDef, FieldDef, Item, Literal, MessageDef,
+    PacketKind, PrimitiveType, StructDef, SynFile, TypeExpr,
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -51,11 +47,22 @@ pub enum CodegenError {
     OptionalFieldUnsupported { container: String, field: String },
     /// Field defaults parse today, but cFS ABI codegen does not generate initializers yet.
     DefaultValueUnsupported { container: String, field: String },
-    /// Enum fields parse today, but cFS ABI codegen has no explicit representation for them yet.
+    /// Unrepresented enum fields parse today, but cFS ABI codegen needs an explicit representation.
     EnumFieldUnsupported {
         container: String,
         field: String,
         ty: String,
+    },
+    /// Represented enums must use integer ABI types.
+    EnumRepresentationUnsupported { enum_name: String, repr: String },
+    /// Represented enums require explicit values for every variant.
+    EnumVariantValueRequired { enum_name: String, variant: String },
+    /// Represented enum variant values must fit the selected ABI type.
+    EnumVariantValueOutOfRange {
+        enum_name: String,
+        variant: String,
+        value: i64,
+        repr: String,
     },
     /// The legacy `message` keyword is parsed for migration, but cFS codegen requires intent.
     LegacyMessageUnsupported { packet: String },
@@ -119,7 +126,24 @@ impl fmt::Display for CodegenError {
                 ty,
             } => write!(
                 f,
-                "enum field `{container}.{field}` with type `{ty}` is not supported by cFS codegen yet"
+                "enum field `{container}.{field}` with type `{ty}` needs an explicit integer representation for cFS codegen"
+            ),
+            CodegenError::EnumRepresentationUnsupported { enum_name, repr } => write!(
+                f,
+                "enum `{enum_name}` uses unsupported representation `{repr}`; cFS codegen supports integer enum representations"
+            ),
+            CodegenError::EnumVariantValueRequired { enum_name, variant } => write!(
+                f,
+                "enum `{enum_name}` variant `{variant}` needs an explicit value for cFS codegen"
+            ),
+            CodegenError::EnumVariantValueOutOfRange {
+                enum_name,
+                variant,
+                value,
+                repr,
+            } => write!(
+                f,
+                "enum `{enum_name}` variant `{variant}` value `{value}` does not fit `{repr}`"
             ),
             CodegenError::LegacyMessageUnsupported { packet } => write!(
                 f,
@@ -225,38 +249,85 @@ pub fn try_generate_rust(file: &SynFile, opts: &RustOptions) -> Result<String, C
 // ── Item emission ─────────────────────────────────────────────────────────────
 
 fn validate_supported(file: &SynFile) -> Result<(), CodegenError> {
-    let enum_names = enum_names(file);
+    let enum_defs = enum_defs(file);
     let mut telemetry_mids = HashMap::new();
     let mut command_codes = HashMap::new();
     for item in &file.items {
         match item {
             Item::Struct(s) | Item::Table(s) => {
                 validate_plain_item_attrs(&s.name, &s.attrs)?;
-                validate_fields(&s.name, &s.fields, &enum_names)?
+                validate_fields(&s.name, &s.fields, &enum_defs)?
             }
             Item::Command(m) | Item::Telemetry(m) => {
                 validate_packet(m, &mut telemetry_mids, &mut command_codes)?;
-                validate_fields(&m.name, &m.fields, &enum_names)?
+                validate_fields(&m.name, &m.fields, &enum_defs)?
             }
             Item::Message(m) => {
                 return Err(CodegenError::LegacyMessageUnsupported {
                     packet: m.name.clone(),
                 });
             }
-            Item::Namespace(_) | Item::Import(_) | Item::Const(_) | Item::Enum(_) => {}
+            Item::Enum(e) => validate_enum(e)?,
+            Item::Namespace(_) | Item::Import(_) | Item::Const(_) => {}
         }
     }
     Ok(())
 }
 
-fn enum_names(file: &SynFile) -> HashSet<String> {
+fn enum_defs(file: &SynFile) -> HashMap<String, &EnumDef> {
     file.items
         .iter()
         .filter_map(|item| match item {
-            Item::Enum(e) => Some(e.name.clone()),
+            Item::Enum(e) => Some((e.name.clone(), e)),
             _ => None,
         })
         .collect()
+}
+
+fn validate_enum(e: &EnumDef) -> Result<(), CodegenError> {
+    let Some(repr) = e.repr else {
+        return Ok(());
+    };
+    let Some((min, max)) = enum_repr_range(repr) else {
+        return Err(CodegenError::EnumRepresentationUnsupported {
+            enum_name: e.name.clone(),
+            repr: primitive_name(repr).to_string(),
+        });
+    };
+
+    for variant in &e.variants {
+        let value = variant
+            .value
+            .ok_or_else(|| CodegenError::EnumVariantValueRequired {
+                enum_name: e.name.clone(),
+                variant: variant.name.clone(),
+            })?;
+        if value < min || value > max {
+            return Err(CodegenError::EnumVariantValueOutOfRange {
+                enum_name: e.name.clone(),
+                variant: variant.name.clone(),
+                value,
+                repr: primitive_name(repr).to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn enum_repr_range(repr: PrimitiveType) -> Option<(i64, i64)> {
+    match repr {
+        PrimitiveType::I8 => Some((i8::MIN as i64, i8::MAX as i64)),
+        PrimitiveType::I16 => Some((i16::MIN as i64, i16::MAX as i64)),
+        PrimitiveType::I32 => Some((i32::MIN as i64, i32::MAX as i64)),
+        PrimitiveType::I64 => Some((i64::MIN, i64::MAX)),
+        PrimitiveType::U8 => Some((0, u8::MAX as i64)),
+        PrimitiveType::U16 => Some((0, u16::MAX as i64)),
+        PrimitiveType::U32 => Some((0, u32::MAX as i64)),
+        PrimitiveType::U64 => Some((0, i64::MAX)),
+        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Bytes => {
+            None
+        }
+    }
 }
 
 fn validate_packet(
@@ -364,7 +435,7 @@ fn validate_mid_range(packet: &MessageDef, value: u64, mid: &Literal) -> Result<
 fn validate_fields(
     container: &str,
     fields: &[FieldDef],
-    enum_names: &HashSet<String>,
+    enum_defs: &HashMap<String, &EnumDef>,
 ) -> Result<(), CodegenError> {
     for field in fields {
         if field.optional {
@@ -380,15 +451,17 @@ fn validate_fields(
             });
         }
         if let BaseType::Ref(segments) = &field.ty.base {
-            if segments
+            if let Some(e) = segments
                 .last()
-                .is_some_and(|name| enum_names.contains(name.as_str()))
+                .and_then(|name| enum_defs.get(name.as_str()))
             {
-                return Err(CodegenError::EnumFieldUnsupported {
-                    container: container.to_string(),
-                    field: field.name.clone(),
-                    ty: segments.join("::"),
-                });
+                if e.repr.is_none() {
+                    return Err(CodegenError::EnumFieldUnsupported {
+                        container: container.to_string(),
+                        field: field.name.clone(),
+                        ty: segments.join("::"),
+                    });
+                }
             }
         }
         match &field.ty.array {
@@ -479,7 +552,23 @@ fn emit_items(file: &SynFile, out: &mut String) {
         out.push('\n');
     }
 
-    // Second pass: emit const, struct, and message types
+    // Second pass: emit enum aliases before any struct fields can reference them.
+    let mut namespace = Vec::new();
+    for item in &file.items {
+        match item {
+            Item::Namespace(ns) => namespace = ns.name.clone(),
+            Item::Enum(e) => emit_enum(out, e, &namespace),
+            Item::Import(_)
+            | Item::Const(_)
+            | Item::Struct(_)
+            | Item::Table(_)
+            | Item::Command(_)
+            | Item::Telemetry(_)
+            | Item::Message(_) => {}
+        }
+    }
+
+    // Third pass: emit const, struct, and message types.
     let mut namespace = Vec::new();
     for item in &file.items {
         match item {
@@ -500,6 +589,34 @@ fn emit_const(out: &mut String, c: &ConstDecl) {
     emit_doc_lines(out, &c.doc);
     let val = literal_str(&c.value);
     out.push_str(&format!("#define {}  {}\n\n", c.name, val));
+}
+
+// ── Enum ─────────────────────────────────────────────────────────────────────
+
+fn emit_enum(out: &mut String, e: &EnumDef, namespace: &[String]) {
+    let Some(repr) = e.repr else {
+        return;
+    };
+
+    let type_name = c_decl_type_name(&e.name, namespace);
+    emit_doc_lines(out, &e.doc);
+    out.push_str(&format!("typedef {} {};\n", primitive_str(repr), type_name));
+
+    let enum_prefix = to_screaming_snake(&e.name);
+    for variant in &e.variants {
+        emit_doc_lines(out, &variant.doc);
+        let value = variant
+            .value
+            .expect("represented enum variants validated before emission");
+        out.push_str(&format!(
+            "#define {}_{}  (({}){})\n",
+            enum_prefix,
+            to_screaming_snake(&variant.name),
+            type_name,
+            value
+        ));
+    }
+    out.push('\n');
 }
 
 // ── Struct (plain supporting type, no cFS header) ─────────────────────────────
@@ -575,8 +692,9 @@ fn emit_rust_items(file: &SynFile, opts: &RustOptions, out: &mut String) {
     // Second pass: types
     for item in &file.items {
         match item {
-            Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
+            Item::Namespace(_) | Item::Import(_) => {}
             Item::Const(c) => emit_rust_const(out, c),
+            Item::Enum(e) => emit_rust_enum(out, e),
             Item::Struct(s) | Item::Table(s) => emit_rust_struct(out, s),
             Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
                 emit_rust_message(out, m, opts)
@@ -590,6 +708,35 @@ fn emit_rust_const(out: &mut String, c: &ConstDecl) {
     let val = rust_literal_str(&c.value);
     let ty = rust_field_type_str(&c.ty);
     out.push_str(&format!("pub const {}: {} = {};\n\n", c.name, ty, val));
+}
+
+fn emit_rust_enum(out: &mut String, e: &EnumDef) {
+    let Some(repr) = e.repr else {
+        return;
+    };
+
+    emit_doc_lines(out, &e.doc);
+    out.push_str(&format!(
+        "pub type {} = {};\n",
+        e.name,
+        rust_primitive_str(repr)
+    ));
+
+    let enum_prefix = to_screaming_snake(&e.name);
+    for variant in &e.variants {
+        emit_doc_lines(out, &variant.doc);
+        let value = variant
+            .value
+            .expect("represented enum variants validated before emission");
+        out.push_str(&format!(
+            "pub const {}_{}: {} = {};\n",
+            enum_prefix,
+            to_screaming_snake(&variant.name),
+            e.name,
+            value
+        ));
+    }
+    out.push('\n');
 }
 
 fn emit_rust_struct(out: &mut String, s: &StructDef) {
@@ -1256,7 +1403,61 @@ mod tests {
         );
         assert_eq!(
             err.to_string(),
-            "enum field `Status.mode` with type `CameraMode` is not supported by cFS codegen yet"
+            "enum field `Status.mode` with type `CameraMode` needs an explicit integer representation for cFS codegen"
+        );
+    }
+
+    #[test]
+    fn c_emits_represented_enum_fields() {
+        let file = parse(
+            "enum u8 CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
+        )
+        .unwrap();
+        let out = try_generate_c(&file).unwrap();
+        assert!(out.contains("typedef uint8_t CameraMode_t;"));
+        assert!(out.contains("#define CAMERA_MODE_IDLE  ((CameraMode_t)0)"));
+        assert!(out.contains("#define CAMERA_MODE_STREAMING  ((CameraMode_t)1)"));
+        assert!(out.contains("    CameraMode_t mode;"));
+    }
+
+    #[test]
+    fn c_rejects_represented_enum_missing_value() {
+        let file = parse("enum u8 CameraMode { Idle Streaming = 1 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::EnumVariantValueRequired {
+                enum_name: "CameraMode".to_string(),
+                variant: "Idle".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn c_rejects_non_integer_enum_repr() {
+        let file = parse("enum bool CameraMode { Idle = 0 Streaming = 1 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::EnumRepresentationUnsupported {
+                enum_name: "CameraMode".to_string(),
+                repr: "bool".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn c_rejects_represented_enum_out_of_range() {
+        let file = parse("enum u8 CameraMode { TooLarge = 256 }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::EnumVariantValueOutOfRange {
+                enum_name: "CameraMode".to_string(),
+                variant: "TooLarge".to_string(),
+                value: 256,
+                repr: "u8".to_string(),
+            }
         );
     }
 
@@ -1508,6 +1709,19 @@ mod tests {
                 ty: "CameraMode".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn rust_emits_represented_enum_fields() {
+        let file = parse(
+            "enum u8 CameraMode { Idle = 0 Streaming = 1 }\nstruct Status { mode: CameraMode }",
+        )
+        .unwrap();
+        let out = try_generate_rust(&file, &RustOptions::default()).unwrap();
+        assert!(out.contains("pub type CameraMode = u8;"));
+        assert!(out.contains("pub const CAMERA_MODE_IDLE: CameraMode = 0;"));
+        assert!(out.contains("pub const CAMERA_MODE_STREAMING: CameraMode = 1;"));
+        assert!(out.contains("    pub mode: CameraMode,"));
     }
 
     #[test]

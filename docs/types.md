@@ -23,6 +23,7 @@ See `docs/examples.md` for complete `.syn` files that use these types.
 | `string` | `const char*` | `*const u8` |
 | `SomeType` | generated typedef name | `SomeType` |
 | `pkg::SomeType` | generated namespaced typedef name | `pkg::SomeType` |
+| represented enum | fixed-width typedef name | enum type alias |
 
 Examples:
 
@@ -38,6 +39,21 @@ struct Scalars {
 ```
 
 Prefer bounded strings such as `string[<=32]` for cFS packet and table payloads. Unbounded `string` and `bytes` generate pointer-like fields and need an external ownership/length convention.
+
+## Enums
+
+Represented enums use an explicit integer primitive before the enum name.
+
+```syn
+enum u8 CameraMode {
+    Standby = 0
+    Preview = 1
+}
+```
+
+The cFS generator emits a fixed-width C typedef and Rust type alias, plus constants for each variant. Supported representations are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, and `u64`. Every variant must have an explicit value that fits the selected representation.
+
+Unrepresented enums parse, but cFS codegen rejects them as field types because they do not specify an ABI width.
 
 ## Fixed Arrays
 

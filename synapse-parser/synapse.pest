@@ -93,7 +93,7 @@ const_decl = { doc_block? ~ attribute* ~ "const" ~ ident ~ ":" ~ type_expr ~ "="
 //     Idle    = 0
 //     Moving  = 1
 // }
-enum_def     = { doc_block? ~ attribute* ~ "enum" ~ ident ~ "{" ~ enum_variant* ~ "}" }
+enum_def     = { doc_block? ~ attribute* ~ "enum" ~ primitive_type? ~ ident ~ "{" ~ enum_variant* ~ "}" }
 enum_variant = { doc_block? ~ ident ~ ("=" ~ int_lit)? }
 
 // ============================================================

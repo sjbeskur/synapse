@@ -44,6 +44,7 @@ pub struct ConstDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumDef {
     pub name: String,
+    pub repr: Option<PrimitiveType>,
     pub variants: Vec<EnumVariant>,
     pub doc: Vec<String>,
     pub attrs: Vec<Attribute>,
@@ -216,10 +217,17 @@ fn build_enum(pair: Pair<Rule>) -> EnumDef {
     let mut inner = pair.into_inner().peekable();
     let doc = extract_doc(&mut inner);
     let attrs = extract_attrs(&mut inner);
-    let name = inner.next().unwrap().as_str().to_string();
+    let first = inner.next().unwrap();
+    let (repr, name) = if first.as_rule() == Rule::primitive_type {
+        let repr = build_primitive_type(first);
+        (Some(repr), inner.next().unwrap().as_str().to_string())
+    } else {
+        (None, first.as_str().to_string())
+    };
     let variants = inner.map(build_enum_variant).collect();
     EnumDef {
         name,
+        repr,
         variants,
         doc,
         attrs,
@@ -540,6 +548,7 @@ mod tests {
         let f = p("enum DriveMode { Idle = 0  Forward = 1  Error = 2 }");
         let Item::Enum(e) = &f.items[0] else { panic!() };
         assert_eq!(e.name, "DriveMode");
+        assert_eq!(e.repr, None);
         assert_eq!(
             e.variants[0],
             EnumVariant {
@@ -571,8 +580,18 @@ mod tests {
     fn enum_without_values() {
         let f = p("enum Dir { North South East West }");
         let Item::Enum(e) = &f.items[0] else { panic!() };
+        assert_eq!(e.repr, None);
         assert!(e.variants.iter().all(|v| v.value.is_none()));
         assert_eq!(e.variants.len(), 4);
+    }
+
+    #[test]
+    fn enum_with_repr() {
+        let f = p("enum u8 CameraMode { Idle = 0 Streaming = 1 }");
+        let Item::Enum(e) = &f.items[0] else { panic!() };
+        assert_eq!(e.name, "CameraMode");
+        assert_eq!(e.repr, Some(PrimitiveType::U8));
+        assert_eq!(e.variants.len(), 2);
     }
 
     // ── Struct ───────────────────────────────────────────────

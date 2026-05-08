@@ -7,3 +7,4 @@ edition = "2024"
 synapse-parser      = { package = "cfs-synapse-parser", path = "../synapse-parser" }
 synapse-codegen-cfs = { package = "cfs-synapse-codegen-cfs", path = "../synapse-codegen-cfs" }
 cfs-synapse         = { path = "../synapse" }
+trybuild           = "1"
