@@ -8,5 +8,5 @@ struct Time {
 struct Header {
     seq:      u32
     stamp:    Time
-    frame_id: string
+    frame_id: string[<=64]
 }

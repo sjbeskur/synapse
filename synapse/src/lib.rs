@@ -322,6 +322,15 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unbounded_strings() {
+        let err = generate_str("struct Label { name: string }", Lang::C).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "unbounded string field `Label.name` is not supported by cFS codegen; use `string[<=N]` or `string[N]`"
+        );
+    }
+
+    #[test]
     fn rejects_legacy_message() {
         let err = generate_str("@mid(0x0801)\nmessage Status { x: f32 }", Lang::C).unwrap_err();
         assert_eq!(

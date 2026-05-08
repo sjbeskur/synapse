@@ -64,6 +64,8 @@ pub enum CodegenError {
         value: i64,
         repr: String,
     },
+    /// Unbounded strings would generate pointer fields, which are not cFS packet/table ABI data.
+    UnboundedStringUnsupported { container: String, field: String },
     /// The legacy `message` keyword is parsed for migration, but cFS codegen requires intent.
     LegacyMessageUnsupported { packet: String },
     /// cFS Software Bus command and telemetry packets require explicit message IDs.
@@ -144,6 +146,10 @@ impl fmt::Display for CodegenError {
             } => write!(
                 f,
                 "enum `{enum_name}` variant `{variant}` value `{value}` does not fit `{repr}`"
+            ),
+            CodegenError::UnboundedStringUnsupported { container, field } => write!(
+                f,
+                "unbounded string field `{container}.{field}` is not supported by cFS codegen; use `string[<=N]` or `string[N]`"
             ),
             CodegenError::LegacyMessageUnsupported { packet } => write!(
                 f,
@@ -446,6 +452,12 @@ fn validate_fields(
         }
         if field.default.is_some() {
             return Err(CodegenError::DefaultValueUnsupported {
+                container: container.to_string(),
+                field: field.name.clone(),
+            });
+        }
+        if field.ty.base == BaseType::String && field.ty.array.is_none() {
+            return Err(CodegenError::UnboundedStringUnsupported {
                 container: container.to_string(),
                 field: field.name.clone(),
             });
@@ -1529,6 +1541,23 @@ mod tests {
     }
 
     #[test]
+    fn c_rejects_unbounded_strings() {
+        let file = parse("struct Label { name: string }").unwrap();
+        let err = try_generate_c(&file).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::UnboundedStringUnsupported {
+                container: "Label".to_string(),
+                field: "name".to_string(),
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "unbounded string field `Label.name` is not supported by cFS codegen; use `string[<=N]` or `string[N]`"
+        );
+    }
+
+    #[test]
     fn c_imports_emit_header_includes() {
         let out = codegen(r#"import "std_msgs.syn""#);
         assert!(out.contains("#include \"std_msgs.h\""));
@@ -1763,6 +1792,19 @@ mod tests {
     fn rust_bounded_string_uses_inline_storage() {
         let out = rust_codegen("struct Label { name: string[<=64] }");
         assert!(out.contains("    pub name: [u8; 64],"));
+    }
+
+    #[test]
+    fn rust_rejects_unbounded_strings() {
+        let file = parse("struct Label { name: string }").unwrap();
+        let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
+        assert_eq!(
+            err,
+            CodegenError::UnboundedStringUnsupported {
+                container: "Label".to_string(),
+                field: "name".to_string(),
+            }
+        );
     }
 
     #[test]

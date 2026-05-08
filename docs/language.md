@@ -194,7 +194,7 @@ struct Frame {
 }
 ```
 
-Unbounded strings generate pointer-like representations. Prefer `string[<=N]` for ABI-stable cFS packet and table payloads, and define the mission/application encoding and termination policy outside the generated type.
+Unbounded strings parse into the AST, but cFS codegen rejects them because they would require pointer-like ABI fields. Use `string[<=N]` or `string[N]` for ABI-stable cFS packet and table payloads, and define the mission/application encoding and termination policy outside the generated type.
 
 ### `const`
 

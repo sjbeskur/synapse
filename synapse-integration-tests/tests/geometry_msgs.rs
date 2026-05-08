@@ -99,6 +99,7 @@ fn cfs_c_codegen_std_msgs() {
     assert!(out.contains("} std_msgs_Header_t;"));
     assert!(out.contains("    uint32_t sec;"));
     assert!(out.contains("    uint32_t seq;"));
+    assert!(out.contains("    char frame_id[64];"));
 }
 
 #[test]
@@ -299,6 +300,7 @@ fn cfs_rust_codegen_geometry_msgs() {
     assert!(out.contains("pub struct PoseStamped {"));
     assert!(out.contains("pub struct TransformStamped {"));
     assert!(out.contains("pub covariance: [f64; 36],"));
+    assert!(out.contains("pub child_frame_id: [u8; 64],"));
 }
 
 #[test]
@@ -309,6 +311,7 @@ fn cfs_rust_codegen_std_msgs() {
     assert!(out.contains("pub struct Header {"));
     assert!(out.contains("pub sec: u32,"));
     assert!(out.contains("pub seq: u32,"));
+    assert!(out.contains("pub frame_id: [u8; 64],"));
 }
 
 #[test]
@@ -516,7 +519,7 @@ fn main() {{
         cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t {{ bytes: [0; 16] }},
         header: std_msgs::Header {{
             stamp: std_msgs::Time {{ sec: 0, nsec: 0 }},
-            frame_id: core::ptr::null(),
+            frame_id: [0; 64],
             seq: 0,
         }},
         camera: cmd.camera,

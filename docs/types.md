@@ -20,7 +20,7 @@ See `docs/examples.md` for complete `.syn` files that use these types.
 | `u64` | `uint64_t` | `u64` |
 | `bool` | `bool` | `bool` |
 | `bytes` | `uint8_t*` | `*const u8` |
-| `string` | `const char*` | `*const u8` |
+| `string` | cFS codegen error | cFS codegen error |
 | `SomeType` | generated typedef name | `SomeType` |
 | `pkg::SomeType` | generated namespaced typedef name | `pkg::SomeType` |
 | represented enum | fixed-width typedef name | enum type alias |
@@ -34,11 +34,11 @@ struct Scalars {
     count: u32
     enabled: bool
     payload: bytes
-    frame_id: string
+    frame_id: string[<=64]
 }
 ```
 
-Prefer bounded strings such as `string[<=32]` for cFS packet and table payloads. Unbounded `string` and `bytes` generate pointer-like fields and need an external ownership/length convention.
+Use bounded strings such as `string[<=32]` for cFS packet and table payloads. Unbounded `string` is parsed by the language but rejected by cFS codegen because pointer fields are not portable Software Bus or table data.
 
 ## Enums
 
@@ -118,7 +118,7 @@ Strings are special-cased because cFS packets and tables often need inline byte 
 
 | Synapse | C | Rust | Recommended for cFS ABI |
 | --- | --- | --- | --- |
-| `string` | `const char*` | `*const u8` | No |
+| `string` | cFS codegen error | cFS codegen error | No |
 | `string[]` | cFS codegen error | cFS codegen error | No |
 | `string[N]` | `char field[N];` | `[u8; N]` | Yes, if fixed length is desired |
 | `string[<=N]` | `char field[N];` | `[u8; N]` | Yes |

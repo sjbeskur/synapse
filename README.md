@@ -183,7 +183,7 @@ The cFS generator currently emits:
 - Required command `@cc(...)` attributes as command-code constants.
 - Fixed arrays, bounded strings, and namespaced type references.
 
-Enums need an explicit integer representation when used in generated cFS fields, for example `enum u8 CameraMode`. Unrepresented enums, optional field markers, field defaults, dynamic arrays, and non-string bounded arrays are parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer represented enums, fixed arrays, and bounded strings for generated packet payloads.
+Enums need an explicit integer representation when used in generated cFS fields, for example `enum u8 CameraMode`. Unrepresented enums, unbounded strings, optional field markers, field defaults, dynamic arrays, and non-string bounded arrays are parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer represented enums, fixed arrays, and bounded strings for generated packet payloads.
 
 See `docs/language.md` for the current language status and `0.1.x` review checklist.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.

@@ -166,6 +166,7 @@ Direction:
 - Treat `string[<=N]` and `string[N]` as exactly `N` bytes.
 - Do not guarantee null termination, text encoding, or C-string semantics.
 - Document the optional project-level C-string convention: `N` includes the null terminator, length is found by scanning for the first null byte, and support-library helpers can provide Rust/C++ ergonomics without changing the ABI.
+- Reject unbounded `string` fields in cFS codegen because they would require pointer-like ABI fields.
 
 Open questions:
 

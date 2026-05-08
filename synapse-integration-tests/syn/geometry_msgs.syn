@@ -148,7 +148,7 @@ struct Transform {
 @mid(0x0809)
 telemetry TransformStamped {
     header:         std_msgs::Header
-    child_frame_id: string
+    child_frame_id: string[<=64]
     transform:      Transform
 }
 
