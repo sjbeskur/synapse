@@ -7,8 +7,8 @@ This crate parses Synapse (`.syn`) files with Pest and builds the AST used by th
 From the workspace root:
 
 ```bash
-cargo test -p synapse-parser
-cargo run -p synapse-parser --example parse_synapse -- synapse-parser/examples/sample.syn
+cargo test -p cfs-synapse-parser
+cargo run -p cfs-synapse-parser --example parse_synapse -- synapse-parser/examples/sample.syn
 ```
 
 From this crate:
@@ -21,8 +21,11 @@ cargo run --example parse_synapse -- examples/sample.syn
 ## Files
 
 - `synapse.pest`: Pest PEG grammar.
-- `src/lib.rs`: exposes `SynapseParser` and parser tests.
-- `src/ast.rs`: converts Pest pairs into the public AST.
+- `src/lib.rs`: exposes the public parser crate surface.
+- `src/grammar_tests.rs`: Pest grammar acceptance/rejection tests.
+- `src/ast.rs`: public AST data model.
+- `src/ast/builder.rs`: converts Pest pairs into the public AST.
+- `src/ast/tests.rs`: AST construction tests.
 - `examples/parse_synapse.rs`: parser debugging CLI.
 - `examples/sample.syn`: sample language file.
 
