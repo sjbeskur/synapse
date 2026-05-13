@@ -95,4 +95,6 @@ The current `0.2.x` work focuses on safety and clarity:
 - Searchable documentation output generated from `.syn` files and doc comments.
 - Future mission manifests for repeatable roots and MID range ownership.
 
+See [`registry.md`](registry.md) for the current JSON and CSV packet registry schema.
+
 The long-term goal is simple: make cFS message contracts easier to define, safer to generate, and harder to accidentally break.
