@@ -236,6 +236,7 @@ Sample `.syn` files live in `synapse-integration-tests/syn`.
 - `cfs_patterns.syn`: minimal command, telemetry, and table examples.
 - `camera_msgs.syn`: camera control syntax coverage, including a represented camera mode enum, commands to set mode/exposure, a command to send updated intrinsics, telemetry for camera status, and a `CameraCalibration` table containing persistent calibration data. It also exercises doc-comment support.
 
+See `examples/README.md` for runnable canary projects and the mission demo.
 See `docs/examples.md` for links to all sample `.syn` files and checked-in generated output.
 
 ## Workspace
