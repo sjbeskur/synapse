@@ -211,6 +211,8 @@ synapse registry mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --forma
 
 That command produces a validated packet registry for downstream databases or automation.
 
+See [`registry.md`](registry.md) for the current JSON and CSV schema.
+
 Those outputs stay inside Synapse's intended boundary: define, generate, validate, and report message contracts. Database storage, web hosting, dashboards, and mission operations remain separate tools.
 
 ## Implementation Plan

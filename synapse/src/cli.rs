@@ -5,7 +5,14 @@ use clap::{Args as ClapArgs, CommandFactory, Parser, Subcommand, ValueEnum, erro
 #[derive(Parser)]
 #[command(
     name = "synapse",
-    about = "NASA cFS message definition compiler — generates C headers and Rust bindings from .syn files"
+    about = "NASA cFS-friendly message contract utility",
+    long_about = "Synapse validates .syn message contracts and generates cFS-oriented artifacts from the same source of truth: C headers, Rust repr(C) bindings, searchable HTML documentation, and packet registries.",
+    after_long_help = "Examples:
+  synapse --lang c -o generated synapse-integration-tests/syn/camera_msgs.syn
+  synapse generate --lang rust -o generated synapse-integration-tests/syn/camera_msgs.syn
+  synapse check examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn
+  synapse doc -o docs synapse-integration-tests/syn/camera_msgs.syn
+  synapse registry --format csv -o registry.csv examples/mission-demo/syn/*.syn"
 )]
 struct Args {
     #[command(subcommand)]
@@ -17,35 +24,57 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Validate a .syn file and its imports without writing generated output.
+    /// Validate .syn files and imports without writing generated output.
+    #[command(
+        long_about = "Validate one or more root .syn files, including their import closures. When multiple roots are provided, Synapse also checks mission-wide packet ID conflicts such as duplicate telemetry MIDs and duplicate command MID/CC pairs."
+    )]
     Check(CheckArgs),
-    /// Generate static HTML documentation from .syn files.
+    /// Generate searchable static HTML documentation.
+    #[command(
+        long_about = "Generate a self-contained static HTML documentation site for one or more root .syn files. The generated page includes packet IDs, command codes, fields, doc comments, source links, and a sidebar search index."
+    )]
     Doc(DocArgs),
-    /// Generate C headers or Rust bindings.
+    /// Generate C headers or Rust repr(C) bindings.
+    #[command(
+        long_about = "Generate ABI-oriented C headers or Rust repr(C) bindings from a root .syn file. When an output directory is provided, Synapse writes the root file and its transitive imports by default."
+    )]
     Generate(GenerateArgs),
-    /// Emit a machine-readable packet registry from .syn files.
+    /// Emit a machine-readable packet registry.
+    #[command(
+        long_about = "Emit a packet registry for one or more root .syn files. Registry output captures resolved packet facts such as namespace, packet name, kind, source file, MID, and command code."
+    )]
     Registry(RegistryArgs),
 }
 
 #[derive(ClapArgs)]
+#[command(after_long_help = "Examples:
+  synapse check synapse-integration-tests/syn/camera_msgs.syn
+  synapse check examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn examples/mission-demo/syn/payload_app.syn")]
 struct CheckArgs {
-    /// Input .syn files. Multiple roots are checked together for mission-wide packet ID conflicts.
+    /// Root .syn files to validate together.
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
 
 #[derive(ClapArgs)]
+#[command(after_long_help = "Examples:
+  synapse doc synapse-integration-tests/syn/camera_msgs.syn
+  synapse doc -o docs synapse-integration-tests/syn/camera_msgs.syn
+  synapse doc -o docs examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn")]
 struct DocArgs {
-    /// Write documentation to this directory instead of stdout.
+    /// Write index.html to this directory instead of stdout.
     #[arg(long, short = 'o')]
     out_dir: Option<PathBuf>,
 
-    /// Input .syn files. Multiple roots are documented together.
+    /// Root .syn files to document together.
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
 
 #[derive(ClapArgs)]
+#[command(after_long_help = "Examples:
+  synapse registry synapse-integration-tests/syn/camera_msgs.syn
+  synapse registry --format csv -o registry.csv examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn")]
 struct RegistryArgs {
     /// Registry output format.
     #[arg(long, value_enum, default_value_t = CliRegistryFormat::Json)]
@@ -55,14 +84,19 @@ struct RegistryArgs {
     #[arg(long, short = 'o')]
     output: Option<PathBuf>,
 
-    /// Input .syn files. Multiple roots are exported together.
+    /// Root .syn files to export together.
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
 
 #[derive(ClapArgs)]
+#[command(after_long_help = "Examples:
+  synapse --lang c synapse-integration-tests/syn/geometry_msgs.syn
+  synapse --lang c -o generated synapse-integration-tests/syn/geometry_msgs.syn
+  synapse generate --lang rust -o generated synapse-integration-tests/syn/geometry_msgs.syn
+  synapse generate --lang c -o generated --single-file synapse-integration-tests/syn/geometry_msgs.syn")]
 struct GenerateArgs {
-    /// Target language
+    /// Target language to generate.
     #[arg(long, value_enum)]
     lang: Option<CliLang>,
 
@@ -75,7 +109,7 @@ struct GenerateArgs {
     #[arg(long)]
     single_file: bool,
 
-    /// Input .syn file
+    /// Root .syn file to generate from.
     file: Option<PathBuf>,
 }
 

@@ -40,13 +40,11 @@ The output file is named after the input file. For example, the commands above w
 
 ### Prebuilt Binaries
 
-Tagged releases attach archives for common platforms:
+Tagged releases attach a Linux archive:
 
 - `synapse-linux-x86_64.tar.gz`
-- `synapse-macos-x86_64.tar.gz`
-- `synapse-windows-x86_64.zip`
 
-Download the archive for your platform from the latest GitHub Release, extract it, and place the `synapse` executable somewhere on your `PATH`.
+Download the archive from the latest GitHub Release, extract it, and place the `synapse` executable somewhere on your `PATH`. For other platforms, install from crates.io with Cargo.
 
 ### Cargo
 
@@ -205,11 +203,12 @@ See `docs/language.md` for the current language status and `0.1.x` review checkl
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.
 See `docs/one-pager.md` for a short explanation of why Synapse is relevant.
 See `docs/mission.md` for the mission-wide validation and registry concept.
-See `docs/roadmap-0.2.md` for planned `0.2.x` language review items.
+See `docs/registry.md` for the JSON and CSV packet registry schema.
+See `docs/roadmap-0.2.md` for the `0.2.x` language, validation, and output status.
 
 ## Documentation Comments
 
-Use `///` for comments that should attach to the next declaration or field and eventually feed generated documentation:
+Use `///` for comments that should attach to the next declaration or field and feed generated code comments and HTML documentation:
 
 ```syn
 /// Stable identifier for one physical or logical camera.
@@ -235,6 +234,7 @@ Sample `.syn` files live in `synapse-integration-tests/syn`.
 - `cfs_patterns.syn`: minimal command, telemetry, and table examples.
 - `camera_msgs.syn`: camera control syntax coverage, including a represented camera mode enum, commands to set mode/exposure, a command to send updated intrinsics, telemetry for camera status, and a `CameraCalibration` table containing persistent calibration data. It also exercises doc-comment support.
 
+See `examples/README.md` for runnable canary projects and the mission demo.
 See `docs/examples.md` for links to all sample `.syn` files and checked-in generated output.
 
 ## Workspace
@@ -252,7 +252,8 @@ CI runs the core test suite on pull requests and pushes to `main`. Pushing a tag
 
 Crates.io publishing is gated behind the repository variable `PUBLISH_CRATE=true` and the `CARGO_REGISTRY_TOKEN` secret. When enabled, the release workflow publishes `cfs-synapse-parser`, `cfs-synapse-codegen-cfs`, and then `cfs-synapse`.
 
-See `docs/publishing.md` for the full release checklist and first-publish notes.
+See `docs/release-checklist.md` for the step-by-step release checklist.
+See `docs/publishing.md` for publishing workflow details and first-publish notes.
 
 ## Editor Support
 

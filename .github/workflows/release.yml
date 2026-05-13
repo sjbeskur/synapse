@@ -23,12 +23,6 @@ jobs:
           - os: ubuntu-latest
             archive: synapse-linux-x86_64.tar.gz
             bin: synapse
-          - os: macos-13
-            archive: synapse-macos-x86_64.tar.gz
-            bin: synapse
-          - os: windows-latest
-            archive: synapse-windows-x86_64.zip
-            bin: synapse.exe
 
     steps:
       - name: Checkout
@@ -40,20 +34,11 @@ jobs:
       - name: Build release binary
         run: cargo build --release -p cfs-synapse --bin synapse
 
-      - name: Package Unix binary
-        if: runner.os != 'Windows'
+      - name: Package Linux binary
         run: |
           mkdir -p dist
           cp target/release/synapse dist/synapse
           tar -C dist -czf "dist/${{ matrix.archive }}" synapse
-
-      - name: Package Windows binary
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/synapse.exe dist/synapse.exe
-          Compress-Archive -Path dist/synapse.exe -DestinationPath "dist/${{ matrix.archive }}"
 
       - name: Upload release archive
         uses: softprops/action-gh-release@v2
