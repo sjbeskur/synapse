@@ -254,7 +254,8 @@ CI runs the core test suite on pull requests and pushes to `main`. Pushing a tag
 
 Crates.io publishing is gated behind the repository variable `PUBLISH_CRATE=true` and the `CARGO_REGISTRY_TOKEN` secret. When enabled, the release workflow publishes `cfs-synapse-parser`, `cfs-synapse-codegen-cfs`, and then `cfs-synapse`.
 
-See `docs/publishing.md` for the full release checklist and first-publish notes.
+See `docs/release-checklist.md` for the step-by-step release checklist.
+See `docs/publishing.md` for publishing workflow details and first-publish notes.
 
 ## Editor Support
 

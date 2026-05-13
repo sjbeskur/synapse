@@ -6,6 +6,8 @@ This document describes the release process for Synapse. The user-facing crates.
 - `cfs-synapse-codegen-cfs`
 - `cfs-synapse`
 
+For the short step-by-step release flow, see [`release-checklist.md`](release-checklist.md).
+
 ## Release Outputs
 
 A release has two distribution channels:
