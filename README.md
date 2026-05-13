@@ -40,13 +40,11 @@ The output file is named after the input file. For example, the commands above w
 
 ### Prebuilt Binaries
 
-Tagged releases attach archives for common platforms:
+Tagged releases attach a Linux archive:
 
 - `synapse-linux-x86_64.tar.gz`
-- `synapse-macos-x86_64.tar.gz`
-- `synapse-windows-x86_64.zip`
 
-Download the archive for your platform from the latest GitHub Release, extract it, and place the `synapse` executable somewhere on your `PATH`.
+Download the archive from the latest GitHub Release, extract it, and place the `synapse` executable somewhere on your `PATH`. For other platforms, install from crates.io with Cargo.
 
 ### Cargo
 

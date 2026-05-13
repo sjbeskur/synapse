@@ -43,6 +43,12 @@ synapse check \
 
 It also includes conflict fixtures under [`mission-demo/conflicts`](mission-demo/conflicts/) for duplicate telemetry MID and duplicate command MID/CC examples.
 
+## Proposed Ground Loop Canary
+
+A future `ground-loop` example is tracked in [`../docs/roadmap-0.2.md`](../docs/roadmap-0.2.md). The goal is to demonstrate an inspectable path from a ground-side command sender, through UDP and a CI-style ingest path, onto the cFE Software Bus, into a tiny cFS app, and back out through telemetry.
+
+That example should stay a canary/demo rather than becoming Synapse core runtime behavior.
+
 ## Integration Message Sets
 
 Broader `.syn` language examples live under [`../synapse-integration-tests/syn`](../synapse-integration-tests/syn/):

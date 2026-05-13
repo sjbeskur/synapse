@@ -145,7 +145,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The release workflow builds archives for Linux, macOS, and Windows. If `PUBLISH_CRATE=true`, it also publishes crates in dependency order:
+The release workflow builds a Linux archive. If `PUBLISH_CRATE=true`, it also publishes crates in dependency order:
 
 1. `cfs-synapse-parser`
 2. `cfs-synapse-codegen-cfs`
@@ -155,10 +155,8 @@ The release workflow builds archives for Linux, macOS, and Windows. If `PUBLISH_
 
 After the workflows finish:
 
-- Confirm the GitHub Release has all three archives:
+- Confirm the GitHub Release has the Linux archive:
   - `synapse-linux-x86_64.tar.gz`
-  - `synapse-macos-x86_64.tar.gz`
-  - `synapse-windows-x86_64.zip`
 - Confirm crates.io shows the new versions.
 - Confirm `cargo install cfs-synapse` installs the expected version.
 - Confirm docs.rs builds for `cfs-synapse`.

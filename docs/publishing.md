@@ -12,7 +12,7 @@ For the short step-by-step release flow, see [`release-checklist.md`](release-ch
 
 A release has two distribution channels:
 
-- GitHub Release archives for users who want a prebuilt `synapse` binary.
+- GitHub Release archive for users who want a prebuilt Linux `synapse` binary.
 - crates.io packages for Rust users who want `cargo install cfs-synapse` or a `build.rs` dependency.
 
 The GitHub release workflow is triggered by pushing a tag like `v0.1.0`.
@@ -92,16 +92,14 @@ git push origin v0.1.0
 
 The release workflow will:
 
-1. Build the `synapse` release binary on Linux, macOS, and Windows.
-2. Package the binaries as release archives.
-3. Attach those archives to the GitHub Release.
+1. Build the `synapse` release binary on Linux.
+2. Package the binary as a release archive.
+3. Attach that archive to the GitHub Release.
 4. If `PUBLISH_CRATE=true`, publish crates to crates.io in dependency order.
 
 The release archives are named:
 
 - `synapse-linux-x86_64.tar.gz`
-- `synapse-macos-x86_64.tar.gz`
-- `synapse-windows-x86_64.zip`
 
 ## Version Checklist
 

@@ -251,3 +251,39 @@ Remaining questions:
 
 - Should `synapse --version` include enabled codegen backends or only the package version?
 - Should release artifacts include generated shell completions?
+
+## Ground Loop Canary
+
+Status: Proposed
+
+Direction:
+
+- Add an example that demonstrates a transparent ground-command loop into a cFS app.
+- Keep it under `examples/` as a canary/demo, not as Synapse core runtime behavior.
+- Reuse Synapse-generated contracts on both sides where practical:
+  - generated C headers for the cFS test app
+  - generated Rust bindings or registry output for the ground sender
+- Make every boundary inspectable: packed command bytes, UDP datagram, ingest app receive, Software Bus submit, target app command receive, telemetry response, and ground-side decode.
+
+Possible shape:
+
+```text
+examples/ground-loop/
+  syn/
+    mission_ids.syn
+    demo_msgs.syn
+  ground-sender/
+    Cargo.toml
+    src/main.rs
+  cfs-app/
+    README.md
+    src/
+```
+
+The first useful slice would send one command packet over UDP to a CI-style ingest path, have a tiny cFS app receive and log the MID/CC/payload, then emit telemetry that a ground-side receiver can inspect.
+
+Open questions:
+
+- Should the first version target `CI_LAB`/`TO_LAB`, or a tiny custom ingest/output pair built only for the canary?
+- How much cFE header packing should live in the example versus generated support helpers?
+- Should this include Wireshark/tcpdump inspection notes for the UDP boundary?
