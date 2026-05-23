@@ -118,15 +118,28 @@ fn emit_enum_aliases(file: &SynFile, out: &mut String) {
 fn emit_c_types(file: &SynFile, out: &mut String) {
     let mut namespace = Vec::new();
     for item in &file.items {
-        match item {
-            Item::Namespace(ns) => namespace = ns.name.clone(),
-            Item::Import(_) | Item::Enum(_) => {}
-            Item::Const(c) => emit_const(out, c),
-            Item::Struct(s) | Item::Table(s) => emit_struct(out, s, &namespace),
-            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
-                emit_message(out, m, &namespace)
-            }
+        if update_namespace(&mut namespace, item) {
+            continue;
         }
+        emit_c_type(out, item, &namespace);
+    }
+}
+
+fn update_namespace(namespace: &mut Vec<String>, item: &Item) -> bool {
+    if let Item::Namespace(ns) = item {
+        *namespace = ns.name.clone();
+        true
+    } else {
+        false
+    }
+}
+
+fn emit_c_type(out: &mut String, item: &Item, namespace: &[String]) {
+    match item {
+        Item::Const(c) => emit_const(out, c),
+        Item::Struct(s) | Item::Table(s) => emit_struct(out, s, namespace),
+        Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => emit_message(out, m, namespace),
+        Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
     }
 }
 

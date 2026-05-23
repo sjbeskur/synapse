@@ -141,13 +141,24 @@ fn json_string(value: &str) -> String {
 }
 
 fn push_json_char(out: &mut String, ch: char) {
+    if push_json_simple_escape(out, ch) {
+        return;
+    }
+    if ch.is_control() {
+        out.push_str(&format!("\\u{:04X}", ch as u32));
+    } else {
+        out.push(ch);
+    }
+}
+
+fn push_json_simple_escape(out: &mut String, ch: char) -> bool {
     match ch {
         '"' => out.push_str("\\\""),
         '\\' => out.push_str("\\\\"),
         '\n' | '\r' | '\t' => push_json_whitespace(out, ch),
-        ch if ch.is_control() => out.push_str(&format!("\\u{:04X}", ch as u32)),
-        ch => out.push(ch),
+        _ => return false,
     }
+    true
 }
 
 fn push_json_whitespace(out: &mut String, ch: char) {

@@ -70,14 +70,33 @@ fn validate_item(
     match item {
         Item::Struct(s) | Item::Table(s) => validate_plain_item(s, enum_defs),
         Item::Command(m) | Item::Telemetry(m) => {
-            validate_packet(m, constants, telemetry_mids, command_codes)?;
-            validate_fields(&m.name, &m.fields, enum_defs)
+            validate_packet_item(m, constants, enum_defs, telemetry_mids, command_codes)
         }
+        _ => validate_non_packet_item(item),
+    }
+}
+
+fn validate_packet_item(
+    packet: &MessageDef,
+    constants: &ConstContext<'_>,
+    enum_defs: &HashMap<String, &EnumDef>,
+    telemetry_mids: &mut HashMap<u64, String>,
+    command_codes: &mut HashMap<(u64, u64), String>,
+) -> Result<(), CodegenError> {
+    validate_packet(packet, constants, telemetry_mids, command_codes)?;
+    validate_fields(&packet.name, &packet.fields, enum_defs)
+}
+
+fn validate_non_packet_item(item: &Item) -> Result<(), CodegenError> {
+    match item {
         Item::Message(m) => Err(CodegenError::LegacyMessageUnsupported {
             packet: m.name.clone(),
         }),
         Item::Enum(e) => validate_enum(e),
         Item::Namespace(_) | Item::Import(_) | Item::Const(_) => Ok(()),
+        Item::Struct(_) | Item::Table(_) | Item::Command(_) | Item::Telemetry(_) => {
+            unreachable!("packet and plain items handled before validate_non_packet_item")
+        }
     }
 }
 

@@ -111,16 +111,23 @@ fn emit_rust_command_code_consts(file: &SynFile, out: &mut String, constants: &C
 
 fn emit_rust_types(file: &SynFile, opts: &RustOptions, out: &mut String) {
     for item in &file.items {
-        match item {
-            Item::Namespace(_) | Item::Import(_) => {}
-            Item::Const(c) => emit_rust_const(out, c),
-            Item::Enum(e) => emit_rust_enum(out, e),
-            Item::Struct(s) | Item::Table(s) => emit_rust_struct(out, s),
-            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
-                emit_rust_message(out, m, opts)
-            }
+        if emit_rust_named_item(out, item) {
+            continue;
+        }
+        if let Item::Command(m) | Item::Telemetry(m) | Item::Message(m) = item {
+            emit_rust_message(out, m, opts);
         }
     }
+}
+
+fn emit_rust_named_item(out: &mut String, item: &Item) -> bool {
+    match item {
+        Item::Const(c) => emit_rust_const(out, c),
+        Item::Enum(e) => emit_rust_enum(out, e),
+        Item::Struct(s) | Item::Table(s) => emit_rust_struct(out, s),
+        _ => return false,
+    }
+    true
 }
 
 fn emit_rust_const(out: &mut String, c: &ConstDecl) {
@@ -283,13 +290,28 @@ fn rust_cc_str(lit: &Literal, constants: &ConstContext<'_>) -> String {
 
 fn rust_literal_str(lit: &Literal) -> String {
     match lit {
-        Literal::Hex(n) => format!("0x{:X}", n),
-        Literal::Int(n) => n.to_string(),
-        Literal::Bool(b) => b.to_string(),
-        Literal::Float(f) => rust_float_literal_str(*f),
+        Literal::Hex(_) | Literal::Int(_) | Literal::Bool(_) | Literal::Float(_) => {
+            rust_scalar_literal_str(lit)
+        }
         Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
     }
+}
+
+fn rust_scalar_literal_str(lit: &Literal) -> String {
+    if let Literal::Hex(n) = lit {
+        return format!("0x{:X}", n);
+    }
+    if let Literal::Int(n) = lit {
+        return n.to_string();
+    }
+    if let Literal::Bool(b) = lit {
+        return b.to_string();
+    }
+    if let Literal::Float(f) = lit {
+        return rust_float_literal_str(*f);
+    }
+    unreachable!("non-scalar literal passed to rust_scalar_literal_str")
 }
 
 fn rust_float_literal_str(value: f64) -> String {

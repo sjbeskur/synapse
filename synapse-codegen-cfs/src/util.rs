@@ -140,13 +140,28 @@ pub(crate) fn literal_cc_str(lit: &Literal, constants: &ConstContext<'_>) -> Str
 
 pub(crate) fn literal_str(lit: &Literal) -> String {
     match lit {
-        Literal::Float(f) => c_float_literal_str(*f),
-        Literal::Int(n) => n.to_string(),
-        Literal::Hex(n) => format!("0x{:X}U", n),
-        Literal::Bool(b) => c_bool_literal_str(*b),
+        Literal::Float(_) | Literal::Int(_) | Literal::Hex(_) | Literal::Bool(_) => {
+            c_scalar_literal_str(lit)
+        }
         Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
     }
+}
+
+fn c_scalar_literal_str(lit: &Literal) -> String {
+    if let Literal::Float(f) = lit {
+        return c_float_literal_str(*f);
+    }
+    if let Literal::Int(n) = lit {
+        return n.to_string();
+    }
+    if let Literal::Hex(n) = lit {
+        return format!("0x{:X}U", n);
+    }
+    if let Literal::Bool(b) = lit {
+        return c_bool_literal_str(*b);
+    }
+    unreachable!("non-scalar literal passed to c_scalar_literal_str")
 }
 
 fn c_float_literal_str(value: f64) -> String {

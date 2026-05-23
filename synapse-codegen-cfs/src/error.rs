@@ -102,6 +102,17 @@ impl fmt::Display for CodegenError {
 
 fn fmt_field_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match error {
+        CodegenError::OptionalFieldUnsupported { .. }
+        | CodegenError::DefaultValueUnsupported { .. }
+        | CodegenError::UnboundedStringUnsupported { .. } => fmt_scalar_field_error(error, f),
+        CodegenError::DynamicArrayUnsupported { .. }
+        | CodegenError::BoundedArrayUnsupported { .. } => fmt_array_field_error(error, f),
+        _ => unreachable!("non-field error passed to fmt_field_error"),
+    }
+}
+
+fn fmt_scalar_field_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match error {
         CodegenError::OptionalFieldUnsupported { container, field } => write!(
             f,
             "optional field `{container}.{field}` is not supported by cFS codegen yet"
@@ -114,6 +125,12 @@ fn fmt_field_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Res
             f,
             "unbounded string field `{container}.{field}` is not supported by cFS codegen; use `string[<=N]` or `string[N]`"
         ),
+        _ => unreachable!("non-scalar field error passed to fmt_scalar_field_error"),
+    }
+}
+
+fn fmt_array_field_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match error {
         CodegenError::DynamicArrayUnsupported {
             container,
             field,
@@ -130,7 +147,7 @@ fn fmt_field_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Res
             f,
             "bounded array field `{container}.{field}` with type `{ty}` is not supported by cFS codegen yet"
         ),
-        _ => unreachable!("non-field error passed to fmt_field_error"),
+        _ => unreachable!("non-array field error passed to fmt_array_field_error"),
     }
 }
 
@@ -167,6 +184,18 @@ fn fmt_enum_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Resu
 
 fn fmt_mid_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match error {
+        CodegenError::LegacyMessageUnsupported { .. }
+        | CodegenError::MissingMid { .. }
+        | CodegenError::MessageIdUnsupported { .. } => fmt_mid_presence_error(error, f),
+        CodegenError::MessageIdValueUnsupported { .. } | CodegenError::MidRangeMismatch { .. } => {
+            fmt_mid_value_error(error, f)
+        }
+        _ => unreachable!("non-MID error passed to fmt_mid_error"),
+    }
+}
+
+fn fmt_mid_presence_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match error {
         CodegenError::LegacyMessageUnsupported { packet } => write!(
             f,
             "legacy message `{packet}` is not supported by cFS codegen; use `command` or `telemetry`"
@@ -178,6 +207,12 @@ fn fmt_mid_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Resul
             f,
             "`@mid(...)` is only supported on command and telemetry packets, found on `{item}`"
         ),
+        _ => unreachable!("non-MID presence error passed to fmt_mid_presence_error"),
+    }
+}
+
+fn fmt_mid_value_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match error {
         CodegenError::MessageIdValueUnsupported { packet } => write!(
             f,
             "packet `{packet}` has unresolved or non-integer `@mid(...)`; cFS codegen requires an integer, hex, local integer constant, or imported integer constant message ID"
@@ -187,7 +222,7 @@ fn fmt_mid_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Resul
             mid,
             expected,
         } => write!(f, "packet `{packet}` has MID `{mid}`, expected {expected}"),
-        _ => unreachable!("non-MID error passed to fmt_mid_error"),
+        _ => unreachable!("non-MID value error passed to fmt_mid_value_error"),
     }
 }
 
