@@ -68,26 +68,9 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    let inputs = inputs
-        .into_iter()
-        .map(|input| input.as_ref().to_path_buf())
-        .collect::<Vec<_>>();
-    if inputs.is_empty() {
-        return Err(Error::Mission(
-            "check requires at least one input .syn file".to_string(),
-        ));
-    }
-
+    let inputs = collect_input_paths(inputs, "check")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_import_graph(&graph)?;
-    let units_by_path = units_by_path(&graph);
-
-    for unit in &graph.units {
-        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
-        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
-    }
-    validate_mission_registry(&graph, &units_by_path)?;
-
+    validate_cfs_graph(&graph)?;
     Ok(())
 }
 
@@ -97,25 +80,10 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    let inputs = inputs
-        .into_iter()
-        .map(|input| input.as_ref().to_path_buf())
-        .collect::<Vec<_>>();
-    if inputs.is_empty() {
-        return Err(Error::Mission(
-            "doc requires at least one input .syn file".to_string(),
-        ));
-    }
-
+    let inputs = collect_input_paths(inputs, "doc")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_import_graph(&graph)?;
+    validate_cfs_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
-
-    for unit in &graph.units {
-        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
-        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
-    }
-    validate_mission_registry(&graph, &units_by_path)?;
 
     docs::render_html_docs(&graph, &units_by_path)
 }
@@ -140,25 +108,10 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    let inputs = inputs
-        .into_iter()
-        .map(|input| input.as_ref().to_path_buf())
-        .collect::<Vec<_>>();
-    if inputs.is_empty() {
-        return Err(Error::Mission(
-            "registry requires at least one input .syn file".to_string(),
-        ));
-    }
-
+    let inputs = collect_input_paths(inputs, "registry")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_import_graph(&graph)?;
+    validate_cfs_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
-
-    for unit in &graph.units {
-        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
-        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
-    }
-    validate_mission_registry(&graph, &units_by_path)?;
 
     registry::render_registry(&graph, &units_by_path, format)
 }
@@ -199,6 +152,41 @@ pub fn generate_path(input: impl AsRef<Path>, lang: Lang) -> Result<String, Erro
 
 fn generate_parsed(file: &SynFile, lang: Lang) -> Result<String, Error> {
     generate_parsed_with_constants(file, lang, &synapse_codegen_cfs::ResolvedConstants::new())
+}
+
+fn collect_input_paths<I, P>(inputs: I, command: &str) -> Result<Vec<PathBuf>, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let inputs = inputs
+        .into_iter()
+        .map(|input| input.as_ref().to_path_buf())
+        .collect::<Vec<_>>();
+    if inputs.is_empty() {
+        return Err(Error::Mission(format!(
+            "{command} requires at least one input .syn file"
+        )));
+    }
+    Ok(inputs)
+}
+
+fn validate_cfs_graph(graph: &ImportGraph) -> Result<(), Error> {
+    validate_import_graph(graph)?;
+    let units_by_path = units_by_path(graph);
+    validate_cfs_units(graph, &units_by_path)?;
+    validate_mission_registry(graph, &units_by_path)
+}
+
+fn validate_cfs_units(
+    graph: &ImportGraph,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+) -> Result<(), Error> {
+    for unit in &graph.units {
+        let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
+        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
+    }
+    Ok(())
 }
 
 fn generate_parsed_with_constants(
@@ -262,13 +250,22 @@ pub fn generate_files(
 
     let mut written = Vec::new();
     for unit in &graph.units {
-        let imported_constants = imported_constants_for_unit(unit, &units_by_path)?;
-        let output = generate_parsed_with_constants(&unit.file, lang, &imported_constants)?;
-        let out_path = output_path_for(&unit.path, out_dir, lang)?;
-        fs::write(&out_path, output)?;
-        written.push(out_path);
+        written.push(write_generated_unit(unit, &units_by_path, out_dir, lang)?);
     }
     Ok(written)
+}
+
+fn write_generated_unit(
+    unit: &ParsedUnit,
+    units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+    out_dir: &Path,
+    lang: Lang,
+) -> Result<PathBuf, Error> {
+    let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
+    let output = generate_parsed_with_constants(&unit.file, lang, &imported_constants)?;
+    let out_path = output_path_for(&unit.path, out_dir, lang)?;
+    fs::write(&out_path, output)?;
+    Ok(out_path)
 }
 
 #[derive(Debug)]
@@ -308,26 +305,57 @@ fn load_import_unit(
     if visited.contains(&path) {
         return Ok(());
     }
-    if visiting.contains(&path) {
-        stack.push(path.clone());
-        let cycle = stack
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(" -> ");
-        stack.pop();
-        return Err(Error::Import(format!("import cycle detected: {cycle}")));
-    }
+    reject_import_cycle(&path, visiting, stack)?;
 
     visiting.insert(path.clone());
     stack.push(path.clone());
 
-    let source = fs::read_to_string(&path)
-        .map_err(|e| Error::Import(format!("error reading import `{}`: {e}", path.display())))?;
-    let file = synapse_parser::ast::parse(&source)
-        .map_err(|e| Error::Import(format!("error parsing import `{}`:\n{e}", path.display())))?;
+    let file = parse_import_file(&path)?;
 
     let base_dir = path.parent().unwrap_or_else(|| Path::new(""));
+    load_child_imports(&file, base_dir, units, visited, visiting, stack)?;
+
+    stack.pop();
+    visiting.remove(&path);
+    visited.insert(path.clone());
+    units.push(ParsedUnit { path, file });
+    Ok(())
+}
+
+fn reject_import_cycle(
+    path: &Path,
+    visiting: &HashSet<PathBuf>,
+    stack: &mut Vec<PathBuf>,
+) -> Result<(), Error> {
+    if !visiting.contains(path) {
+        return Ok(());
+    }
+
+    stack.push(path.to_path_buf());
+    let cycle = stack
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(" -> ");
+    stack.pop();
+    Err(Error::Import(format!("import cycle detected: {cycle}")))
+}
+
+fn parse_import_file(path: &Path) -> Result<SynFile, Error> {
+    let source = fs::read_to_string(path)
+        .map_err(|e| Error::Import(format!("error reading import `{}`: {e}", path.display())))?;
+    synapse_parser::ast::parse(&source)
+        .map_err(|e| Error::Import(format!("error parsing import `{}`:\n{e}", path.display())))
+}
+
+fn load_child_imports(
+    file: &SynFile,
+    base_dir: &Path,
+    units: &mut Vec<ParsedUnit>,
+    visited: &mut HashSet<PathBuf>,
+    visiting: &mut HashSet<PathBuf>,
+    stack: &mut Vec<PathBuf>,
+) -> Result<(), Error> {
     for item in &file.items {
         if let Item::Import(import) = item {
             load_import_unit(
@@ -339,11 +367,6 @@ fn load_import_unit(
             )?;
         }
     }
-
-    stack.pop();
-    visiting.remove(&path);
-    visited.insert(path.clone());
-    units.push(ParsedUnit { path, file });
     Ok(())
 }
 
@@ -477,48 +500,75 @@ fn validate_mission_registry(
         )?;
 
         for packet in packets {
-            let packet = MissionPacket {
-                path: unit.path.clone(),
-                namespace: packet.namespace,
-                name: packet.name,
-                kind: packet.kind,
-                mid: packet.mid,
-                cc: packet.cc,
-            };
-
-            match packet.kind {
-                synapse_codegen_cfs::CfsPacketKind::Telemetry => {
-                    if let Some(first) = telemetry_mids.insert(packet.mid, packet.clone()) {
-                        return Err(Error::Mission(format!(
-                            "duplicate telemetry MID `{}` across mission packets `{}` ({}) and `{}` ({})",
-                            format_mid(packet.mid),
-                            packet_name(&first),
-                            first.path.display(),
-                            packet_name(&packet),
-                            packet.path.display()
-                        )));
-                    }
-                }
-                synapse_codegen_cfs::CfsPacketKind::Command => {
-                    let cc = packet
-                        .cc
-                        .expect("cFS packet collector resolves command codes");
-                    if let Some(first) = command_codes.insert((packet.mid, cc), packet.clone()) {
-                        return Err(Error::Mission(format!(
-                            "duplicate command MID/CC pair `{}`/`{}` across mission packets `{}` ({}) and `{}` ({})",
-                            format_mid(packet.mid),
-                            cc,
-                            packet_name(&first),
-                            first.path.display(),
-                            packet_name(&packet),
-                            packet.path.display()
-                        )));
-                    }
-                }
-            }
+            let packet = mission_packet(unit, packet);
+            register_mission_packet(&packet, &mut telemetry_mids, &mut command_codes)?;
         }
     }
 
+    Ok(())
+}
+
+fn mission_packet(unit: &ParsedUnit, packet: synapse_codegen_cfs::CfsPacket) -> MissionPacket {
+    MissionPacket {
+        path: unit.path.clone(),
+        namespace: packet.namespace,
+        name: packet.name,
+        kind: packet.kind,
+        mid: packet.mid,
+        cc: packet.cc,
+    }
+}
+
+fn register_mission_packet(
+    packet: &MissionPacket,
+    telemetry_mids: &mut HashMap<u64, MissionPacket>,
+    command_codes: &mut HashMap<(u64, u64), MissionPacket>,
+) -> Result<(), Error> {
+    match packet.kind {
+        synapse_codegen_cfs::CfsPacketKind::Telemetry => {
+            register_mission_telemetry(packet, telemetry_mids)
+        }
+        synapse_codegen_cfs::CfsPacketKind::Command => {
+            register_mission_command(packet, command_codes)
+        }
+    }
+}
+
+fn register_mission_telemetry(
+    packet: &MissionPacket,
+    telemetry_mids: &mut HashMap<u64, MissionPacket>,
+) -> Result<(), Error> {
+    if let Some(first) = telemetry_mids.insert(packet.mid, packet.clone()) {
+        return Err(Error::Mission(format!(
+            "duplicate telemetry MID `{}` across mission packets `{}` ({}) and `{}` ({})",
+            format_mid(packet.mid),
+            packet_name(&first),
+            first.path.display(),
+            packet_name(packet),
+            packet.path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn register_mission_command(
+    packet: &MissionPacket,
+    command_codes: &mut HashMap<(u64, u64), MissionPacket>,
+) -> Result<(), Error> {
+    let cc = packet
+        .cc
+        .expect("cFS packet collector resolves command codes");
+    if let Some(first) = command_codes.insert((packet.mid, cc), packet.clone()) {
+        return Err(Error::Mission(format!(
+            "duplicate command MID/CC pair `{}`/`{}` across mission packets `{}` ({}) and `{}` ({})",
+            format_mid(packet.mid),
+            cc,
+            packet_name(&first),
+            first.path.display(),
+            packet_name(packet),
+            packet.path.display()
+        )));
+    }
     Ok(())
 }
 
@@ -601,20 +651,28 @@ fn validate_type_refs(
     imported_type_suggestions: &HashMap<String, String>,
 ) -> Result<(), Error> {
     for item in &file.items {
-        match item {
-            Item::Const(c) => {
-                validate_type_ref(&c.name, &c.ty.base, symbols, imported_type_suggestions)?
-            }
-            Item::Struct(s) | Item::Table(s) => {
-                validate_field_refs(&s.name, &s.fields, symbols, imported_type_suggestions)?
-            }
-            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
-                validate_field_refs(&m.name, &m.fields, symbols, imported_type_suggestions)?
-            }
-            Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
-        }
+        validate_item_type_refs(item, symbols, imported_type_suggestions)?;
     }
     Ok(())
+}
+
+fn validate_item_type_refs(
+    item: &Item,
+    symbols: &HashSet<Vec<String>>,
+    imported_type_suggestions: &HashMap<String, String>,
+) -> Result<(), Error> {
+    match item {
+        Item::Const(c) => {
+            validate_type_ref(&c.name, &c.ty.base, symbols, imported_type_suggestions)
+        }
+        Item::Struct(s) | Item::Table(s) => {
+            validate_field_refs(&s.name, &s.fields, symbols, imported_type_suggestions)
+        }
+        Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
+            validate_field_refs(&m.name, &m.fields, symbols, imported_type_suggestions)
+        }
+        Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => Ok(()),
+    }
 }
 
 fn validate_field_refs(
@@ -966,7 +1024,8 @@ telemetry NavState {
         assert!(html.contains("id=\"doc-search\""));
         assert!(html.contains("data-search="));
         assert!(html.contains("href=\"#"));
-        assert!(html.contains("href=\"file://"));
+        assert!(!html.contains("file://"));
+        assert!(!html.contains(&dir.display().to_string()));
         assert!(html.contains(">Source</a>"));
     }
 

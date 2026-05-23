@@ -13,12 +13,25 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "{e}"),
-            Error::Parse(e) => write!(f, "{e}"),
-            Error::Codegen(e) => write!(f, "{e}"),
-            Error::Import(e) => write!(f, "{e}"),
-            Error::Mission(e) => write!(f, "{e}"),
+            Error::Io(_) | Error::Parse(_) | Error::Codegen(_) => fmt_source_error(self, f),
+            Error::Import(_) | Error::Mission(_) => fmt_message_error(self, f),
         }
+    }
+}
+
+fn fmt_source_error(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match error {
+        Error::Io(e) => write!(f, "{e}"),
+        Error::Parse(e) => write!(f, "{e}"),
+        Error::Codegen(e) => write!(f, "{e}"),
+        Error::Import(_) | Error::Mission(_) => unreachable!("non-source error"),
+    }
+}
+
+fn fmt_message_error(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match error {
+        Error::Import(e) | Error::Mission(e) => write!(f, "{e}"),
+        Error::Io(_) | Error::Parse(_) | Error::Codegen(_) => unreachable!("non-message error"),
     }
 }
 

@@ -134,18 +134,40 @@ fn registry_kind(kind: synapse_codegen_cfs::CfsPacketKind) -> &'static str {
 fn json_string(value: &str) -> String {
     let mut out = String::from("\"");
     for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if ch.is_control() => out.push_str(&format!("\\u{:04X}", ch as u32)),
-            ch => out.push(ch),
-        }
+        push_json_char(&mut out, ch);
     }
     out.push('"');
     out
+}
+
+fn push_json_char(out: &mut String, ch: char) {
+    if push_json_simple_escape(out, ch) {
+        return;
+    }
+    if ch.is_control() {
+        out.push_str(&format!("\\u{:04X}", ch as u32));
+    } else {
+        out.push(ch);
+    }
+}
+
+fn push_json_simple_escape(out: &mut String, ch: char) -> bool {
+    match ch {
+        '"' => out.push_str("\\\""),
+        '\\' => out.push_str("\\\\"),
+        '\n' | '\r' | '\t' => push_json_whitespace(out, ch),
+        _ => return false,
+    }
+    true
+}
+
+fn push_json_whitespace(out: &mut String, ch: char) {
+    match ch {
+        '\n' => out.push_str("\\n"),
+        '\r' => out.push_str("\\r"),
+        '\t' => out.push_str("\\t"),
+        _ => unreachable!("non-whitespace escape"),
+    }
 }
 
 fn csv_field(value: &str) -> String {

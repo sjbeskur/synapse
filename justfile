@@ -28,6 +28,18 @@ test-release:
 test-cfs:
     CFS_DIR="{{cfs_core_inc}}" BINDGEN_EXTRA_CLANG_ARGS="{{bindgen_args}}" cargo test
 
+crap:
+    cargo crap
+
+crap-badge:
+    mkdir -p target/crap docs/crap
+    cargo llvm-cov clean --workspace
+    cargo llvm-cov -p cfs-synapse-parser -p cfs-synapse-codegen-cfs -p cfs-synapse -p synapse-integration-tests -p synapse-rust-canary --no-report
+    cargo llvm-cov report --lcov --output-path target/crap/lcov.info
+    cargo crap --lcov target/crap/lcov.info --format json --output target/crap/report.json
+    python3 scripts/cargo_crap_badge.py target/crap/report.json docs/crap/badge.json
+    cat docs/crap/badge.json
+
 build:
     cargo build -p cfs-synapse-parser -p cfs-synapse-codegen-cfs -p cfs-synapse -p synapse-integration-tests
 
