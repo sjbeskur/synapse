@@ -200,21 +200,26 @@ fn build_base_type(pair: Pair<Rule>) -> BaseType {
 }
 
 fn build_primitive_type(pair: Pair<Rule>) -> PrimitiveType {
-    match pair.as_str() {
-        "f32" => PrimitiveType::F32,
-        "f64" => PrimitiveType::F64,
-        "i8" => PrimitiveType::I8,
-        "i16" => PrimitiveType::I16,
-        "i32" => PrimitiveType::I32,
-        "i64" => PrimitiveType::I64,
-        "u8" => PrimitiveType::U8,
-        "u16" => PrimitiveType::U16,
-        "u32" => PrimitiveType::U32,
-        "u64" => PrimitiveType::U64,
-        "bool" => PrimitiveType::Bool,
-        "bytes" => PrimitiveType::Bytes,
-        s => unreachable!("unknown primitive: {}", s),
-    }
+    const PRIMITIVES: &[(&str, PrimitiveType)] = &[
+        ("f32", PrimitiveType::F32),
+        ("f64", PrimitiveType::F64),
+        ("i8", PrimitiveType::I8),
+        ("i16", PrimitiveType::I16),
+        ("i32", PrimitiveType::I32),
+        ("i64", PrimitiveType::I64),
+        ("u8", PrimitiveType::U8),
+        ("u16", PrimitiveType::U16),
+        ("u32", PrimitiveType::U32),
+        ("u64", PrimitiveType::U64),
+        ("bool", PrimitiveType::Bool),
+        ("bytes", PrimitiveType::Bytes),
+    ];
+
+    let primitive = pair.as_str();
+    PRIMITIVES
+        .iter()
+        .find_map(|(name, ty)| (*name == primitive).then_some(*ty))
+        .unwrap_or_else(|| unreachable!("unknown primitive: {}", primitive))
 }
 
 fn build_array_suffix(pair: Pair<Rule>) -> ArraySuffix {
@@ -269,21 +274,25 @@ fn unescape(s: &str) -> String {
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '\\' {
-            match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some('r') => out.push('\r'),
-                Some('\\') => out.push('\\'),
-                Some('"') => out.push('"'),
-                Some(c) => {
-                    out.push('\\');
-                    out.push(c);
-                }
-                None => out.push('\\'),
-            }
+            push_escape(&mut out, chars.next());
         } else {
             out.push(c);
         }
     }
     out
+}
+
+fn push_escape(out: &mut String, escaped: Option<char>) {
+    match escaped {
+        Some('n') => out.push('\n'),
+        Some('t') => out.push('\t'),
+        Some('r') => out.push('\r'),
+        Some('\\') => out.push('\\'),
+        Some('"') => out.push('"'),
+        Some(c) => {
+            out.push('\\');
+            out.push(c);
+        }
+        None => out.push('\\'),
+    }
 }

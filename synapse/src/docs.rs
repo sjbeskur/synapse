@@ -68,18 +68,24 @@ fn doc_summary(graph: &ImportGraph) -> DocSummary {
     let mut summary = DocSummary::default();
     for unit in &graph.units {
         for item in &unit.file.items {
-            match item {
-                Item::Command(_) => summary.commands += 1,
-                Item::Telemetry(_) => summary.telemetry += 1,
-                Item::Struct(_) => summary.structs += 1,
-                Item::Table(_) => summary.tables += 1,
-                Item::Enum(_) => summary.enums += 1,
-                Item::Const(_) => summary.constants += 1,
-                Item::Namespace(_) | Item::Import(_) | Item::Message(_) => {}
-            }
+            summary.add_item(item);
         }
     }
     summary
+}
+
+impl DocSummary {
+    fn add_item(&mut self, item: &Item) {
+        match item {
+            Item::Command(_) => self.commands += 1,
+            Item::Telemetry(_) => self.telemetry += 1,
+            Item::Struct(_) => self.structs += 1,
+            Item::Table(_) => self.tables += 1,
+            Item::Enum(_) => self.enums += 1,
+            Item::Const(_) => self.constants += 1,
+            Item::Namespace(_) | Item::Import(_) | Item::Message(_) => {}
+        }
+    }
 }
 
 fn render_metric(out: &mut String, value: usize, label: &str) {
@@ -501,20 +507,25 @@ fn base_type_display(base: &BaseType) -> String {
 }
 
 fn primitive_name(p: PrimitiveType) -> &'static str {
-    match p {
-        PrimitiveType::F32 => "f32",
-        PrimitiveType::F64 => "f64",
-        PrimitiveType::I8 => "i8",
-        PrimitiveType::I16 => "i16",
-        PrimitiveType::I32 => "i32",
-        PrimitiveType::I64 => "i64",
-        PrimitiveType::U8 => "u8",
-        PrimitiveType::U16 => "u16",
-        PrimitiveType::U32 => "u32",
-        PrimitiveType::U64 => "u64",
-        PrimitiveType::Bool => "bool",
-        PrimitiveType::Bytes => "bytes",
-    }
+    const NAMES: &[(PrimitiveType, &str)] = &[
+        (PrimitiveType::F32, "f32"),
+        (PrimitiveType::F64, "f64"),
+        (PrimitiveType::I8, "i8"),
+        (PrimitiveType::I16, "i16"),
+        (PrimitiveType::I32, "i32"),
+        (PrimitiveType::I64, "i64"),
+        (PrimitiveType::U8, "u8"),
+        (PrimitiveType::U16, "u16"),
+        (PrimitiveType::U32, "u32"),
+        (PrimitiveType::U64, "u64"),
+        (PrimitiveType::Bool, "bool"),
+        (PrimitiveType::Bytes, "bytes"),
+    ];
+
+    NAMES
+        .iter()
+        .find_map(|(ty, name)| (*ty == p).then_some(*name))
+        .expect("all primitive types have doc names")
 }
 
 fn literal_display(lit: &Literal) -> String {

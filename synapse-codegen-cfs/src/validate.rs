@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use synapse_parser::ast::{
     ArraySuffix, Attribute, BaseType, EnumDef, FieldDef, Item, Literal, MessageDef, PacketKind,
-    PrimitiveType, SynFile,
+    PrimitiveType, StructDef, SynFile,
 };
 
 use crate::{
@@ -49,25 +49,44 @@ pub(crate) fn validate_supported(
     let mut telemetry_mids = HashMap::new();
     let mut command_codes = HashMap::new();
     for item in &file.items {
-        match item {
-            Item::Struct(s) | Item::Table(s) => {
-                validate_plain_item_attrs(&s.name, &s.attrs)?;
-                validate_fields(&s.name, &s.fields, &enum_defs)?
-            }
-            Item::Command(m) | Item::Telemetry(m) => {
-                validate_packet(m, constants, &mut telemetry_mids, &mut command_codes)?;
-                validate_fields(&m.name, &m.fields, &enum_defs)?
-            }
-            Item::Message(m) => {
-                return Err(CodegenError::LegacyMessageUnsupported {
-                    packet: m.name.clone(),
-                });
-            }
-            Item::Enum(e) => validate_enum(e)?,
-            Item::Namespace(_) | Item::Import(_) | Item::Const(_) => {}
-        }
+        validate_item(
+            item,
+            constants,
+            &enum_defs,
+            &mut telemetry_mids,
+            &mut command_codes,
+        )?;
     }
     Ok(())
+}
+
+fn validate_item(
+    item: &Item,
+    constants: &ConstContext<'_>,
+    enum_defs: &HashMap<String, &EnumDef>,
+    telemetry_mids: &mut HashMap<u64, String>,
+    command_codes: &mut HashMap<(u64, u64), String>,
+) -> Result<(), CodegenError> {
+    match item {
+        Item::Struct(s) | Item::Table(s) => validate_plain_item(s, enum_defs),
+        Item::Command(m) | Item::Telemetry(m) => {
+            validate_packet(m, constants, telemetry_mids, command_codes)?;
+            validate_fields(&m.name, &m.fields, enum_defs)
+        }
+        Item::Message(m) => Err(CodegenError::LegacyMessageUnsupported {
+            packet: m.name.clone(),
+        }),
+        Item::Enum(e) => validate_enum(e),
+        Item::Namespace(_) | Item::Import(_) | Item::Const(_) => Ok(()),
+    }
+}
+
+fn validate_plain_item(
+    item: &StructDef,
+    enum_defs: &HashMap<String, &EnumDef>,
+) -> Result<(), CodegenError> {
+    validate_plain_item_attrs(&item.name, &item.attrs)?;
+    validate_fields(&item.name, &item.fields, enum_defs)
 }
 
 fn collect_cfs_packets(
@@ -78,63 +97,52 @@ fn collect_cfs_packets(
     let mut packets = Vec::new();
 
     for item in &file.items {
-        let packet = match item {
-            Item::Command(m) | Item::Telemetry(m) => m,
-            Item::Namespace(_)
-            | Item::Import(_)
-            | Item::Const(_)
-            | Item::Enum(_)
-            | Item::Struct(_)
-            | Item::Table(_)
-            | Item::Message(_) => continue,
-        };
-
-        let Some(mid) = find_mid_attr(&packet.attrs) else {
-            return Err(CodegenError::MissingMid {
-                packet: packet.name.clone(),
-            });
-        };
-        let mid_value = resolve_literal_to_u64(mid, constants).ok_or_else(|| {
-            CodegenError::MessageIdValueUnsupported {
-                packet: packet.name.clone(),
-            }
-        })?;
-        validate_mid_range(packet, mid_value, mid, constants)?;
-
-        let cc = find_cc_attr(&packet.attrs);
-        let (kind, cc_value) = match packet.kind {
-            PacketKind::Command => {
-                let cc = cc.ok_or_else(|| CodegenError::MissingCommandCode {
-                    packet: packet.name.clone(),
-                })?;
-                let cc_value = resolve_literal_to_u64(cc, constants).ok_or_else(|| {
-                    CodegenError::CommandCodeValueUnsupported {
-                        packet: packet.name.clone(),
-                    }
-                })?;
-                (CfsPacketKind::Command, Some(cc_value))
-            }
-            PacketKind::Telemetry => {
-                if cc.is_some() {
-                    return Err(CodegenError::CommandCodeUnsupported {
-                        item: packet.name.clone(),
-                    });
-                }
-                (CfsPacketKind::Telemetry, None)
-            }
-            PacketKind::Message => continue,
-        };
-
-        packets.push(CfsPacket {
-            namespace: namespace.clone(),
-            name: packet.name.clone(),
-            kind,
-            mid: mid_value,
-            cc: cc_value,
-        });
+        if let Some(packet) = cfs_packet_from_item(item, constants, &namespace)? {
+            packets.push(packet);
+        }
     }
 
     Ok(packets)
+}
+
+fn cfs_packet_from_item(
+    item: &Item,
+    constants: &ConstContext<'_>,
+    namespace: &[String],
+) -> Result<Option<CfsPacket>, CodegenError> {
+    let (Item::Command(packet) | Item::Telemetry(packet)) = item else {
+        return Ok(None);
+    };
+
+    let mid = required_mid(packet)?;
+    let mid_value = resolved_mid(packet, mid, constants)?;
+    validate_mid_range(packet, mid_value, mid, constants)?;
+    let (kind, cc_value) = collected_packet_kind(packet, constants)?;
+
+    Ok(Some(CfsPacket {
+        namespace: namespace.to_vec(),
+        name: packet.name.clone(),
+        kind,
+        mid: mid_value,
+        cc: cc_value,
+    }))
+}
+
+fn collected_packet_kind(
+    packet: &MessageDef,
+    constants: &ConstContext<'_>,
+) -> Result<(CfsPacketKind, Option<u64>), CodegenError> {
+    match packet.kind {
+        PacketKind::Command => Ok((
+            CfsPacketKind::Command,
+            Some(required_command_code_value(packet, constants)?),
+        )),
+        PacketKind::Telemetry => {
+            reject_telemetry_command_code(packet)?;
+            Ok((CfsPacketKind::Telemetry, None))
+        }
+        PacketKind::Message => unreachable!("legacy message items are not collected"),
+    }
 }
 
 fn validate_enum(e: &EnumDef) -> Result<(), CodegenError> {
@@ -168,19 +176,69 @@ fn validate_enum(e: &EnumDef) -> Result<(), CodegenError> {
 }
 
 fn enum_repr_range(repr: PrimitiveType) -> Option<(i64, i64)> {
-    match repr {
-        PrimitiveType::I8 => Some((i8::MIN as i64, i8::MAX as i64)),
-        PrimitiveType::I16 => Some((i16::MIN as i64, i16::MAX as i64)),
-        PrimitiveType::I32 => Some((i32::MIN as i64, i32::MAX as i64)),
-        PrimitiveType::I64 => Some((i64::MIN, i64::MAX)),
-        PrimitiveType::U8 => Some((0, u8::MAX as i64)),
-        PrimitiveType::U16 => Some((0, u16::MAX as i64)),
-        PrimitiveType::U32 => Some((0, u32::MAX as i64)),
-        PrimitiveType::U64 => Some((0, i64::MAX)),
-        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Bytes => {
-            None
-        }
+    const RANGES: &[(PrimitiveType, (i64, i64))] = &[
+        (PrimitiveType::I8, (i8::MIN as i64, i8::MAX as i64)),
+        (PrimitiveType::I16, (i16::MIN as i64, i16::MAX as i64)),
+        (PrimitiveType::I32, (i32::MIN as i64, i32::MAX as i64)),
+        (PrimitiveType::I64, (i64::MIN, i64::MAX)),
+        (PrimitiveType::U8, (0, u8::MAX as i64)),
+        (PrimitiveType::U16, (0, u16::MAX as i64)),
+        (PrimitiveType::U32, (0, u32::MAX as i64)),
+        (PrimitiveType::U64, (0, i64::MAX)),
+    ];
+
+    RANGES
+        .iter()
+        .find_map(|(ty, range)| (*ty == repr).then_some(*range))
+}
+
+fn required_mid(packet: &MessageDef) -> Result<&Literal, CodegenError> {
+    find_mid_attr(&packet.attrs).ok_or_else(|| CodegenError::MissingMid {
+        packet: packet.name.clone(),
+    })
+}
+
+fn resolved_mid(
+    packet: &MessageDef,
+    mid: &Literal,
+    constants: &ConstContext<'_>,
+) -> Result<u64, CodegenError> {
+    resolve_literal_to_u64(mid, constants).ok_or_else(|| CodegenError::MessageIdValueUnsupported {
+        packet: packet.name.clone(),
+    })
+}
+
+fn required_command_code(packet: &MessageDef) -> Result<&Literal, CodegenError> {
+    find_cc_attr(&packet.attrs).ok_or_else(|| CodegenError::MissingCommandCode {
+        packet: packet.name.clone(),
+    })
+}
+
+fn resolved_command_code(
+    packet: &MessageDef,
+    cc: &Literal,
+    constants: &ConstContext<'_>,
+) -> Result<u64, CodegenError> {
+    resolve_literal_to_u64(cc, constants).ok_or_else(|| CodegenError::CommandCodeValueUnsupported {
+        packet: packet.name.clone(),
+    })
+}
+
+fn required_command_code_value(
+    packet: &MessageDef,
+    constants: &ConstContext<'_>,
+) -> Result<u64, CodegenError> {
+    let cc = required_command_code(packet)?;
+    resolved_command_code(packet, cc, constants)
+}
+
+fn reject_telemetry_command_code(packet: &MessageDef) -> Result<(), CodegenError> {
+    if find_cc_attr(&packet.attrs).is_some() {
+        return Err(CodegenError::CommandCodeUnsupported {
+            item: packet.name.clone(),
+        });
     }
+    Ok(())
 }
 
 fn validate_packet(
@@ -189,70 +247,97 @@ fn validate_packet(
     telemetry_mids: &mut HashMap<u64, String>,
     command_codes: &mut HashMap<(u64, u64), String>,
 ) -> Result<(), CodegenError> {
-    let Some(mid) = find_mid_attr(&packet.attrs) else {
-        return Err(CodegenError::MissingMid {
-            packet: packet.name.clone(),
-        });
-    };
-
-    let cc = find_cc_attr(&packet.attrs);
-    match packet.kind {
-        PacketKind::Command if cc.is_none() => {
-            return Err(CodegenError::MissingCommandCode {
-                packet: packet.name.clone(),
-            });
-        }
-        PacketKind::Telemetry if cc.is_some() => {
-            return Err(CodegenError::CommandCodeUnsupported {
-                item: packet.name.clone(),
-            });
-        }
-        PacketKind::Command | PacketKind::Telemetry | PacketKind::Message => {}
-    }
-    let cc_value = if packet.kind == PacketKind::Command {
-        let cc = cc.expect("command code was checked above");
-        Some(resolve_literal_to_u64(cc, constants).ok_or_else(|| {
-            CodegenError::CommandCodeValueUnsupported {
-                packet: packet.name.clone(),
-            }
-        })?)
-    } else {
-        None
-    };
-
-    let value = resolve_literal_to_u64(mid, constants).ok_or_else(|| {
-        CodegenError::MessageIdValueUnsupported {
-            packet: packet.name.clone(),
-        }
-    })?;
-
+    let mid = required_mid(packet)?;
+    validate_packet_command_code_shape(packet)?;
+    let cc_value = optional_command_code_value(packet, constants)?;
+    let value = resolved_mid(packet, mid, constants)?;
     validate_mid_range(packet, value, mid, constants)?;
+    register_packet_mid(
+        packet,
+        constants,
+        telemetry_mids,
+        command_codes,
+        value,
+        cc_value,
+    )
+}
+
+fn validate_packet_command_code_shape(packet: &MessageDef) -> Result<(), CodegenError> {
+    match packet.kind {
+        PacketKind::Command => required_command_code(packet).map(|_| ()),
+        PacketKind::Telemetry => reject_telemetry_command_code(packet),
+        PacketKind::Message => Ok(()),
+    }
+}
+
+fn optional_command_code_value(
+    packet: &MessageDef,
+    constants: &ConstContext<'_>,
+) -> Result<Option<u64>, CodegenError> {
+    if packet.kind == PacketKind::Command {
+        return Ok(Some(required_command_code_value(packet, constants)?));
+    }
+    Ok(None)
+}
+
+fn register_packet_mid(
+    packet: &MessageDef,
+    constants: &ConstContext<'_>,
+    telemetry_mids: &mut HashMap<u64, String>,
+    command_codes: &mut HashMap<(u64, u64), String>,
+    value: u64,
+    cc_value: Option<u64>,
+) -> Result<(), CodegenError> {
     match packet.kind {
         PacketKind::Command => {
-            let cc = cc.expect("command code was checked above");
-            let cc_value = cc_value.expect("command code value was checked above");
-            if let Some(first_packet) = command_codes.insert((value, cc_value), packet.name.clone())
-            {
-                return Err(CodegenError::DuplicateCommandCode {
-                    mid: literal_mid_str(mid, constants),
-                    cc: literal_cc_str(cc, constants),
-                    first_packet,
-                    second_packet: packet.name.clone(),
-                });
-            }
+            register_command_mid(packet, constants, command_codes, value, cc_value)?;
         }
-        PacketKind::Telemetry => {
-            if let Some(first_packet) = telemetry_mids.insert(value, packet.name.clone()) {
-                return Err(CodegenError::DuplicateMid {
-                    mid: literal_mid_str(mid, constants),
-                    first_packet,
-                    second_packet: packet.name.clone(),
-                });
-            }
-        }
+        PacketKind::Telemetry => register_telemetry_mid(packet, constants, telemetry_mids, value)?,
         PacketKind::Message => {}
     }
 
+    Ok(())
+}
+
+fn register_command_mid(
+    packet: &MessageDef,
+    constants: &ConstContext<'_>,
+    command_codes: &mut HashMap<(u64, u64), String>,
+    value: u64,
+    cc_value: Option<u64>,
+) -> Result<(), CodegenError> {
+    let cc = required_command_code(packet).expect("command code was checked above");
+    let cc_value = cc_value.expect("command code value was checked above");
+    if let Some(first_packet) = command_codes.insert((value, cc_value), packet.name.clone()) {
+        return Err(CodegenError::DuplicateCommandCode {
+            mid: literal_mid_str(
+                required_mid(packet).expect("MID was checked above"),
+                constants,
+            ),
+            cc: literal_cc_str(cc, constants),
+            first_packet,
+            second_packet: packet.name.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn register_telemetry_mid(
+    packet: &MessageDef,
+    constants: &ConstContext<'_>,
+    telemetry_mids: &mut HashMap<u64, String>,
+    value: u64,
+) -> Result<(), CodegenError> {
+    if let Some(first_packet) = telemetry_mids.insert(value, packet.name.clone()) {
+        return Err(CodegenError::DuplicateMid {
+            mid: literal_mid_str(
+                required_mid(packet).expect("MID was checked above"),
+                constants,
+            ),
+            first_packet,
+            second_packet: packet.name.clone(),
+        });
+    }
     Ok(())
 }
 
@@ -300,55 +385,94 @@ fn validate_fields(
     enum_defs: &HashMap<String, &EnumDef>,
 ) -> Result<(), CodegenError> {
     for field in fields {
-        if field.optional {
-            return Err(CodegenError::OptionalFieldUnsupported {
-                container: container.to_string(),
-                field: field.name.clone(),
-            });
-        }
-        if field.default.is_some() {
-            return Err(CodegenError::DefaultValueUnsupported {
-                container: container.to_string(),
-                field: field.name.clone(),
-            });
-        }
-        if field.ty.base == BaseType::String && field.ty.array.is_none() {
-            return Err(CodegenError::UnboundedStringUnsupported {
-                container: container.to_string(),
-                field: field.name.clone(),
-            });
-        }
-        if let BaseType::Ref(segments) = &field.ty.base {
-            if let Some(e) = segments
-                .last()
-                .and_then(|name| enum_defs.get(name.as_str()))
-            {
-                if e.repr.is_none() {
-                    return Err(CodegenError::EnumFieldUnsupported {
-                        container: container.to_string(),
-                        field: field.name.clone(),
-                        ty: segments.join("::"),
-                    });
-                }
-            }
-        }
-        match &field.ty.array {
-            Some(ArraySuffix::Dynamic) => {
-                return Err(CodegenError::DynamicArrayUnsupported {
-                    container: container.to_string(),
-                    field: field.name.clone(),
-                    ty: type_expr_display(&field.ty),
-                });
-            }
-            Some(ArraySuffix::Bounded(_)) if field.ty.base != BaseType::String => {
-                return Err(CodegenError::BoundedArrayUnsupported {
-                    container: container.to_string(),
-                    field: field.name.clone(),
-                    ty: type_expr_display(&field.ty),
-                });
-            }
-            Some(ArraySuffix::Bounded(_)) | Some(ArraySuffix::Fixed(_)) | None => {}
-        }
+        validate_field(container, field, enum_defs)?;
     }
     Ok(())
+}
+
+fn validate_field(
+    container: &str,
+    field: &FieldDef,
+    enum_defs: &HashMap<String, &EnumDef>,
+) -> Result<(), CodegenError> {
+    validate_field_modifiers(container, field)?;
+    validate_field_base(container, field, enum_defs)?;
+    validate_field_array(container, field)
+}
+
+fn validate_field_modifiers(container: &str, field: &FieldDef) -> Result<(), CodegenError> {
+    if field.optional {
+        return Err(CodegenError::OptionalFieldUnsupported {
+            container: container.to_string(),
+            field: field.name.clone(),
+        });
+    }
+    if field.default.is_some() {
+        return Err(CodegenError::DefaultValueUnsupported {
+            container: container.to_string(),
+            field: field.name.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_field_base(
+    container: &str,
+    field: &FieldDef,
+    enum_defs: &HashMap<String, &EnumDef>,
+) -> Result<(), CodegenError> {
+    validate_string_field(container, field)?;
+    validate_enum_field(container, field, enum_defs)
+}
+
+fn validate_string_field(container: &str, field: &FieldDef) -> Result<(), CodegenError> {
+    if field.ty.base == BaseType::String && field.ty.array.is_none() {
+        return Err(CodegenError::UnboundedStringUnsupported {
+            container: container.to_string(),
+            field: field.name.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_enum_field(
+    container: &str,
+    field: &FieldDef,
+    enum_defs: &HashMap<String, &EnumDef>,
+) -> Result<(), CodegenError> {
+    let BaseType::Ref(segments) = &field.ty.base else {
+        return Ok(());
+    };
+    let Some(e) = segments
+        .last()
+        .and_then(|name| enum_defs.get(name.as_str()))
+    else {
+        return Ok(());
+    };
+    if e.repr.is_none() {
+        return Err(CodegenError::EnumFieldUnsupported {
+            container: container.to_string(),
+            field: field.name.clone(),
+            ty: segments.join("::"),
+        });
+    }
+    Ok(())
+}
+
+fn validate_field_array(container: &str, field: &FieldDef) -> Result<(), CodegenError> {
+    match &field.ty.array {
+        Some(ArraySuffix::Dynamic) => Err(CodegenError::DynamicArrayUnsupported {
+            container: container.to_string(),
+            field: field.name.clone(),
+            ty: type_expr_display(&field.ty),
+        }),
+        Some(ArraySuffix::Bounded(_)) if field.ty.base != BaseType::String => {
+            Err(CodegenError::BoundedArrayUnsupported {
+                container: container.to_string(),
+                field: field.name.clone(),
+                ty: type_expr_display(&field.ty),
+            })
+        }
+        Some(ArraySuffix::Bounded(_)) | Some(ArraySuffix::Fixed(_)) | None => Ok(()),
+    }
 }

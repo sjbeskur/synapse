@@ -64,7 +64,12 @@ fn emit_rust_items(
     out: &mut String,
     constants: &ConstContext<'_>,
 ) {
-    // First pass: MID consts for Software Bus packets with @mid
+    emit_rust_mid_consts(file, out, constants);
+    emit_rust_command_code_consts(file, out, constants);
+    emit_rust_types(file, opts, out);
+}
+
+fn emit_rust_mid_consts(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
     let mut has_mids = false;
     for item in &file.items {
         if let Some(m) = packet_item(item) {
@@ -82,7 +87,9 @@ fn emit_rust_items(
     if has_mids {
         out.push('\n');
     }
+}
 
+fn emit_rust_command_code_consts(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
     let mut has_ccs = false;
     for item in &file.items {
         if let Item::Command(m) = item {
@@ -100,8 +107,9 @@ fn emit_rust_items(
     if has_ccs {
         out.push('\n');
     }
+}
 
-    // Second pass: types
+fn emit_rust_types(file: &SynFile, opts: &RustOptions, out: &mut String) {
     for item in &file.items {
         match item {
             Item::Namespace(_) | Item::Import(_) => {}
@@ -193,16 +201,24 @@ fn emit_rust_message(out: &mut String, m: &MessageDef, opts: &RustOptions) {
 
 fn rust_field_type_str(ty: &TypeExpr) -> String {
     if ty.base == BaseType::String {
-        return match &ty.array {
-            None | Some(ArraySuffix::Dynamic) => "*const u8".to_string(),
-            Some(ArraySuffix::Fixed(n)) | Some(ArraySuffix::Bounded(n)) => {
-                format!("[u8; {}]", n)
-            }
-        };
+        return rust_string_type_str(&ty.array);
     }
 
     let base = rust_base_type_str(&ty.base);
-    match &ty.array {
+    rust_array_type_str(base, &ty.array)
+}
+
+fn rust_string_type_str(array: &Option<ArraySuffix>) -> String {
+    match array {
+        None | Some(ArraySuffix::Dynamic) => "*const u8".to_string(),
+        Some(ArraySuffix::Fixed(n)) | Some(ArraySuffix::Bounded(n)) => {
+            format!("[u8; {}]", n)
+        }
+    }
+}
+
+fn rust_array_type_str(base: String, array: &Option<ArraySuffix>) -> String {
+    match array {
         None => base,
         Some(ArraySuffix::Fixed(n)) => format!("[{}; {}]", base, n),
         // Dynamic/bounded: use a raw slice pointer; no alloc in cFS context.
@@ -220,20 +236,25 @@ fn rust_base_type_str(base: &BaseType) -> String {
 }
 
 fn rust_primitive_str(p: PrimitiveType) -> &'static str {
-    match p {
-        PrimitiveType::F32 => "f32",
-        PrimitiveType::F64 => "f64",
-        PrimitiveType::I8 => "i8",
-        PrimitiveType::I16 => "i16",
-        PrimitiveType::I32 => "i32",
-        PrimitiveType::I64 => "i64",
-        PrimitiveType::U8 => "u8",
-        PrimitiveType::U16 => "u16",
-        PrimitiveType::U32 => "u32",
-        PrimitiveType::U64 => "u64",
-        PrimitiveType::Bool => "bool",
-        PrimitiveType::Bytes => "*const u8",
-    }
+    const RUST_TYPES: &[(PrimitiveType, &str)] = &[
+        (PrimitiveType::F32, "f32"),
+        (PrimitiveType::F64, "f64"),
+        (PrimitiveType::I8, "i8"),
+        (PrimitiveType::I16, "i16"),
+        (PrimitiveType::I32, "i32"),
+        (PrimitiveType::I64, "i64"),
+        (PrimitiveType::U8, "u8"),
+        (PrimitiveType::U16, "u16"),
+        (PrimitiveType::U32, "u32"),
+        (PrimitiveType::U64, "u64"),
+        (PrimitiveType::Bool, "bool"),
+        (PrimitiveType::Bytes, "*const u8"),
+    ];
+
+    RUST_TYPES
+        .iter()
+        .find_map(|(ty, name)| (*ty == p).then_some(*name))
+        .expect("all primitive types have Rust names")
 }
 
 fn rust_mid_str(lit: &Literal, constants: &ConstContext<'_>) -> String {
@@ -265,16 +286,18 @@ fn rust_literal_str(lit: &Literal) -> String {
         Literal::Hex(n) => format!("0x{:X}", n),
         Literal::Int(n) => n.to_string(),
         Literal::Bool(b) => b.to_string(),
-        Literal::Float(f) => {
-            let s = format!("{}", f);
-            if s.contains('.') || s.contains('e') {
-                s
-            } else {
-                format!("{}.0", s)
-            }
-        }
+        Literal::Float(f) => rust_float_literal_str(*f),
         Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
+    }
+}
+
+fn rust_float_literal_str(value: f64) -> String {
+    let s = format!("{}", value);
+    if s.contains('.') || s.contains('e') {
+        s
+    } else {
+        format!("{}.0", s)
     }
 }
 

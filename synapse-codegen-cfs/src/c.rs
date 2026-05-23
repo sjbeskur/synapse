@@ -52,7 +52,13 @@ fn emit_c_imports(file: &SynFile, out: &mut String) {
 }
 
 fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
-    // First pass: emit #define MID lines for Software Bus packets with @mid
+    emit_mid_defines(file, out, constants);
+    emit_command_code_defines(file, out, constants);
+    emit_enum_aliases(file, out);
+    emit_c_types(file, out);
+}
+
+fn emit_mid_defines(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
     let mut has_mids = false;
     for item in &file.items {
         if let Some(m) = packet_item(item) {
@@ -70,7 +76,9 @@ fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
     if has_mids {
         out.push('\n');
     }
+}
 
+fn emit_command_code_defines(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
     let mut has_ccs = false;
     for item in &file.items {
         if let Item::Command(m) = item {
@@ -88,8 +96,9 @@ fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
     if has_ccs {
         out.push('\n');
     }
+}
 
-    // Second pass: emit enum aliases before any struct fields can reference them.
+fn emit_enum_aliases(file: &SynFile, out: &mut String) {
     let mut namespace = Vec::new();
     for item in &file.items {
         match item {
@@ -104,8 +113,9 @@ fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
             | Item::Message(_) => {}
         }
     }
+}
 
-    // Third pass: emit const, struct, and message types.
+fn emit_c_types(file: &SynFile, out: &mut String) {
     let mut namespace = Vec::new();
     for item in &file.items {
         match item {
@@ -180,15 +190,23 @@ fn emit_message(out: &mut String, m: &MessageDef, namespace: &[String]) {
 
 fn non_fixed_type_str(ty: &TypeExpr, namespace: &[String]) -> String {
     if ty.base == BaseType::String {
-        return match &ty.array {
-            None | Some(ArraySuffix::Dynamic) => "const char*".to_string(),
-            Some(ArraySuffix::Fixed(_)) => unreachable!("handled by emit_c_field"),
-            Some(ArraySuffix::Bounded(n)) => format!("char[{}]", n),
-        };
+        return non_fixed_string_type_str(&ty.array);
     }
 
     let base = base_type_str(&ty.base, namespace);
-    match &ty.array {
+    non_fixed_array_type_str(base, &ty.array)
+}
+
+fn non_fixed_string_type_str(array: &Option<ArraySuffix>) -> String {
+    match array {
+        None | Some(ArraySuffix::Dynamic) => "const char*".to_string(),
+        Some(ArraySuffix::Fixed(_)) => unreachable!("handled by emit_c_field"),
+        Some(ArraySuffix::Bounded(n)) => format!("char[{}]", n),
+    }
+}
+
+fn non_fixed_array_type_str(base: String, array: &Option<ArraySuffix>) -> String {
+    match array {
         None => base,
         Some(ArraySuffix::Fixed(_)) => unreachable!("handled by caller"),
         Some(ArraySuffix::Dynamic) => format!("CFE_Span_t /* {} */", base),
@@ -259,18 +277,23 @@ fn c_ref_type_name(segments: &[String], namespace: &[String]) -> String {
 }
 
 fn primitive_str(p: PrimitiveType) -> &'static str {
-    match p {
-        PrimitiveType::F32 => "float",
-        PrimitiveType::F64 => "double",
-        PrimitiveType::I8 => "int8_t",
-        PrimitiveType::I16 => "int16_t",
-        PrimitiveType::I32 => "int32_t",
-        PrimitiveType::I64 => "int64_t",
-        PrimitiveType::U8 => "uint8_t",
-        PrimitiveType::U16 => "uint16_t",
-        PrimitiveType::U32 => "uint32_t",
-        PrimitiveType::U64 => "uint64_t",
-        PrimitiveType::Bool => "bool",
-        PrimitiveType::Bytes => "uint8_t*",
-    }
+    const C_TYPES: &[(PrimitiveType, &str)] = &[
+        (PrimitiveType::F32, "float"),
+        (PrimitiveType::F64, "double"),
+        (PrimitiveType::I8, "int8_t"),
+        (PrimitiveType::I16, "int16_t"),
+        (PrimitiveType::I32, "int32_t"),
+        (PrimitiveType::I64, "int64_t"),
+        (PrimitiveType::U8, "uint8_t"),
+        (PrimitiveType::U16, "uint16_t"),
+        (PrimitiveType::U32, "uint32_t"),
+        (PrimitiveType::U64, "uint64_t"),
+        (PrimitiveType::Bool, "bool"),
+        (PrimitiveType::Bytes, "uint8_t*"),
+    ];
+
+    C_TYPES
+        .iter()
+        .find_map(|(ty, name)| (*ty == p).then_some(*name))
+        .expect("all primitive types have C names")
 }
