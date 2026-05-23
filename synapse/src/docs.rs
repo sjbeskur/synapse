@@ -28,8 +28,9 @@ pub(crate) fn render_html_docs(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
 ) -> Result<String, Error> {
+    let context = DocContext::new(graph);
     let summary = doc_summary(graph);
-    let nav = doc_nav(graph);
+    let nav = doc_nav(graph, &context);
     let mut summary_html = String::new();
     render_metric(&mut summary_html, graph.units.len(), "files");
     render_metric(&mut summary_html, summary.telemetry, "telemetry");
@@ -45,7 +46,7 @@ pub(crate) fn render_html_docs(
     let mut content_html = String::new();
 
     for unit in &graph.units {
-        render_doc_unit(&mut content_html, unit, units_by_path)?;
+        render_doc_unit(&mut content_html, unit, units_by_path, &context)?;
     }
 
     Ok(render_page_template(
@@ -53,6 +54,38 @@ pub(crate) fn render_html_docs(
         &toc_html,
         &content_html,
     ))
+}
+
+struct DocContext {
+    source_root: PathBuf,
+}
+
+impl DocContext {
+    fn new(graph: &ImportGraph) -> Self {
+        let source_root = common_source_root(graph).unwrap_or_default();
+        Self { source_root }
+    }
+
+    fn source_label(&self, path: &Path) -> String {
+        path.strip_prefix(&self.source_root)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    }
+}
+
+fn common_source_root(graph: &ImportGraph) -> Option<PathBuf> {
+    let mut paths = graph.units.iter().map(|unit| unit.path.parent());
+    let first = paths.next()??;
+    let mut root = first.to_path_buf();
+    for path in paths.flatten() {
+        while !path.starts_with(&root) {
+            if !root.pop() {
+                return Some(PathBuf::new());
+            }
+        }
+    }
+    Some(root)
 }
 
 fn render_page_template(summary_html: &str, toc_html: &str, content_html: &str) -> String {
@@ -124,20 +157,20 @@ struct DocNavEntry {
     kind: String,
 }
 
-fn doc_nav(graph: &ImportGraph) -> Vec<DocNavEntry> {
+fn doc_nav(graph: &ImportGraph, context: &DocContext) -> Vec<DocNavEntry> {
     let mut entries = Vec::new();
     for unit in &graph.units {
         let namespace = namespace(&unit.file);
         let namespace_label = namespace_label(&namespace);
         entries.push(DocNavEntry {
-            id: unit_id(&unit.path, &namespace_label),
+            id: unit_id(unit, &namespace_label, context),
             label: namespace_label.clone(),
             kind: "file".to_string(),
         });
         for item in &unit.file.items {
             if let Some((kind, name)) = item_kind_name(item) {
                 entries.push(DocNavEntry {
-                    id: item_id(&unit.path, kind, name),
+                    id: item_id(unit, kind, name, context),
                     label: format!("{namespace_label}::{name}"),
                     kind: kind.to_string(),
                 });
@@ -164,12 +197,13 @@ fn render_doc_unit(
     out: &mut String,
     unit: &ParsedUnit,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+    context: &DocContext,
 ) -> Result<(), Error> {
     let namespace = namespace(&unit.file);
     let namespace_label = namespace_label(&namespace);
     let packet_facts = packet_facts_for_unit(unit, units_by_path)?;
-    let unit_id = unit_id(&unit.path, &namespace_label);
-    let unit_search = unit_search_text(unit, &namespace_label);
+    let unit_id = unit_id(unit, &namespace_label, context);
+    let unit_search = unit_search_text(unit, &namespace_label, context);
 
     out.push_str(&format!(
         "<section id=\"{}\" class=\"unit\" data-search=\"{}\">\n",
@@ -181,14 +215,14 @@ fn render_doc_unit(
     out.push_str("<a class=\"top-link\" href=\"#top\">Back to top</a>\n");
     out.push_str("</div>\n");
     out.push_str("<p class=\"meta\">source: ");
-    render_source_link(out, &unit.path);
+    render_source_label(out, unit, context);
     out.push_str("</p>\n");
     render_imports(out, &unit.file);
     out.push_str("<div class=\"items\">\n");
 
     let mut rendered = 0usize;
     for item in &unit.file.items {
-        if render_doc_item(out, unit, item, &packet_facts) {
+        if render_doc_item(out, unit, item, &packet_facts, context) {
             rendered += 1;
         }
     }
@@ -205,32 +239,38 @@ fn render_doc_item(
     unit: &ParsedUnit,
     item: &Item,
     packet_facts: &HashMap<String, synapse_codegen_cfs::CfsPacket>,
+    context: &DocContext,
 ) -> bool {
     match item {
         Item::Const(_) | Item::Enum(_) | Item::Struct(_) | Item::Table(_) => {
-            render_plain_doc_item(out, unit, item)
+            render_plain_doc_item(out, unit, item, context)
         }
         Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
-            render_packet_doc(out, unit, m, packet_facts)
+            render_packet_doc(out, unit, m, packet_facts, context)
         }
         Item::Namespace(_) | Item::Import(_) => return false,
     }
     true
 }
 
-fn render_plain_doc_item(out: &mut String, unit: &ParsedUnit, item: &Item) {
+fn render_plain_doc_item(out: &mut String, unit: &ParsedUnit, item: &Item, context: &DocContext) {
     match item {
-        Item::Const(c) => render_const_doc(out, unit, c),
-        Item::Enum(e) => render_enum_doc(out, unit, e),
-        Item::Struct(s) => render_struct_doc(out, unit, "struct", s),
-        Item::Table(s) => render_struct_doc(out, unit, "table", s),
+        Item::Const(c) => render_const_doc(out, unit, c, context),
+        Item::Enum(e) => render_enum_doc(out, unit, e, context),
+        Item::Struct(s) => render_struct_doc(out, unit, "struct", s, context),
+        Item::Table(s) => render_struct_doc(out, unit, "table", s, context),
         _ => unreachable!("non-plain item passed to render_plain_doc_item"),
     }
 }
 
-fn render_const_doc(out: &mut String, unit: &ParsedUnit, c: &synapse_parser::ast::ConstDecl) {
-    render_item_open(out, unit, "const", &c.name, &const_search_text(c));
-    render_item_title(out, unit, "const", &c.name);
+fn render_const_doc(
+    out: &mut String,
+    unit: &ParsedUnit,
+    c: &synapse_parser::ast::ConstDecl,
+    context: &DocContext,
+) {
+    render_item_open(out, unit, "const", &c.name, &const_search_text(c), context);
+    render_item_title(out, unit, "const", &c.name, context);
     render_doc_lines_html(out, &c.doc);
     out.push_str(&format!(
         "<dl><dt>Type</dt><dd><code>{}</code></dd><dt>Value</dt><dd><code>{}</code></dd></dl>\n",
@@ -240,9 +280,14 @@ fn render_const_doc(out: &mut String, unit: &ParsedUnit, c: &synapse_parser::ast
     out.push_str("</article>\n");
 }
 
-fn render_enum_doc(out: &mut String, unit: &ParsedUnit, e: &synapse_parser::ast::EnumDef) {
-    render_item_open(out, unit, "enum", &e.name, &enum_search_text(e));
-    render_item_title(out, unit, "enum", &e.name);
+fn render_enum_doc(
+    out: &mut String,
+    unit: &ParsedUnit,
+    e: &synapse_parser::ast::EnumDef,
+    context: &DocContext,
+) {
+    render_item_open(out, unit, "enum", &e.name, &enum_search_text(e), context);
+    render_item_title(out, unit, "enum", &e.name, context);
     render_doc_lines_html(out, &e.doc);
     render_enum_repr(out, e.repr);
     render_enum_variants(out, e);
@@ -310,9 +355,22 @@ fn render_imports(out: &mut String, file: &SynFile) {
     out.push_str("</ul>\n");
 }
 
-fn render_struct_doc(out: &mut String, unit: &ParsedUnit, kind: &str, s: &StructDef) {
-    render_item_open(out, unit, kind, &s.name, &struct_search_text(kind, s));
-    render_item_title(out, unit, kind, &s.name);
+fn render_struct_doc(
+    out: &mut String,
+    unit: &ParsedUnit,
+    kind: &str,
+    s: &StructDef,
+    context: &DocContext,
+) {
+    render_item_open(
+        out,
+        unit,
+        kind,
+        &s.name,
+        &struct_search_text(kind, s),
+        context,
+    );
+    render_item_title(out, unit, kind, &s.name, context);
     render_doc_lines_html(out, &s.doc);
     render_fields(out, &s.fields);
     out.push_str("</article>\n");
@@ -323,6 +381,7 @@ fn render_packet_doc(
     unit: &ParsedUnit,
     packet: &MessageDef,
     packet_facts: &HashMap<String, synapse_codegen_cfs::CfsPacket>,
+    context: &DocContext,
 ) {
     let kind = packet_kind_label(packet.kind);
     let fact = cfs_packet_fact_key(packet).and_then(|key| packet_facts.get(&key));
@@ -332,8 +391,9 @@ fn render_packet_doc(
         kind,
         &packet.name,
         &packet_search_text(packet, fact),
+        context,
     );
-    render_item_title(out, unit, kind, &packet.name);
+    render_item_title(out, unit, kind, &packet.name, context);
     render_doc_lines_html(out, &packet.doc);
     if let Some(fact) = fact {
         out.push_str(&format!(
@@ -349,7 +409,13 @@ fn render_packet_doc(
     out.push_str("</article>\n");
 }
 
-fn render_item_title(out: &mut String, unit: &ParsedUnit, kind: &str, name: &str) {
+fn render_item_title(
+    out: &mut String,
+    unit: &ParsedUnit,
+    kind: &str,
+    name: &str,
+    context: &DocContext,
+) {
     out.push_str("<div class=\"item-title\">\n");
     out.push_str(&format!(
         "<h3><span class=\"kind\">{}</span>{}</h3>\n",
@@ -357,7 +423,10 @@ fn render_item_title(out: &mut String, unit: &ParsedUnit, kind: &str, name: &str
         escape_html(name)
     ));
     out.push_str("<a class=\"source-link\" href=\"");
-    out.push_str(&escape_attr(&source_href(&unit.path)));
+    out.push_str(&escape_attr(&format!(
+        "#{}",
+        unit_id(unit, &namespace_label(&namespace(&unit.file)), context)
+    )));
     out.push_str("\">Source</a>\n");
     out.push_str("</div>\n");
 }
@@ -396,20 +465,25 @@ fn render_doc_lines_html(out: &mut String, doc: &[String]) {
     out.push_str("</p>\n");
 }
 
-fn render_item_open(out: &mut String, unit: &ParsedUnit, kind: &str, name: &str, search: &str) {
+fn render_item_open(
+    out: &mut String,
+    unit: &ParsedUnit,
+    kind: &str,
+    name: &str,
+    search: &str,
+    context: &DocContext,
+) {
     out.push_str(&format!(
         "<article id=\"{}\" class=\"item\" data-search=\"{}\">\n",
-        escape_attr(&item_id(&unit.path, kind, name)),
+        escape_attr(&item_id(unit, kind, name, context)),
         escape_attr(search)
     ));
 }
 
-fn render_source_link(out: &mut String, path: &Path) {
-    out.push_str("<a href=\"");
-    out.push_str(&escape_attr(&source_href(path)));
-    out.push_str("\"><code>");
-    out.push_str(&escape_html(&path.display().to_string()));
-    out.push_str("</code></a>");
+fn render_source_label(out: &mut String, unit: &ParsedUnit, context: &DocContext) {
+    out.push_str("<code>");
+    out.push_str(&escape_html(&context.source_label(&unit.path)));
+    out.push_str("</code>");
 }
 
 fn item_kind_name(item: &Item) -> Option<(&'static str, &str)> {
@@ -463,16 +537,25 @@ fn namespace_label(namespace: &[String]) -> String {
     }
 }
 
-fn unit_id(path: &Path, namespace_label: &str) -> String {
-    slug(&format!("file-{}-{namespace_label}", path.display()))
+fn unit_id(unit: &ParsedUnit, namespace_label: &str, context: &DocContext) -> String {
+    slug(&format!(
+        "file-{}-{namespace_label}",
+        context.source_label(&unit.path)
+    ))
 }
 
-fn item_id(path: &Path, kind: &str, name: &str) -> String {
-    slug(&format!("{}-{kind}-{name}", path.display()))
+fn item_id(unit: &ParsedUnit, kind: &str, name: &str, context: &DocContext) -> String {
+    slug(&format!(
+        "{}-{kind}-{name}",
+        context.source_label(&unit.path)
+    ))
 }
 
-fn unit_search_text(unit: &ParsedUnit, namespace_label: &str) -> String {
-    let mut parts = vec![namespace_label.to_string(), unit.path.display().to_string()];
+fn unit_search_text(unit: &ParsedUnit, namespace_label: &str, context: &DocContext) -> String {
+    let mut parts = vec![
+        namespace_label.to_string(),
+        context.source_label(&unit.path),
+    ];
     for item in &unit.file.items {
         if let Some((kind, name)) = item_kind_name(item) {
             parts.push(kind.to_string());
@@ -641,17 +724,6 @@ fn escape_html(value: &str) -> String {
 
 fn escape_attr(value: &str) -> String {
     escape_html(value)
-}
-
-fn source_href(path: &Path) -> String {
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(path)
-    };
-    format!("file://{}", absolute.display())
 }
 
 fn slug(value: &str) -> String {

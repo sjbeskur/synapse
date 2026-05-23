@@ -1024,7 +1024,8 @@ telemetry NavState {
         assert!(html.contains("id=\"doc-search\""));
         assert!(html.contains("data-search="));
         assert!(html.contains("href=\"#"));
-        assert!(html.contains("href=\"file://"));
+        assert!(!html.contains("file://"));
+        assert!(!html.contains(&dir.display().to_string()));
         assert!(html.contains(">Source</a>"));
     }
 
