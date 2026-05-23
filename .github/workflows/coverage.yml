@@ -57,6 +57,7 @@ jobs:
           cp -R site/coverage/html/. site/coverage/
           rm -rf site/coverage/html
           cargo llvm-cov report --cobertura --output-path site/coverage/cobertura.xml
+          cargo llvm-cov report --lcov --output-path site/coverage/lcov.info
 
       - name: Generate coverage badge data
         run: |
@@ -84,7 +85,7 @@ jobs:
       - name: Generate CRAP badge data
         run: |
           mkdir -p site/crap
-          cargo crap --format json --output site/crap/report.json
+          cargo crap --lcov site/coverage/lcov.info --format json --output site/crap/report.json
           python3 scripts/cargo_crap_badge.py site/crap/report.json site/crap/badge.json
           test -f site/crap/badge.json
           cat site/crap/badge.json
