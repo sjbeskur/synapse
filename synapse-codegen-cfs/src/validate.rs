@@ -151,17 +151,30 @@ fn collected_packet_kind(
     packet: &MessageDef,
     constants: &ConstContext<'_>,
 ) -> Result<(CfsPacketKind, Option<u64>), CodegenError> {
-    match packet.kind {
-        PacketKind::Command => Ok((
-            CfsPacketKind::Command,
-            Some(required_command_code_value(packet, constants)?),
-        )),
-        PacketKind::Telemetry => {
-            reject_telemetry_command_code(packet)?;
-            Ok((CfsPacketKind::Telemetry, None))
-        }
-        PacketKind::Message => unreachable!("legacy message items are not collected"),
+    if packet.kind == PacketKind::Command {
+        return collected_command_packet_kind(packet, constants);
     }
+    if packet.kind == PacketKind::Telemetry {
+        return collected_telemetry_packet_kind(packet);
+    }
+    unreachable!("legacy message items are not collected")
+}
+
+fn collected_command_packet_kind(
+    packet: &MessageDef,
+    constants: &ConstContext<'_>,
+) -> Result<(CfsPacketKind, Option<u64>), CodegenError> {
+    Ok((
+        CfsPacketKind::Command,
+        Some(required_command_code_value(packet, constants)?),
+    ))
+}
+
+fn collected_telemetry_packet_kind(
+    packet: &MessageDef,
+) -> Result<(CfsPacketKind, Option<u64>), CodegenError> {
+    reject_telemetry_command_code(packet)?;
+    Ok((CfsPacketKind::Telemetry, None))
 }
 
 fn validate_enum(e: &EnumDef) -> Result<(), CodegenError> {
@@ -266,11 +279,9 @@ fn validate_packet(
     telemetry_mids: &mut HashMap<u64, String>,
     command_codes: &mut HashMap<(u64, u64), String>,
 ) -> Result<(), CodegenError> {
-    let mid = required_mid(packet)?;
+    let (_, value) = validated_packet_mid(packet, constants)?;
     validate_packet_command_code_shape(packet)?;
     let cc_value = optional_command_code_value(packet, constants)?;
-    let value = resolved_mid(packet, mid, constants)?;
-    validate_mid_range(packet, value, mid, constants)?;
     register_packet_mid(
         packet,
         constants,
@@ -279,6 +290,16 @@ fn validate_packet(
         value,
         cc_value,
     )
+}
+
+fn validated_packet_mid<'a>(
+    packet: &'a MessageDef,
+    constants: &ConstContext<'_>,
+) -> Result<(&'a Literal, u64), CodegenError> {
+    let mid = required_mid(packet)?;
+    let value = resolved_mid(packet, mid, constants)?;
+    validate_mid_range(packet, value, mid, constants)?;
+    Ok((mid, value))
 }
 
 fn validate_packet_command_code_shape(packet: &MessageDef) -> Result<(), CodegenError> {
@@ -307,12 +328,12 @@ fn register_packet_mid(
     value: u64,
     cc_value: Option<u64>,
 ) -> Result<(), CodegenError> {
-    match packet.kind {
-        PacketKind::Command => {
-            register_command_mid(packet, constants, command_codes, value, cc_value)?;
-        }
-        PacketKind::Telemetry => register_telemetry_mid(packet, constants, telemetry_mids, value)?,
-        PacketKind::Message => {}
+    if packet.kind == PacketKind::Command {
+        return register_command_mid(packet, constants, command_codes, value, cc_value);
+    }
+
+    if packet.kind == PacketKind::Telemetry {
+        return register_telemetry_mid(packet, constants, telemetry_mids, value);
     }
 
     Ok(())

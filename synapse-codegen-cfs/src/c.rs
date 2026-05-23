@@ -59,43 +59,57 @@ fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
 }
 
 fn emit_mid_defines(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
-    let mut has_mids = false;
-    for item in &file.items {
-        if let Some(m) = packet_item(item) {
-            if let Some(mid) = find_mid_attr(&m.attrs) {
-                if !has_mids {
-                    out.push_str("/* Message IDs */\n");
-                    has_mids = true;
-                }
-                let define_name = to_screaming_snake(&m.name);
-                let mid_str = literal_mid_str(mid, constants);
-                out.push_str(&format!("#define {}_MID  {}\n", define_name, mid_str));
-            }
-        }
+    let defines: Vec<_> = file
+        .items
+        .iter()
+        .filter_map(|item| mid_define(item, constants))
+        .collect();
+
+    if defines.is_empty() {
+        return;
     }
-    if has_mids {
-        out.push('\n');
+
+    out.push_str("/* Message IDs */\n");
+    for define in defines {
+        out.push_str(&define);
     }
+    out.push('\n');
+}
+
+fn mid_define(item: &Item, constants: &ConstContext<'_>) -> Option<String> {
+    let packet = packet_item(item)?;
+    let mid = find_mid_attr(&packet.attrs)?;
+    let define_name = to_screaming_snake(&packet.name);
+    let mid_str = literal_mid_str(mid, constants);
+    Some(format!("#define {}_MID  {}\n", define_name, mid_str))
 }
 
 fn emit_command_code_defines(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
-    let mut has_ccs = false;
-    for item in &file.items {
-        if let Item::Command(m) = item {
-            if let Some(cc) = find_cc_attr(&m.attrs) {
-                if !has_ccs {
-                    out.push_str("/* Command Codes */\n");
-                    has_ccs = true;
-                }
-                let define_name = to_screaming_snake(&m.name);
-                let cc_str = literal_cc_str(cc, constants);
-                out.push_str(&format!("#define {}_CC   {}\n", define_name, cc_str));
-            }
-        }
+    let defines: Vec<_> = file
+        .items
+        .iter()
+        .filter_map(|item| command_code_define(item, constants))
+        .collect();
+
+    if defines.is_empty() {
+        return;
     }
-    if has_ccs {
-        out.push('\n');
+
+    out.push_str("/* Command Codes */\n");
+    for define in defines {
+        out.push_str(&define);
     }
+    out.push('\n');
+}
+
+fn command_code_define(item: &Item, constants: &ConstContext<'_>) -> Option<String> {
+    let Item::Command(packet) = item else {
+        return None;
+    };
+    let cc = find_cc_attr(&packet.attrs)?;
+    let define_name = to_screaming_snake(&packet.name);
+    let cc_str = literal_cc_str(cc, constants);
+    Some(format!("#define {}_CC   {}\n", define_name, cc_str))
 }
 
 fn emit_enum_aliases(file: &SynFile, out: &mut String) {
