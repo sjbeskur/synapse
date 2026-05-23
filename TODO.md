@@ -55,7 +55,23 @@ Ideas to explore:
 - Validation for missing MIDs on `command` and `telemetry`.
 - Validation for duplicate MIDs, probably globally for a generated mission bundle.
 - Validation that command MIDs and telemetry MIDs land in the expected cFS ranges/bit patterns.
+- Configurable MsgId layout policy (legacy CCSDS/v1 `0x1000` type bit vs cFE MsgId v2 `0x0080` type bit), with validation and diagnostics driven by the selected layout.
 - Optional namespace-level reserved ranges, for example command and telemetry ranges per app.
 - Constant resolution for `@mid(SET_MODE_CMD_MID)` and `@mid(nav_app::SET_MODE_CMD_MID)`.
+- Support expression-based MID attributes (e.g. `@mid(BASE_MID + 1)`) to enable SC_ID/MODULE_ID prefix schemes and multi-CPU deployment-friendly allocation patterns.
 
 Open design question: keep using `const` for MID declarations, or add a dedicated MID block once the desired workflow is clearer.
+
+## cFS Integration Gotchas
+
+Validation and UX gaps to track while expanding cFS support:
+
+- [ ] Clarify and enforce MsgId abstraction boundaries (avoid requiring users to depend on raw bit layout in app code).
+- [ ] Keep command/telemetry validation policy-driven by selected MsgId layout (`ccsds-v1` vs `cfe-v2`).
+- [ ] Validate command-code uniqueness per command MID (not globally), with mission-wide diagnostics.
+- [ ] Add mission-level checks for reserved/system MID ranges to prevent collisions with platform-owned IDs.
+- [ ] Add mission-level ownership checks for app/processor MID partitions.
+- [ ] Improve ABI checks for generated C/Rust packet structs (layout/size/offset compatibility).
+- [ ] Explicitly validate string storage/null-termination policy in cFS packet/table codegen.
+- [ ] Keep array representation constraints explicit (dynamic/bounded/fixed) with actionable diagnostics.
+- [ ] Consider policy mode to discourage raw literal MIDs when missions require derived constants/prefix schemes.

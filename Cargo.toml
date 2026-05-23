@@ -17,9 +17,9 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.2.10"
+version = "0.2.11"
 edition = "2024"
 
 [workspace.dependencies]
-synapse-parser      = { package = "cfs-synapse-parser", version = "0.2.10", path = "synapse-parser" }
-synapse-codegen-cfs = { package = "cfs-synapse-codegen-cfs", version = "0.2.10", path = "synapse-codegen-cfs" }
+synapse-parser      = { package = "cfs-synapse-parser", version = "0.2.11", path = "synapse-parser" }
+synapse-codegen-cfs = { package = "cfs-synapse-codegen-cfs", version = "0.2.11", path = "synapse-codegen-cfs" }

@@ -200,64 +200,89 @@ fn build_base_type(pair: Pair<Rule>) -> BaseType {
 }
 
 fn build_primitive_type(pair: Pair<Rule>) -> PrimitiveType {
-    match pair.as_str() {
-        "f32" => PrimitiveType::F32,
-        "f64" => PrimitiveType::F64,
-        "i8" => PrimitiveType::I8,
-        "i16" => PrimitiveType::I16,
-        "i32" => PrimitiveType::I32,
-        "i64" => PrimitiveType::I64,
-        "u8" => PrimitiveType::U8,
-        "u16" => PrimitiveType::U16,
-        "u32" => PrimitiveType::U32,
-        "u64" => PrimitiveType::U64,
-        "bool" => PrimitiveType::Bool,
-        "bytes" => PrimitiveType::Bytes,
-        s => unreachable!("unknown primitive: {}", s),
-    }
+    const PRIMITIVES: &[(&str, PrimitiveType)] = &[
+        ("f32", PrimitiveType::F32),
+        ("f64", PrimitiveType::F64),
+        ("i8", PrimitiveType::I8),
+        ("i16", PrimitiveType::I16),
+        ("i32", PrimitiveType::I32),
+        ("i64", PrimitiveType::I64),
+        ("u8", PrimitiveType::U8),
+        ("u16", PrimitiveType::U16),
+        ("u32", PrimitiveType::U32),
+        ("u64", PrimitiveType::U64),
+        ("bool", PrimitiveType::Bool),
+        ("bytes", PrimitiveType::Bytes),
+    ];
+
+    let primitive = pair.as_str();
+    PRIMITIVES
+        .iter()
+        .find_map(|(name, ty)| (*name == primitive).then_some(*ty))
+        .unwrap_or_else(|| unreachable!("unknown primitive: {}", primitive))
 }
 
 fn build_array_suffix(pair: Pair<Rule>) -> ArraySuffix {
-    match pair.into_inner().next() {
-        None => ArraySuffix::Dynamic,
-        Some(p) => {
-            let inner = p.into_inner().next().unwrap();
-            match inner.as_rule() {
-                Rule::bounded_size => {
-                    let n = inner
-                        .into_inner()
-                        .next()
-                        .unwrap()
-                        .as_str()
-                        .parse::<u64>()
-                        .unwrap();
-                    ArraySuffix::Bounded(n)
-                }
-                Rule::pos_int => ArraySuffix::Fixed(inner.as_str().parse::<u64>().unwrap()),
-                r => unreachable!("unexpected array_size rule: {:?}", r),
-            }
+    let Some(size) = pair.into_inner().next() else {
+        return ArraySuffix::Dynamic;
+    };
+    build_sized_array_suffix(size)
+}
+
+fn build_sized_array_suffix(pair: Pair<Rule>) -> ArraySuffix {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::bounded_size => {
+            let n = inner
+                .into_inner()
+                .next()
+                .unwrap()
+                .as_str()
+                .parse::<u64>()
+                .unwrap();
+            ArraySuffix::Bounded(n)
         }
+        Rule::pos_int => ArraySuffix::Fixed(inner.as_str().parse::<u64>().unwrap()),
+        r => unreachable!("unexpected array_size rule: {:?}", r),
     }
 }
 
 fn build_literal(pair: Pair<Rule>) -> Literal {
     let inner = pair.into_inner().next().unwrap();
+    if matches!(
+        inner.as_rule(),
+        Rule::float_lit | Rule::hex_lit | Rule::int_lit
+    ) {
+        return build_numeric_literal(inner);
+    }
     match inner.as_rule() {
-        Rule::float_lit => Literal::Float(inner.as_str().parse::<f64>().unwrap()),
-        Rule::hex_lit => {
-            let s = inner.as_str();
-            let digits = &s[2..]; // strip 0x / 0X
-            Literal::Hex(u64::from_str_radix(digits, 16).unwrap())
-        }
-        Rule::int_lit => Literal::Int(inner.as_str().parse::<i64>().unwrap()),
-        Rule::bool_lit => Literal::Bool(inner.as_str() == "true"),
-        Rule::string_lit => {
-            let s = inner.as_str();
-            Literal::Str(unescape(&s[1..s.len() - 1]))
-        }
+        Rule::bool_lit => build_bool_literal(inner),
+        Rule::string_lit => build_string_literal(inner),
         Rule::ident_lit => Literal::Ident(build_scoped_ident(inner.into_inner().next().unwrap())),
         r => unreachable!("unexpected literal rule: {:?}", r),
     }
+}
+
+fn build_numeric_literal(pair: Pair<Rule>) -> Literal {
+    match pair.as_rule() {
+        Rule::float_lit => Literal::Float(pair.as_str().parse::<f64>().unwrap()),
+        Rule::hex_lit => {
+            let s = pair.as_str();
+            let digits = &s[2..]; // strip 0x / 0X
+            Literal::Hex(u64::from_str_radix(digits, 16).unwrap())
+        }
+        Rule::int_lit => Literal::Int(pair.as_str().parse::<i64>().unwrap()),
+        r => unreachable!("unexpected numeric literal rule: {:?}", r),
+    }
+}
+
+fn build_bool_literal(pair: Pair<Rule>) -> Literal {
+    Literal::Bool(pair.as_str() == "true")
+}
+
+fn build_string_literal(pair: Pair<Rule>) -> Literal {
+    let s = pair.as_str();
+    Literal::Str(unescape(&s[1..s.len() - 1]))
 }
 
 fn build_scoped_ident(pair: Pair<Rule>) -> ScopedIdent {
@@ -269,21 +294,35 @@ fn unescape(s: &str) -> String {
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '\\' {
-            match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some('r') => out.push('\r'),
-                Some('\\') => out.push('\\'),
-                Some('"') => out.push('"'),
-                Some(c) => {
-                    out.push('\\');
-                    out.push(c);
-                }
-                None => out.push('\\'),
-            }
+            push_escape(&mut out, chars.next());
         } else {
             out.push(c);
         }
     }
     out
+}
+
+fn push_escape(out: &mut String, escaped: Option<char>) {
+    let Some(escaped) = escaped else {
+        out.push('\\');
+        return;
+    };
+
+    match escaped {
+        'n' => out.push('\n'),
+        't' => out.push('\t'),
+        'r' => out.push('\r'),
+        c => push_quoted_escape(out, c),
+    }
+}
+
+fn push_quoted_escape(out: &mut String, escaped: char) {
+    match escaped {
+        '\\' => out.push('\\'),
+        '"' => out.push('"'),
+        c => {
+            out.push('\\');
+            out.push(c);
+        }
+    }
 }

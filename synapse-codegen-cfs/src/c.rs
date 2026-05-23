@@ -52,44 +52,67 @@ fn emit_c_imports(file: &SynFile, out: &mut String) {
 }
 
 fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
-    // First pass: emit #define MID lines for Software Bus packets with @mid
-    let mut has_mids = false;
-    for item in &file.items {
-        if let Some(m) = packet_item(item) {
-            if let Some(mid) = find_mid_attr(&m.attrs) {
-                if !has_mids {
-                    out.push_str("/* Message IDs */\n");
-                    has_mids = true;
-                }
-                let define_name = to_screaming_snake(&m.name);
-                let mid_str = literal_mid_str(mid, constants);
-                out.push_str(&format!("#define {}_MID  {}\n", define_name, mid_str));
-            }
-        }
-    }
-    if has_mids {
-        out.push('\n');
+    emit_mid_defines(file, out, constants);
+    emit_command_code_defines(file, out, constants);
+    emit_enum_aliases(file, out);
+    emit_c_types(file, out);
+}
+
+fn emit_mid_defines(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
+    let defines: Vec<_> = file
+        .items
+        .iter()
+        .filter_map(|item| mid_define(item, constants))
+        .collect();
+
+    if defines.is_empty() {
+        return;
     }
 
-    let mut has_ccs = false;
-    for item in &file.items {
-        if let Item::Command(m) = item {
-            if let Some(cc) = find_cc_attr(&m.attrs) {
-                if !has_ccs {
-                    out.push_str("/* Command Codes */\n");
-                    has_ccs = true;
-                }
-                let define_name = to_screaming_snake(&m.name);
-                let cc_str = literal_cc_str(cc, constants);
-                out.push_str(&format!("#define {}_CC   {}\n", define_name, cc_str));
-            }
-        }
+    out.push_str("/* Message IDs */\n");
+    for define in defines {
+        out.push_str(&define);
     }
-    if has_ccs {
-        out.push('\n');
+    out.push('\n');
+}
+
+fn mid_define(item: &Item, constants: &ConstContext<'_>) -> Option<String> {
+    let packet = packet_item(item)?;
+    let mid = find_mid_attr(&packet.attrs)?;
+    let define_name = to_screaming_snake(&packet.name);
+    let mid_str = literal_mid_str(mid, constants);
+    Some(format!("#define {}_MID  {}\n", define_name, mid_str))
+}
+
+fn emit_command_code_defines(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
+    let defines: Vec<_> = file
+        .items
+        .iter()
+        .filter_map(|item| command_code_define(item, constants))
+        .collect();
+
+    if defines.is_empty() {
+        return;
     }
 
-    // Second pass: emit enum aliases before any struct fields can reference them.
+    out.push_str("/* Command Codes */\n");
+    for define in defines {
+        out.push_str(&define);
+    }
+    out.push('\n');
+}
+
+fn command_code_define(item: &Item, constants: &ConstContext<'_>) -> Option<String> {
+    let Item::Command(packet) = item else {
+        return None;
+    };
+    let cc = find_cc_attr(&packet.attrs)?;
+    let define_name = to_screaming_snake(&packet.name);
+    let cc_str = literal_cc_str(cc, constants);
+    Some(format!("#define {}_CC   {}\n", define_name, cc_str))
+}
+
+fn emit_enum_aliases(file: &SynFile, out: &mut String) {
     let mut namespace = Vec::new();
     for item in &file.items {
         match item {
@@ -104,19 +127,33 @@ fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
             | Item::Message(_) => {}
         }
     }
+}
 
-    // Third pass: emit const, struct, and message types.
+fn emit_c_types(file: &SynFile, out: &mut String) {
     let mut namespace = Vec::new();
     for item in &file.items {
-        match item {
-            Item::Namespace(ns) => namespace = ns.name.clone(),
-            Item::Import(_) | Item::Enum(_) => {}
-            Item::Const(c) => emit_const(out, c),
-            Item::Struct(s) | Item::Table(s) => emit_struct(out, s, &namespace),
-            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
-                emit_message(out, m, &namespace)
-            }
+        if update_namespace(&mut namespace, item) {
+            continue;
         }
+        emit_c_type(out, item, &namespace);
+    }
+}
+
+fn update_namespace(namespace: &mut Vec<String>, item: &Item) -> bool {
+    if let Item::Namespace(ns) = item {
+        *namespace = ns.name.clone();
+        true
+    } else {
+        false
+    }
+}
+
+fn emit_c_type(out: &mut String, item: &Item, namespace: &[String]) {
+    match item {
+        Item::Const(c) => emit_const(out, c),
+        Item::Struct(s) | Item::Table(s) => emit_struct(out, s, namespace),
+        Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => emit_message(out, m, namespace),
+        Item::Namespace(_) | Item::Import(_) | Item::Enum(_) => {}
     }
 }
 
@@ -180,15 +217,23 @@ fn emit_message(out: &mut String, m: &MessageDef, namespace: &[String]) {
 
 fn non_fixed_type_str(ty: &TypeExpr, namespace: &[String]) -> String {
     if ty.base == BaseType::String {
-        return match &ty.array {
-            None | Some(ArraySuffix::Dynamic) => "const char*".to_string(),
-            Some(ArraySuffix::Fixed(_)) => unreachable!("handled by emit_c_field"),
-            Some(ArraySuffix::Bounded(n)) => format!("char[{}]", n),
-        };
+        return non_fixed_string_type_str(&ty.array);
     }
 
     let base = base_type_str(&ty.base, namespace);
-    match &ty.array {
+    non_fixed_array_type_str(base, &ty.array)
+}
+
+fn non_fixed_string_type_str(array: &Option<ArraySuffix>) -> String {
+    match array {
+        None | Some(ArraySuffix::Dynamic) => "const char*".to_string(),
+        Some(ArraySuffix::Fixed(_)) => unreachable!("handled by emit_c_field"),
+        Some(ArraySuffix::Bounded(n)) => format!("char[{}]", n),
+    }
+}
+
+fn non_fixed_array_type_str(base: String, array: &Option<ArraySuffix>) -> String {
+    match array {
         None => base,
         Some(ArraySuffix::Fixed(_)) => unreachable!("handled by caller"),
         Some(ArraySuffix::Dynamic) => format!("CFE_Span_t /* {} */", base),
@@ -259,18 +304,23 @@ fn c_ref_type_name(segments: &[String], namespace: &[String]) -> String {
 }
 
 fn primitive_str(p: PrimitiveType) -> &'static str {
-    match p {
-        PrimitiveType::F32 => "float",
-        PrimitiveType::F64 => "double",
-        PrimitiveType::I8 => "int8_t",
-        PrimitiveType::I16 => "int16_t",
-        PrimitiveType::I32 => "int32_t",
-        PrimitiveType::I64 => "int64_t",
-        PrimitiveType::U8 => "uint8_t",
-        PrimitiveType::U16 => "uint16_t",
-        PrimitiveType::U32 => "uint32_t",
-        PrimitiveType::U64 => "uint64_t",
-        PrimitiveType::Bool => "bool",
-        PrimitiveType::Bytes => "uint8_t*",
-    }
+    const C_TYPES: &[(PrimitiveType, &str)] = &[
+        (PrimitiveType::F32, "float"),
+        (PrimitiveType::F64, "double"),
+        (PrimitiveType::I8, "int8_t"),
+        (PrimitiveType::I16, "int16_t"),
+        (PrimitiveType::I32, "int32_t"),
+        (PrimitiveType::I64, "int64_t"),
+        (PrimitiveType::U8, "uint8_t"),
+        (PrimitiveType::U16, "uint16_t"),
+        (PrimitiveType::U32, "uint32_t"),
+        (PrimitiveType::U64, "uint64_t"),
+        (PrimitiveType::Bool, "bool"),
+        (PrimitiveType::Bytes, "uint8_t*"),
+    ];
+
+    C_TYPES
+        .iter()
+        .find_map(|(ty, name)| (*ty == p).then_some(*name))
+        .expect("all primitive types have C names")
 }

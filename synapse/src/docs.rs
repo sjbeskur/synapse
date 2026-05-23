@@ -68,18 +68,47 @@ fn doc_summary(graph: &ImportGraph) -> DocSummary {
     let mut summary = DocSummary::default();
     for unit in &graph.units {
         for item in &unit.file.items {
-            match item {
-                Item::Command(_) => summary.commands += 1,
-                Item::Telemetry(_) => summary.telemetry += 1,
-                Item::Struct(_) => summary.structs += 1,
-                Item::Table(_) => summary.tables += 1,
-                Item::Enum(_) => summary.enums += 1,
-                Item::Const(_) => summary.constants += 1,
-                Item::Namespace(_) | Item::Import(_) | Item::Message(_) => {}
-            }
+            summary.add_item(item);
         }
     }
     summary
+}
+
+impl DocSummary {
+    fn add_item(&mut self, item: &Item) {
+        if let Some(counter) = self.item_counter(item) {
+            *counter += 1;
+        }
+    }
+
+    fn item_counter(&mut self, item: &Item) -> Option<&mut usize> {
+        match item {
+            Item::Command(_) | Item::Telemetry(_) | Item::Message(_) => self.packet_counter(item),
+            Item::Struct(_) | Item::Table(_) | Item::Enum(_) | Item::Const(_) => {
+                self.plain_item_counter(item)
+            }
+            Item::Namespace(_) | Item::Import(_) => None,
+        }
+    }
+
+    fn packet_counter(&mut self, item: &Item) -> Option<&mut usize> {
+        match item {
+            Item::Command(_) => Some(&mut self.commands),
+            Item::Telemetry(_) => Some(&mut self.telemetry),
+            Item::Message(_) => None,
+            _ => unreachable!("non-packet item passed to packet_counter"),
+        }
+    }
+
+    fn plain_item_counter(&mut self, item: &Item) -> Option<&mut usize> {
+        match item {
+            Item::Struct(_) => Some(&mut self.structs),
+            Item::Table(_) => Some(&mut self.tables),
+            Item::Enum(_) => Some(&mut self.enums),
+            Item::Const(_) => Some(&mut self.constants),
+            _ => unreachable!("non-plain item passed to plain_item_counter"),
+        }
+    }
 }
 
 fn render_metric(out: &mut String, value: usize, label: &str) {
@@ -159,58 +188,8 @@ fn render_doc_unit(
 
     let mut rendered = 0usize;
     for item in &unit.file.items {
-        match item {
-            Item::Const(c) => {
-                rendered += 1;
-                render_item_open(out, unit, "const", &c.name, &const_search_text(c));
-                render_item_title(out, unit, "const", &c.name);
-                render_doc_lines_html(out, &c.doc);
-                out.push_str(&format!(
-                    "<dl><dt>Type</dt><dd><code>{}</code></dd><dt>Value</dt><dd><code>{}</code></dd></dl>\n",
-                    escape_html(&type_expr_display(&c.ty)),
-                    escape_html(&literal_display(&c.value))
-                ));
-                out.push_str("</article>\n");
-            }
-            Item::Enum(e) => {
-                rendered += 1;
-                render_item_open(out, unit, "enum", &e.name, &enum_search_text(e));
-                render_item_title(out, unit, "enum", &e.name);
-                render_doc_lines_html(out, &e.doc);
-                if let Some(repr) = e.repr {
-                    out.push_str(&format!(
-                        "<dl><dt>Representation</dt><dd><code>{}</code></dd></dl>\n",
-                        escape_html(primitive_name(repr))
-                    ));
-                }
-                out.push_str("<table><thead><tr><th>Variant</th><th>Value</th><th>Description</th></tr></thead><tbody>\n");
-                for variant in &e.variants {
-                    let value = variant
-                        .value
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "-".to_string());
-                    out.push_str(&format!(
-                        "<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td></tr>\n",
-                        escape_html(&variant.name),
-                        escape_html(&value),
-                        escape_html(&variant.doc.join(" "))
-                    ));
-                }
-                out.push_str("</tbody></table>\n</article>\n");
-            }
-            Item::Struct(s) => {
-                rendered += 1;
-                render_struct_doc(out, unit, "struct", s);
-            }
-            Item::Table(s) => {
-                rendered += 1;
-                render_struct_doc(out, unit, "table", s);
-            }
-            Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
-                rendered += 1;
-                render_packet_doc(out, unit, m, &packet_facts);
-            }
-            Item::Namespace(_) | Item::Import(_) => {}
+        if render_doc_item(out, unit, item, &packet_facts) {
+            rendered += 1;
         }
     }
 
@@ -219,6 +198,83 @@ fn render_doc_unit(
     }
     out.push_str("</div>\n</section>\n");
     Ok(())
+}
+
+fn render_doc_item(
+    out: &mut String,
+    unit: &ParsedUnit,
+    item: &Item,
+    packet_facts: &HashMap<String, synapse_codegen_cfs::CfsPacket>,
+) -> bool {
+    match item {
+        Item::Const(_) | Item::Enum(_) | Item::Struct(_) | Item::Table(_) => {
+            render_plain_doc_item(out, unit, item)
+        }
+        Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => {
+            render_packet_doc(out, unit, m, packet_facts)
+        }
+        Item::Namespace(_) | Item::Import(_) => return false,
+    }
+    true
+}
+
+fn render_plain_doc_item(out: &mut String, unit: &ParsedUnit, item: &Item) {
+    match item {
+        Item::Const(c) => render_const_doc(out, unit, c),
+        Item::Enum(e) => render_enum_doc(out, unit, e),
+        Item::Struct(s) => render_struct_doc(out, unit, "struct", s),
+        Item::Table(s) => render_struct_doc(out, unit, "table", s),
+        _ => unreachable!("non-plain item passed to render_plain_doc_item"),
+    }
+}
+
+fn render_const_doc(out: &mut String, unit: &ParsedUnit, c: &synapse_parser::ast::ConstDecl) {
+    render_item_open(out, unit, "const", &c.name, &const_search_text(c));
+    render_item_title(out, unit, "const", &c.name);
+    render_doc_lines_html(out, &c.doc);
+    out.push_str(&format!(
+        "<dl><dt>Type</dt><dd><code>{}</code></dd><dt>Value</dt><dd><code>{}</code></dd></dl>\n",
+        escape_html(&type_expr_display(&c.ty)),
+        escape_html(&literal_display(&c.value))
+    ));
+    out.push_str("</article>\n");
+}
+
+fn render_enum_doc(out: &mut String, unit: &ParsedUnit, e: &synapse_parser::ast::EnumDef) {
+    render_item_open(out, unit, "enum", &e.name, &enum_search_text(e));
+    render_item_title(out, unit, "enum", &e.name);
+    render_doc_lines_html(out, &e.doc);
+    render_enum_repr(out, e.repr);
+    render_enum_variants(out, e);
+    out.push_str("</article>\n");
+}
+
+fn render_enum_repr(out: &mut String, repr: Option<PrimitiveType>) {
+    if let Some(repr) = repr {
+        out.push_str(&format!(
+            "<dl><dt>Representation</dt><dd><code>{}</code></dd></dl>\n",
+            escape_html(primitive_name(repr))
+        ));
+    }
+}
+
+fn render_enum_variants(out: &mut String, e: &synapse_parser::ast::EnumDef) {
+    out.push_str(
+        "<table><thead><tr><th>Variant</th><th>Value</th><th>Description</th></tr></thead><tbody>\n",
+    );
+    for variant in &e.variants {
+        let value = variant
+            .value
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "-".to_string());
+        out.push_str(&format!(
+            "<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td></tr>\n",
+            escape_html(&variant.name),
+            escape_html(&value),
+            escape_html(&variant.doc.join(" "))
+        ));
+    }
+    out.push_str("</tbody></table>\n");
 }
 
 fn packet_facts_for_unit(
@@ -357,14 +413,44 @@ fn render_source_link(out: &mut String, path: &Path) {
 }
 
 fn item_kind_name(item: &Item) -> Option<(&'static str, &str)> {
+    let kind = item_kind(item)?;
+    let name = item_name(item)?;
+    Some((kind, name))
+}
+
+fn item_kind(item: &Item) -> Option<&'static str> {
     match item {
-        Item::Const(c) => Some(("const", &c.name)),
-        Item::Enum(e) => Some(("enum", &e.name)),
-        Item::Struct(s) => Some(("struct", &s.name)),
-        Item::Table(s) => Some(("table", &s.name)),
-        Item::Command(m) => Some(("command", &m.name)),
-        Item::Telemetry(m) => Some(("telemetry", &m.name)),
-        Item::Message(m) => Some(("message", &m.name)),
+        Item::Const(_) | Item::Enum(_) | Item::Struct(_) | Item::Table(_) => plain_item_kind(item),
+        Item::Command(_) | Item::Telemetry(_) | Item::Message(_) => packet_item_kind(item),
+        Item::Namespace(_) | Item::Import(_) => None,
+    }
+}
+
+fn plain_item_kind(item: &Item) -> Option<&'static str> {
+    match item {
+        Item::Const(_) => Some("const"),
+        Item::Enum(_) => Some("enum"),
+        Item::Struct(_) => Some("struct"),
+        Item::Table(_) => Some("table"),
+        _ => None,
+    }
+}
+
+fn packet_item_kind(item: &Item) -> Option<&'static str> {
+    match item {
+        Item::Command(_) => Some("command"),
+        Item::Telemetry(_) => Some("telemetry"),
+        Item::Message(_) => Some("message"),
+        _ => None,
+    }
+}
+
+fn item_name(item: &Item) -> Option<&str> {
+    match item {
+        Item::Const(c) => Some(&c.name),
+        Item::Enum(e) => Some(&e.name),
+        Item::Struct(s) | Item::Table(s) => Some(&s.name),
+        Item::Command(m) | Item::Telemetry(m) | Item::Message(m) => Some(&m.name),
         Item::Namespace(_) | Item::Import(_) => None,
     }
 }
@@ -501,31 +587,47 @@ fn base_type_display(base: &BaseType) -> String {
 }
 
 fn primitive_name(p: PrimitiveType) -> &'static str {
-    match p {
-        PrimitiveType::F32 => "f32",
-        PrimitiveType::F64 => "f64",
-        PrimitiveType::I8 => "i8",
-        PrimitiveType::I16 => "i16",
-        PrimitiveType::I32 => "i32",
-        PrimitiveType::I64 => "i64",
-        PrimitiveType::U8 => "u8",
-        PrimitiveType::U16 => "u16",
-        PrimitiveType::U32 => "u32",
-        PrimitiveType::U64 => "u64",
-        PrimitiveType::Bool => "bool",
-        PrimitiveType::Bytes => "bytes",
-    }
+    const NAMES: &[(PrimitiveType, &str)] = &[
+        (PrimitiveType::F32, "f32"),
+        (PrimitiveType::F64, "f64"),
+        (PrimitiveType::I8, "i8"),
+        (PrimitiveType::I16, "i16"),
+        (PrimitiveType::I32, "i32"),
+        (PrimitiveType::I64, "i64"),
+        (PrimitiveType::U8, "u8"),
+        (PrimitiveType::U16, "u16"),
+        (PrimitiveType::U32, "u32"),
+        (PrimitiveType::U64, "u64"),
+        (PrimitiveType::Bool, "bool"),
+        (PrimitiveType::Bytes, "bytes"),
+    ];
+
+    NAMES
+        .iter()
+        .find_map(|(ty, name)| (*ty == p).then_some(*name))
+        .expect("all primitive types have doc names")
 }
 
 fn literal_display(lit: &Literal) -> String {
     match lit {
-        Literal::Float(f) => f.to_string(),
-        Literal::Int(n) => n.to_string(),
-        Literal::Hex(n) => format!("0x{n:X}"),
-        Literal::Bool(b) => b.to_string(),
+        Literal::Float(_) | Literal::Int(_) | Literal::Hex(_) => numeric_literal_display(lit),
+        Literal::Bool(b) => bool_literal_display(*b),
         Literal::Str(s) => format!("\"{s}\""),
         Literal::Ident(segments) => segments.join("::"),
     }
+}
+
+fn numeric_literal_display(lit: &Literal) -> String {
+    match lit {
+        Literal::Float(f) => f.to_string(),
+        Literal::Int(n) => n.to_string(),
+        Literal::Hex(n) => format!("0x{n:X}"),
+        _ => unreachable!("non-numeric literal passed to numeric_literal_display"),
+    }
+}
+
+fn bool_literal_display(value: bool) -> String {
+    value.to_string()
 }
 
 fn escape_html(value: &str) -> String {

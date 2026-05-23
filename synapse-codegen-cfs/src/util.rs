@@ -71,20 +71,25 @@ fn base_type_display(base: &BaseType) -> String {
 }
 
 pub(crate) fn primitive_name(p: PrimitiveType) -> &'static str {
-    match p {
-        PrimitiveType::F32 => "f32",
-        PrimitiveType::F64 => "f64",
-        PrimitiveType::I8 => "i8",
-        PrimitiveType::I16 => "i16",
-        PrimitiveType::I32 => "i32",
-        PrimitiveType::I64 => "i64",
-        PrimitiveType::U8 => "u8",
-        PrimitiveType::U16 => "u16",
-        PrimitiveType::U32 => "u32",
-        PrimitiveType::U64 => "u64",
-        PrimitiveType::Bool => "bool",
-        PrimitiveType::Bytes => "bytes",
-    }
+    const NAMES: &[(PrimitiveType, &str)] = &[
+        (PrimitiveType::F32, "f32"),
+        (PrimitiveType::F64, "f64"),
+        (PrimitiveType::I8, "i8"),
+        (PrimitiveType::I16, "i16"),
+        (PrimitiveType::I32, "i32"),
+        (PrimitiveType::I64, "i64"),
+        (PrimitiveType::U8, "u8"),
+        (PrimitiveType::U16, "u16"),
+        (PrimitiveType::U32, "u32"),
+        (PrimitiveType::U64, "u64"),
+        (PrimitiveType::Bool, "bool"),
+        (PrimitiveType::Bytes, "bytes"),
+    ];
+
+    NAMES
+        .iter()
+        .find_map(|(ty, name)| (*ty == p).then_some(*name))
+        .expect("all primitive types have Synapse names")
 }
 
 pub(crate) fn emit_doc_lines(out: &mut String, doc: &[String]) {
@@ -135,25 +140,44 @@ pub(crate) fn literal_cc_str(lit: &Literal, constants: &ConstContext<'_>) -> Str
 
 pub(crate) fn literal_str(lit: &Literal) -> String {
     match lit {
-        Literal::Float(f) => {
-            let s = format!("{}", f);
-            if s.contains('.') || s.contains('e') {
-                s
-            } else {
-                format!("{}.0", s)
-            }
-        }
-        Literal::Int(n) => n.to_string(),
-        Literal::Hex(n) => format!("0x{:X}U", n),
-        Literal::Bool(b) => {
-            if *b {
-                "1".to_string()
-            } else {
-                "0".to_string()
-            }
+        Literal::Float(_) | Literal::Int(_) | Literal::Hex(_) | Literal::Bool(_) => {
+            c_scalar_literal_str(lit)
         }
         Literal::Str(s) => format!("{:?}", s),
         Literal::Ident(segments) => segments.join("::"),
+    }
+}
+
+fn c_scalar_literal_str(lit: &Literal) -> String {
+    if let Literal::Float(f) = lit {
+        return c_float_literal_str(*f);
+    }
+    if let Literal::Int(n) = lit {
+        return n.to_string();
+    }
+    if let Literal::Hex(n) = lit {
+        return format!("0x{:X}U", n);
+    }
+    if let Literal::Bool(b) = lit {
+        return c_bool_literal_str(*b);
+    }
+    unreachable!("non-scalar literal passed to c_scalar_literal_str")
+}
+
+fn c_float_literal_str(value: f64) -> String {
+    let s = format!("{}", value);
+    if s.contains('.') || s.contains('e') {
+        s
+    } else {
+        format!("{}.0", s)
+    }
+}
+
+fn c_bool_literal_str(value: bool) -> String {
+    if value {
+        "1".to_string()
+    } else {
+        "0".to_string()
     }
 }
 
