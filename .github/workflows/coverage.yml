@@ -38,6 +38,9 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install cargo-crap
+        run: cargo install cargo-crap --locked
+
       - name: Generate coverage
         run: |
           cargo llvm-cov clean --workspace
@@ -77,6 +80,14 @@ jobs:
           test -f site/coverage/index.html
           test -f site/coverage/badge.json
           cat site/coverage/badge.json
+
+      - name: Generate CRAP badge data
+        run: |
+          mkdir -p site/crap
+          cargo crap --format json --output site/crap/report.json
+          python3 scripts/cargo_crap_badge.py site/crap/report.json site/crap/badge.json
+          test -f site/crap/badge.json
+          cat site/crap/badge.json
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -248,21 +248,34 @@ fn build_array_suffix(pair: Pair<Rule>) -> ArraySuffix {
 fn build_literal(pair: Pair<Rule>) -> Literal {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
-        Rule::float_lit => Literal::Float(inner.as_str().parse::<f64>().unwrap()),
-        Rule::hex_lit => {
-            let s = inner.as_str();
-            let digits = &s[2..]; // strip 0x / 0X
-            Literal::Hex(u64::from_str_radix(digits, 16).unwrap())
-        }
-        Rule::int_lit => Literal::Int(inner.as_str().parse::<i64>().unwrap()),
-        Rule::bool_lit => Literal::Bool(inner.as_str() == "true"),
-        Rule::string_lit => {
-            let s = inner.as_str();
-            Literal::Str(unescape(&s[1..s.len() - 1]))
-        }
+        Rule::float_lit | Rule::hex_lit | Rule::int_lit => build_numeric_literal(inner),
+        Rule::bool_lit => build_bool_literal(inner),
+        Rule::string_lit => build_string_literal(inner),
         Rule::ident_lit => Literal::Ident(build_scoped_ident(inner.into_inner().next().unwrap())),
         r => unreachable!("unexpected literal rule: {:?}", r),
     }
+}
+
+fn build_numeric_literal(pair: Pair<Rule>) -> Literal {
+    match pair.as_rule() {
+        Rule::float_lit => Literal::Float(pair.as_str().parse::<f64>().unwrap()),
+        Rule::hex_lit => {
+            let s = pair.as_str();
+            let digits = &s[2..]; // strip 0x / 0X
+            Literal::Hex(u64::from_str_radix(digits, 16).unwrap())
+        }
+        Rule::int_lit => Literal::Int(pair.as_str().parse::<i64>().unwrap()),
+        r => unreachable!("unexpected numeric literal rule: {:?}", r),
+    }
+}
+
+fn build_bool_literal(pair: Pair<Rule>) -> Literal {
+    Literal::Bool(pair.as_str() == "true")
+}
+
+fn build_string_literal(pair: Pair<Rule>) -> Literal {
+    let s = pair.as_str();
+    Literal::Str(unescape(&s[1..s.len() - 1]))
 }
 
 fn build_scoped_ident(pair: Pair<Rule>) -> ScopedIdent {
@@ -287,12 +300,18 @@ fn push_escape(out: &mut String, escaped: Option<char>) {
         Some('n') => out.push('\n'),
         Some('t') => out.push('\t'),
         Some('r') => out.push('\r'),
-        Some('\\') => out.push('\\'),
-        Some('"') => out.push('"'),
-        Some(c) => {
+        Some(c) => push_quoted_escape(out, c),
+        None => out.push('\\'),
+    }
+}
+
+fn push_quoted_escape(out: &mut String, escaped: char) {
+    match escaped {
+        '\\' => out.push('\\'),
+        '"' => out.push('"'),
+        c => {
             out.push('\\');
             out.push(c);
         }
-        None => out.push('\\'),
     }
 }

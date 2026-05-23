@@ -5,6 +5,7 @@
 [![Crates.io](https://img.shields.io/crates/v/cfs-synapse.svg)](https://crates.io/crates/cfs-synapse)
 [![docs.rs](https://img.shields.io/docsrs/cfs-synapse)](https://docs.rs/cfs-synapse)
 [![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fsjbeskur.github.io%2Fsynapse%2Fcoverage%2Fbadge.json)](https://sjbeskur.github.io/synapse/coverage/)
+[![CRAP](https://img.shields.io/endpoint?url=https%3A%2F%2Fsjbeskur.github.io%2Fsynapse%2Fcrap%2Fbadge.json)](https://github.com/sjbeskur/synapse/actions/workflows/coverage.yml)
 [![License](https://img.shields.io/crates/l/cfs-synapse.svg)](LICENSE)
 
 Synapse is a small interface definition language and code generator for NASA cFS-friendly data types. A `.syn` file can describe plain ABI-compatible structs, cFS Software Bus commands and telemetry packets, and cFS Table Services payloads; the `synapse` CLI turns those definitions into C headers or Rust `#[repr(C)]` bindings.
