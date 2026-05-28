@@ -6,7 +6,7 @@ use synapse_parser::ast::{
 use crate::{
     constants::{ConstContext, const_context, resolve_ident_to_u64},
     error::CodegenError,
-    types::{GENERATED_BANNER, ResolvedConstants, RustOptions},
+    types::{CfsOptions, GENERATED_BANNER, ResolvedConstants, RustOptions},
     util::{
         emit_doc_lines, emit_indented_doc_lines, find_cc_attr, find_mid_attr, import_rust_module,
         packet_is_command, packet_item, to_screaming_snake,
@@ -28,14 +28,38 @@ pub fn try_generate_rust(file: &SynFile, opts: &RustOptions) -> Result<String, C
     try_generate_rust_with_constants(file, opts, &ResolvedConstants::new())
 }
 
+/// Try to generate Rust bindings with validation options.
+pub fn try_generate_rust_with_options(
+    file: &SynFile,
+    opts: &RustOptions,
+    options: &CfsOptions,
+) -> Result<String, CodegenError> {
+    try_generate_rust_with_constants_and_options(file, opts, &ResolvedConstants::new(), options)
+}
+
 /// Try to generate Rust bindings with additional imported constants available for attributes.
 pub fn try_generate_rust_with_constants(
     file: &SynFile,
     opts: &RustOptions,
     imported_constants: &ResolvedConstants,
 ) -> Result<String, CodegenError> {
+    try_generate_rust_with_constants_and_options(
+        file,
+        opts,
+        imported_constants,
+        &CfsOptions::default(),
+    )
+}
+
+/// Try to generate Rust bindings with imported constants and validation options.
+pub fn try_generate_rust_with_constants_and_options(
+    file: &SynFile,
+    opts: &RustOptions,
+    imported_constants: &ResolvedConstants,
+    options: &CfsOptions,
+) -> Result<String, CodegenError> {
     let constants = const_context(file, imported_constants);
-    validate_supported(file, &constants)?;
+    validate_supported(file, &constants, options)?;
     let mut out = format!("// {GENERATED_BANNER}\n\n");
     emit_rust_imports(file, &mut out);
     emit_rust_items(file, opts, &mut out, &constants);

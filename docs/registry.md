@@ -23,6 +23,8 @@ Before writing registry output, Synapse loads the same import graph used for gen
 - Duplicate telemetry MIDs across the collected roots.
 - Duplicate command MID/CC pairs across the collected roots.
 
+Use `--msgid-layout opaque` when exporting registry data for a mission whose cFE MsgIds should not be interpreted with the legacy `0x1000` command/telemetry bit. In opaque mode, Synapse still resolves MIDs and checks duplicate telemetry MIDs and duplicate command MID/CC pairs.
+
 When multiple roots are passed to `synapse registry`, the output contains packet declarations from the validated roots and their loaded import closures. The command applies the same mission-wide duplicate checks as `synapse check` before writing output.
 
 ## JSON Format

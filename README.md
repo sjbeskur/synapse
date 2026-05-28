@@ -97,6 +97,7 @@ synapse generate --lang <c|rust> [-o <out-dir>] <file.syn>
 - `check` validates input roots, their import graphs, and cFS codegen support without writing generated output. Multiple roots are checked together for mission-wide telemetry MID and command MID/CC conflicts.
 - `doc` generates static HTML documentation for input roots, their import graphs, packet IDs, command codes, fields, types, and doc comments. Without `-o`, HTML is written to stdout; with `-o`, Synapse writes `index.html`.
 - `registry` emits a validated packet registry for input roots as JSON or CSV. Without `-o`, registry output is written to stdout.
+- `--msgid-layout <ccsds-v1|opaque>` selects MID validation policy. The default is `ccsds-v1`, which validates the legacy `0x1000` command/telemetry bit. Use `opaque` for missions where cFE treats MsgIds as mission-owned opaque values.
 - `--lang c` generates a cFS C header (`.h`) that includes `cfe.h`.
 - `--lang rust` generates Rust `#[repr(C)]` bindings (`.rs`) that reference `cfs_sys` header types by default.
 - Without `-o`, generated code is written to stdout.
