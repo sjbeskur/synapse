@@ -94,6 +94,9 @@ Open questions:
 
 Status: Implemented
 
+> [!NOTE]
+> Synapse currently assumes cFE `MISSION_MSG_V1` / legacy CCSDS-style MsgIds for command-vs-telemetry validation. In that policy, commands are expected to have bit `0x1000` set and telemetry is expected to have that bit clear. Modern cFE treats MsgIds as opaque and can use other message-ID layouts, so future support should make MsgId validation policy-driven rather than hard-coding raw bit layout assumptions.
+
 Direction:
 
 - Require `@mid(...)` for `command` and `telemetry` - implemented as a cFS codegen error.
@@ -108,6 +111,7 @@ Remaining questions:
 
 - Should a future mission manifest define owned MID ranges per app/namespace?
 - Should packet IDs be validated against configurable mission policies beyond command/telemetry bit patterns?
+- Should Synapse expose an explicit MsgId layout option, such as `ccsds-v1`, `cfe-v2`, or `opaque`, for generation, validation, and registry output?
 
 ## Command Codes
 
