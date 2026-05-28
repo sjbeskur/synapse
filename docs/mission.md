@@ -235,7 +235,9 @@ Those outputs stay inside Synapse's intended boundary: define, generate, validat
 
    - Duplicate telemetry MIDs.
    - Duplicate command MID/CC pairs.
-   - Command/telemetry MID bit-pattern mismatches.
+   - Command/telemetry MID bit-pattern mismatches when using the default `ccsds-v1` MsgId layout.
+
+   Use `--msgid-layout opaque` for missions where MsgIds are mission-owned opaque values and should not be interpreted with the legacy `0x1000` command/telemetry bit.
 
 5. **Report clearly**
 

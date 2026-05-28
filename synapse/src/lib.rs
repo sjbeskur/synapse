@@ -11,6 +11,7 @@ use std::{
 use synapse_parser::ast::{BaseType, FieldDef, Item, SynFile};
 
 pub use errors::Error;
+pub use synapse_codegen_cfs::{CfsOptions, MsgIdLayout};
 
 /// Target language for Synapse code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,20 +43,39 @@ impl Lang {
 
 /// Generate code from `.syn` source text.
 pub fn generate_str(source: &str, lang: Lang) -> Result<String, Error> {
+    generate_str_with_options(source, lang, &CfsOptions::default())
+}
+
+/// Generate code from `.syn` source text with cFS validation options.
+pub fn generate_str_with_options(
+    source: &str,
+    lang: Lang,
+    options: &CfsOptions,
+) -> Result<String, Error> {
     let file = synapse_parser::ast::parse(source)?;
-    generate_parsed(&file, lang)
+    generate_parsed(&file, lang, options)
 }
 
 /// Check `.syn` source text for parser and cFS codegen support.
 pub fn check_str(source: &str) -> Result<(), Error> {
+    check_str_with_options(source, &CfsOptions::default())
+}
+
+/// Check `.syn` source text for parser and cFS codegen support with options.
+pub fn check_str_with_options(source: &str, options: &CfsOptions) -> Result<(), Error> {
     let file = synapse_parser::ast::parse(source)?;
-    synapse_codegen_cfs::validate_cfs(&file)?;
+    synapse_codegen_cfs::validate_cfs_with_options(&file, options)?;
     Ok(())
 }
 
 /// Check a `.syn` input path, validating its import graph and cFS codegen support.
 pub fn check_path(input: impl AsRef<Path>) -> Result<(), Error> {
     check_paths([input.as_ref()])
+}
+
+/// Check a `.syn` input path with cFS validation options.
+pub fn check_path_with_options(input: impl AsRef<Path>, options: &CfsOptions) -> Result<(), Error> {
+    check_paths_with_options([input.as_ref()], options)
 }
 
 /// Check one or more `.syn` input paths as a mission-visible set.
@@ -68,9 +88,18 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
+    check_paths_with_options(inputs, &CfsOptions::default())
+}
+
+/// Check one or more `.syn` input paths with cFS validation options.
+pub fn check_paths_with_options<I, P>(inputs: I, options: &CfsOptions) -> Result<(), Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
     let inputs = collect_input_paths(inputs, "check")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_cfs_graph(&graph)?;
+    validate_cfs_graph(&graph, options)?;
     Ok(())
 }
 
@@ -80,12 +109,21 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
+    generate_docs_with_options(inputs, &CfsOptions::default())
+}
+
+/// Generate static HTML documentation with cFS validation options.
+pub fn generate_docs_with_options<I, P>(inputs: I, options: &CfsOptions) -> Result<String, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
     let inputs = collect_input_paths(inputs, "doc")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_cfs_graph(&graph)?;
+    validate_cfs_graph(&graph, options)?;
     let units_by_path = units_by_path(&graph);
 
-    docs::render_html_docs(&graph, &units_by_path)
+    docs::render_html_docs(&graph, &units_by_path, options)
 }
 
 /// Generate static HTML documentation and write it to `out_dir/index.html`.
@@ -94,7 +132,20 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    let output = generate_docs(inputs)?;
+    write_docs_with_options(inputs, out_dir, &CfsOptions::default())
+}
+
+/// Generate static HTML documentation with options and write it to `out_dir/index.html`.
+pub fn write_docs_with_options<I, P>(
+    inputs: I,
+    out_dir: impl AsRef<Path>,
+    options: &CfsOptions,
+) -> Result<PathBuf, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let output = generate_docs_with_options(inputs, options)?;
     let out_dir = out_dir.as_ref();
     fs::create_dir_all(out_dir)?;
     let out_path = out_dir.join("index.html");
@@ -108,12 +159,25 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
+    generate_registry_with_options(inputs, format, &CfsOptions::default())
+}
+
+/// Generate a machine-readable packet registry with cFS validation options.
+pub fn generate_registry_with_options<I, P>(
+    inputs: I,
+    format: RegistryFormat,
+    options: &CfsOptions,
+) -> Result<String, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
     let inputs = collect_input_paths(inputs, "registry")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_cfs_graph(&graph)?;
+    validate_cfs_graph(&graph, options)?;
     let units_by_path = units_by_path(&graph);
 
-    registry::render_registry(&graph, &units_by_path, format)
+    registry::render_registry(&graph, &units_by_path, format, options)
 }
 
 /// Generate a machine-readable packet registry and write it to `output`.
@@ -126,7 +190,21 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    let registry = generate_registry(inputs, format)?;
+    write_registry_with_options(inputs, output, format, &CfsOptions::default())
+}
+
+/// Generate a machine-readable packet registry with options and write it to `output`.
+pub fn write_registry_with_options<I, P>(
+    inputs: I,
+    output: impl AsRef<Path>,
+    format: RegistryFormat,
+    options: &CfsOptions,
+) -> Result<PathBuf, Error>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let registry = generate_registry_with_options(inputs, format, options)?;
     let output = output.as_ref();
     if let Some(parent) = output.parent() {
         if !parent.as_os_str().is_empty() {
@@ -139,6 +217,15 @@ where
 
 /// Generate code from a `.syn` input path, validating the import graph rooted at that file.
 pub fn generate_path(input: impl AsRef<Path>, lang: Lang) -> Result<String, Error> {
+    generate_path_with_options(input, lang, &CfsOptions::default())
+}
+
+/// Generate code from a `.syn` input path with cFS validation options.
+pub fn generate_path_with_options(
+    input: impl AsRef<Path>,
+    lang: Lang,
+    options: &CfsOptions,
+) -> Result<String, Error> {
     let graph = load_import_graph(input.as_ref())?;
     validate_import_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
@@ -147,11 +234,16 @@ pub fn generate_path(input: impl AsRef<Path>, lang: Lang) -> Result<String, Erro
         .last()
         .expect("import graph always contains the root input");
     let imported_constants = imported_constants_for_unit(root, &units_by_path)?;
-    generate_parsed_with_constants(&root.file, lang, &imported_constants)
+    generate_parsed_with_constants(&root.file, lang, &imported_constants, options)
 }
 
-fn generate_parsed(file: &SynFile, lang: Lang) -> Result<String, Error> {
-    generate_parsed_with_constants(file, lang, &synapse_codegen_cfs::ResolvedConstants::new())
+fn generate_parsed(file: &SynFile, lang: Lang, options: &CfsOptions) -> Result<String, Error> {
+    generate_parsed_with_constants(
+        file,
+        lang,
+        &synapse_codegen_cfs::ResolvedConstants::new(),
+        options,
+    )
 }
 
 fn collect_input_paths<I, P>(inputs: I, command: &str) -> Result<Vec<PathBuf>, Error>
@@ -171,20 +263,25 @@ where
     Ok(inputs)
 }
 
-fn validate_cfs_graph(graph: &ImportGraph) -> Result<(), Error> {
+fn validate_cfs_graph(graph: &ImportGraph, options: &CfsOptions) -> Result<(), Error> {
     validate_import_graph(graph)?;
     let units_by_path = units_by_path(graph);
-    validate_cfs_units(graph, &units_by_path)?;
-    validate_mission_registry(graph, &units_by_path)
+    validate_cfs_units(graph, &units_by_path, options)?;
+    validate_mission_registry(graph, &units_by_path, options)
 }
 
 fn validate_cfs_units(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+    options: &CfsOptions,
 ) -> Result<(), Error> {
     for unit in &graph.units {
         let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
+        synapse_codegen_cfs::validate_cfs_with_constants_and_options(
+            &unit.file,
+            &imported_constants,
+            options,
+        )?;
     }
     Ok(())
 }
@@ -193,13 +290,19 @@ fn generate_parsed_with_constants(
     file: &SynFile,
     lang: Lang,
     imported_constants: &synapse_codegen_cfs::ResolvedConstants,
+    options: &CfsOptions,
 ) -> Result<String, Error> {
     let output = match lang {
-        Lang::C => synapse_codegen_cfs::try_generate_c_with_constants(file, imported_constants)?,
-        Lang::Rust => synapse_codegen_cfs::try_generate_rust_with_constants(
+        Lang::C => synapse_codegen_cfs::try_generate_c_with_constants_and_options(
+            file,
+            imported_constants,
+            options,
+        )?,
+        Lang::Rust => synapse_codegen_cfs::try_generate_rust_with_constants_and_options(
             file,
             &Default::default(),
             imported_constants,
+            options,
         )?,
     };
     Ok(output)
@@ -215,7 +318,18 @@ pub fn generate_file(
     lang: Lang,
 ) -> Result<PathBuf, Error> {
     let input = input.as_ref();
-    let output = generate_path(input, lang)?;
+    generate_file_with_options(input, out_dir, lang, &CfsOptions::default())
+}
+
+/// Generate code from an input file with cFS validation options and write it into `out_dir`.
+pub fn generate_file_with_options(
+    input: impl AsRef<Path>,
+    out_dir: impl AsRef<Path>,
+    lang: Lang,
+    options: &CfsOptions,
+) -> Result<PathBuf, Error> {
+    let input = input.as_ref();
+    let output = generate_path_with_options(input, lang, options)?;
 
     let out_dir = out_dir.as_ref();
     fs::create_dir_all(out_dir)?;
@@ -241,6 +355,16 @@ pub fn generate_files(
     out_dir: impl AsRef<Path>,
     lang: Lang,
 ) -> Result<Vec<PathBuf>, Error> {
+    generate_files_with_options(input, out_dir, lang, &CfsOptions::default())
+}
+
+/// Generate the root file and transitive imports with cFS validation options.
+pub fn generate_files_with_options(
+    input: impl AsRef<Path>,
+    out_dir: impl AsRef<Path>,
+    lang: Lang,
+    options: &CfsOptions,
+) -> Result<Vec<PathBuf>, Error> {
     let graph = load_import_graph(input.as_ref())?;
     validate_import_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
@@ -250,7 +374,13 @@ pub fn generate_files(
 
     let mut written = Vec::new();
     for unit in &graph.units {
-        written.push(write_generated_unit(unit, &units_by_path, out_dir, lang)?);
+        written.push(write_generated_unit(
+            unit,
+            &units_by_path,
+            out_dir,
+            lang,
+            options,
+        )?);
     }
     Ok(written)
 }
@@ -260,9 +390,10 @@ fn write_generated_unit(
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
     out_dir: &Path,
     lang: Lang,
+    options: &CfsOptions,
 ) -> Result<PathBuf, Error> {
     let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-    let output = generate_parsed_with_constants(&unit.file, lang, &imported_constants)?;
+    let output = generate_parsed_with_constants(&unit.file, lang, &imported_constants, options)?;
     let out_path = output_path_for(&unit.path, out_dir, lang)?;
     fs::write(&out_path, output)?;
     Ok(out_path)
@@ -488,15 +619,17 @@ struct MissionPacket {
 fn validate_mission_registry(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+    options: &CfsOptions,
 ) -> Result<(), Error> {
     let mut telemetry_mids = HashMap::<u64, MissionPacket>::new();
     let mut command_codes = HashMap::<(u64, u64), MissionPacket>::new();
 
     for unit in &graph.units {
         let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-        let packets = synapse_codegen_cfs::collect_cfs_packets_with_constants(
+        let packets = synapse_codegen_cfs::collect_cfs_packets_with_constants_and_options(
             &unit.file,
             &imported_constants,
+            options,
         )?;
 
         for packet in packets {
@@ -1024,7 +1157,8 @@ telemetry NavState {
         assert!(html.contains("id=\"doc-search\""));
         assert!(html.contains("data-search="));
         assert!(html.contains("href=\"#"));
-        assert!(html.contains("href=\"file://"));
+        assert!(!html.contains("file://"));
+        assert!(!html.contains(&dir.display().to_string()));
         assert!(html.contains(">Source</a>"));
     }
 

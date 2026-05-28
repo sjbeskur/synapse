@@ -6,7 +6,7 @@ use synapse_parser::ast::{
 use crate::{
     constants::{ConstContext, const_context},
     error::CodegenError,
-    types::{PREAMBLE, ResolvedConstants},
+    types::{CfsOptions, PREAMBLE, ResolvedConstants},
     util::{
         emit_doc_lines, emit_indented_doc_lines, find_cc_attr, find_mid_attr, import_c_header,
         literal_cc_str, literal_mid_str, packet_is_command, packet_item, to_screaming_snake,
@@ -25,13 +25,30 @@ pub fn try_generate_c(file: &SynFile) -> Result<String, CodegenError> {
     try_generate_c_with_constants(file, &ResolvedConstants::new())
 }
 
+/// Try to generate a NASA cFS C header with validation options.
+pub fn try_generate_c_with_options(
+    file: &SynFile,
+    options: &CfsOptions,
+) -> Result<String, CodegenError> {
+    try_generate_c_with_constants_and_options(file, &ResolvedConstants::new(), options)
+}
+
 /// Try to generate a C header with additional imported constants available for attributes.
 pub fn try_generate_c_with_constants(
     file: &SynFile,
     imported_constants: &ResolvedConstants,
 ) -> Result<String, CodegenError> {
+    try_generate_c_with_constants_and_options(file, imported_constants, &CfsOptions::default())
+}
+
+/// Try to generate a C header with imported constants and validation options.
+pub fn try_generate_c_with_constants_and_options(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+    options: &CfsOptions,
+) -> Result<String, CodegenError> {
     let constants = const_context(file, imported_constants);
-    validate_supported(file, &constants)?;
+    validate_supported(file, &constants, options)?;
     let mut out = String::from(PREAMBLE);
     emit_c_imports(file, &mut out);
     emit_items(file, &mut out, &constants);

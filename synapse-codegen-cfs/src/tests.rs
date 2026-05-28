@@ -313,6 +313,32 @@ fn c_rejects_telemetry_mid_with_command_bit() {
 }
 
 #[test]
+fn opaque_msgid_layout_accepts_non_ccsds_command_mid_bits() {
+    let file = parse("@mid(0x0801)\n@cc(1)\ncommand SetMode { mode: u8 }").unwrap();
+    let options = CfsOptions {
+        msgid_layout: MsgIdLayout::Opaque,
+    };
+    let out = try_generate_c_with_options(&file, &options).unwrap();
+
+    assert!(out.contains("#define SET_MODE_MID  0x0801U"));
+    assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
+}
+
+#[test]
+fn opaque_msgid_layout_accepts_non_ccsds_telemetry_mid_bits() {
+    let file = parse("@mid(0x1880)\ntelemetry Status { x: f32 }").unwrap();
+    let options = CfsOptions {
+        msgid_layout: MsgIdLayout::Opaque,
+    };
+    let packets =
+        collect_cfs_packets_with_constants_and_options(&file, &ResolvedConstants::new(), &options)
+            .unwrap();
+
+    assert_eq!(packets[0].mid, 0x1880);
+    assert_eq!(packets[0].kind, CfsPacketKind::Telemetry);
+}
+
+#[test]
 fn c_rejects_optional_fields() {
     let file = parse("@mid(0x0801)\ntelemetry Status { error_code?: u32 }").unwrap();
     let err = try_generate_c(&file).unwrap_err();

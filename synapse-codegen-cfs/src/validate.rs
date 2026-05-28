@@ -8,7 +8,7 @@ use synapse_parser::ast::{
 use crate::{
     constants::{ConstContext, const_context, resolve_literal_to_u64},
     error::CodegenError,
-    types::{CfsPacket, CfsPacketKind, ResolvedConstants},
+    types::{CfsOptions, CfsPacket, CfsPacketKind, MsgIdLayout, ResolvedConstants},
     util::{
         enum_defs, file_namespace, find_cc_attr, find_mid_attr, literal_cc_str, literal_mid_str,
         primitive_name, type_expr_display,
@@ -20,13 +20,27 @@ pub fn validate_cfs(file: &SynFile) -> Result<(), CodegenError> {
     validate_cfs_with_constants(file, &ResolvedConstants::new())
 }
 
+/// Validate that a parsed Synapse file is supported by cFS code generation.
+pub fn validate_cfs_with_options(file: &SynFile, options: &CfsOptions) -> Result<(), CodegenError> {
+    validate_cfs_with_constants_and_options(file, &ResolvedConstants::new(), options)
+}
+
 /// Validate cFS code generation support with additional imported constants available.
 pub fn validate_cfs_with_constants(
     file: &SynFile,
     imported_constants: &ResolvedConstants,
 ) -> Result<(), CodegenError> {
+    validate_cfs_with_constants_and_options(file, imported_constants, &CfsOptions::default())
+}
+
+/// Validate cFS code generation support with imported constants and options.
+pub fn validate_cfs_with_constants_and_options(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+    options: &CfsOptions,
+) -> Result<(), CodegenError> {
     let constants = const_context(file, imported_constants);
-    validate_supported(file, &constants)
+    validate_supported(file, &constants, options)
 }
 
 /// Collect resolved cFS packet facts with additional imported constants available.
@@ -37,13 +51,23 @@ pub fn collect_cfs_packets_with_constants(
     file: &SynFile,
     imported_constants: &ResolvedConstants,
 ) -> Result<Vec<CfsPacket>, CodegenError> {
+    collect_cfs_packets_with_constants_and_options(file, imported_constants, &CfsOptions::default())
+}
+
+/// Collect resolved cFS packet facts with imported constants and options.
+pub fn collect_cfs_packets_with_constants_and_options(
+    file: &SynFile,
+    imported_constants: &ResolvedConstants,
+    options: &CfsOptions,
+) -> Result<Vec<CfsPacket>, CodegenError> {
     let constants = const_context(file, imported_constants);
-    collect_cfs_packets(file, &constants)
+    collect_cfs_packets(file, &constants, options)
 }
 
 pub(crate) fn validate_supported(
     file: &SynFile,
     constants: &ConstContext<'_>,
+    options: &CfsOptions,
 ) -> Result<(), CodegenError> {
     let enum_defs = enum_defs(file);
     let mut telemetry_mids = HashMap::new();
@@ -52,6 +76,7 @@ pub(crate) fn validate_supported(
         validate_item(
             item,
             constants,
+            options,
             &enum_defs,
             &mut telemetry_mids,
             &mut command_codes,
@@ -63,15 +88,21 @@ pub(crate) fn validate_supported(
 fn validate_item(
     item: &Item,
     constants: &ConstContext<'_>,
+    options: &CfsOptions,
     enum_defs: &HashMap<String, &EnumDef>,
     telemetry_mids: &mut HashMap<u64, String>,
     command_codes: &mut HashMap<(u64, u64), String>,
 ) -> Result<(), CodegenError> {
     match item {
         Item::Struct(s) | Item::Table(s) => validate_plain_item(s, enum_defs),
-        Item::Command(m) | Item::Telemetry(m) => {
-            validate_packet_item(m, constants, enum_defs, telemetry_mids, command_codes)
-        }
+        Item::Command(m) | Item::Telemetry(m) => validate_packet_item(
+            m,
+            constants,
+            options,
+            enum_defs,
+            telemetry_mids,
+            command_codes,
+        ),
         _ => validate_non_packet_item(item),
     }
 }
@@ -79,11 +110,12 @@ fn validate_item(
 fn validate_packet_item(
     packet: &MessageDef,
     constants: &ConstContext<'_>,
+    options: &CfsOptions,
     enum_defs: &HashMap<String, &EnumDef>,
     telemetry_mids: &mut HashMap<u64, String>,
     command_codes: &mut HashMap<(u64, u64), String>,
 ) -> Result<(), CodegenError> {
-    validate_packet(packet, constants, telemetry_mids, command_codes)?;
+    validate_packet(packet, constants, options, telemetry_mids, command_codes)?;
     validate_fields(&packet.name, &packet.fields, enum_defs)
 }
 
@@ -111,12 +143,13 @@ fn validate_plain_item(
 fn collect_cfs_packets(
     file: &SynFile,
     constants: &ConstContext<'_>,
+    options: &CfsOptions,
 ) -> Result<Vec<CfsPacket>, CodegenError> {
     let namespace = file_namespace(file);
     let mut packets = Vec::new();
 
     for item in &file.items {
-        if let Some(packet) = cfs_packet_from_item(item, constants, &namespace)? {
+        if let Some(packet) = cfs_packet_from_item(item, constants, options, &namespace)? {
             packets.push(packet);
         }
     }
@@ -127,6 +160,7 @@ fn collect_cfs_packets(
 fn cfs_packet_from_item(
     item: &Item,
     constants: &ConstContext<'_>,
+    options: &CfsOptions,
     namespace: &[String],
 ) -> Result<Option<CfsPacket>, CodegenError> {
     let (Item::Command(packet) | Item::Telemetry(packet)) = item else {
@@ -135,7 +169,7 @@ fn cfs_packet_from_item(
 
     let mid = required_mid(packet)?;
     let mid_value = resolved_mid(packet, mid, constants)?;
-    validate_mid_range(packet, mid_value, mid, constants)?;
+    validate_mid_range(packet, mid_value, mid, constants, options)?;
     let (kind, cc_value) = collected_packet_kind(packet, constants)?;
 
     Ok(Some(CfsPacket {
@@ -276,10 +310,11 @@ fn reject_telemetry_command_code(packet: &MessageDef) -> Result<(), CodegenError
 fn validate_packet(
     packet: &MessageDef,
     constants: &ConstContext<'_>,
+    options: &CfsOptions,
     telemetry_mids: &mut HashMap<u64, String>,
     command_codes: &mut HashMap<(u64, u64), String>,
 ) -> Result<(), CodegenError> {
-    let (_, value) = validated_packet_mid(packet, constants)?;
+    let (_, value) = validated_packet_mid(packet, constants, options)?;
     validate_packet_command_code_shape(packet)?;
     let cc_value = optional_command_code_value(packet, constants)?;
     register_packet_mid(
@@ -295,10 +330,11 @@ fn validate_packet(
 fn validated_packet_mid<'a>(
     packet: &'a MessageDef,
     constants: &ConstContext<'_>,
+    options: &CfsOptions,
 ) -> Result<(&'a Literal, u64), CodegenError> {
     let mid = required_mid(packet)?;
     let value = resolved_mid(packet, mid, constants)?;
-    validate_mid_range(packet, value, mid, constants)?;
+    validate_mid_range(packet, value, mid, constants, options)?;
     Ok((mid, value))
 }
 
@@ -400,7 +436,12 @@ fn validate_mid_range(
     value: u64,
     mid: &Literal,
     constants: &ConstContext<'_>,
+    options: &CfsOptions,
 ) -> Result<(), CodegenError> {
+    if options.msgid_layout == MsgIdLayout::Opaque {
+        return Ok(());
+    }
+
     let command_bit_set = (value & 0x1000) != 0;
     let expected = match packet.kind {
         PacketKind::Command if !command_bit_set => Some("command MID with bit 0x1000 set"),

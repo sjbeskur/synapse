@@ -141,6 +141,47 @@ struct Root { unsupported: bad::Unsupported }
 }
 
 #[test]
+fn msgid_layout_opaque_skips_command_telemetry_bit_validation() {
+    let dir = test_dir("opaque-msgid-layout");
+    let root = dir.join("root.syn");
+    fs::write(
+        &root,
+        "namespace root\n@mid(0x0801)\n@cc(1)\ncommand SetMode { mode: u8 }",
+    )
+    .unwrap();
+
+    let default_output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg(&root)
+        .output()
+        .expect("run synapse");
+    assert!(
+        !default_output.status.success(),
+        "synapse unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&default_output.stdout),
+        String::from_utf8_lossy(&default_output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&default_output.stderr)
+            .contains("expected command MID with bit 0x1000 set")
+    );
+
+    let opaque_output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg("--msgid-layout")
+        .arg("opaque")
+        .arg(&root)
+        .output()
+        .expect("run synapse");
+    assert!(
+        opaque_output.status.success(),
+        "synapse failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&opaque_output.stdout),
+        String::from_utf8_lossy(&opaque_output.stderr)
+    );
+}
+
+#[test]
 fn check_accepts_multiple_roots_and_rejects_mission_mid_conflicts() {
     let dir = test_dir("check-multiple-roots");
     let nav = dir.join("nav.syn");
