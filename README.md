@@ -256,6 +256,7 @@ Crates.io publishing is gated behind the repository variable `PUBLISH_CRATE=true
 
 See `docs/release-checklist.md` for the step-by-step release checklist.
 See `docs/publishing.md` for publishing workflow details and first-publish notes.
+See `docs/release-notes.md` for release notes.
 
 ## Editor Support
 
