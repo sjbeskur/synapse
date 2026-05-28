@@ -51,6 +51,9 @@ enum Command {
   synapse check synapse-integration-tests/syn/camera_msgs.syn
   synapse check examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn examples/mission-demo/syn/payload_app.syn")]
 struct CheckArgs {
+    #[command(flatten)]
+    cfs: CfsArgs,
+
     /// Root .syn files to validate together.
     #[arg(required = true)]
     files: Vec<PathBuf>,
@@ -62,6 +65,9 @@ struct CheckArgs {
   synapse doc -o docs synapse-integration-tests/syn/camera_msgs.syn
   synapse doc -o docs examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn")]
 struct DocArgs {
+    #[command(flatten)]
+    cfs: CfsArgs,
+
     /// Write index.html to this directory instead of stdout.
     #[arg(long, short = 'o')]
     out_dir: Option<PathBuf>,
@@ -76,6 +82,9 @@ struct DocArgs {
   synapse registry synapse-integration-tests/syn/camera_msgs.syn
   synapse registry --format csv -o registry.csv examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn")]
 struct RegistryArgs {
+    #[command(flatten)]
+    cfs: CfsArgs,
+
     /// Registry output format.
     #[arg(long, value_enum, default_value_t = CliRegistryFormat::Json)]
     format: CliRegistryFormat,
@@ -96,6 +105,9 @@ struct RegistryArgs {
   synapse generate --lang rust -o generated synapse-integration-tests/syn/geometry_msgs.syn
   synapse generate --lang c -o generated --single-file synapse-integration-tests/syn/geometry_msgs.syn")]
 struct GenerateArgs {
+    #[command(flatten)]
+    cfs: CfsArgs,
+
     /// Target language to generate.
     #[arg(long, value_enum)]
     lang: Option<CliLang>,
@@ -113,6 +125,13 @@ struct GenerateArgs {
     file: Option<PathBuf>,
 }
 
+#[derive(ClapArgs)]
+struct CfsArgs {
+    /// MID validation policy.
+    #[arg(long, value_enum, default_value_t = CliMsgIdLayout::CcsdsV1)]
+    msgid_layout: CliMsgIdLayout,
+}
+
 #[derive(Clone, ValueEnum)]
 enum CliLang {
     /// NASA cFS C header (.h)
@@ -127,6 +146,14 @@ enum CliRegistryFormat {
     Json,
     /// CSV packet registry.
     Csv,
+}
+
+#[derive(Clone, ValueEnum)]
+enum CliMsgIdLayout {
+    /// Legacy CCSDS-style cFE MISSION_MSG_V1: validate the 0x1000 command bit.
+    CcsdsV1,
+    /// Treat MsgIds as opaque mission-owned values; skip command/telemetry bit validation.
+    Opaque,
 }
 
 impl From<CliLang> for cfs_synapse::Lang {
@@ -147,6 +174,23 @@ impl From<CliRegistryFormat> for cfs_synapse::RegistryFormat {
     }
 }
 
+impl From<CliMsgIdLayout> for cfs_synapse::MsgIdLayout {
+    fn from(value: CliMsgIdLayout) -> Self {
+        match value {
+            CliMsgIdLayout::CcsdsV1 => cfs_synapse::MsgIdLayout::CcsdsV1,
+            CliMsgIdLayout::Opaque => cfs_synapse::MsgIdLayout::Opaque,
+        }
+    }
+}
+
+impl From<CfsArgs> for cfs_synapse::CfsOptions {
+    fn from(value: CfsArgs) -> Self {
+        cfs_synapse::CfsOptions {
+            msgid_layout: value.msgid_layout.into(),
+        }
+    }
+}
+
 pub(crate) fn run() {
     let args = Args::parse();
     match args.command {
@@ -159,7 +203,8 @@ pub(crate) fn run() {
 }
 
 fn check_path(args: CheckArgs) {
-    cfs_synapse::check_paths(&args.files).unwrap_or_else(|e| {
+    let options = cfs_synapse::CfsOptions::from(args.cfs);
+    cfs_synapse::check_paths_with_options(&args.files, &options).unwrap_or_else(|e| {
         eprintln!("Error checking inputs:\n{e}");
         process::exit(1);
     });
@@ -169,38 +214,20 @@ fn check_path(args: CheckArgs) {
 }
 
 fn doc_path(args: DocArgs) {
+    let options = cfs_synapse::CfsOptions::from(args.cfs);
     match args.out_dir {
         None => {
-            let output = cfs_synapse::generate_docs(&args.files).unwrap_or_else(|e| {
-                eprintln!("Error documenting inputs:\n{e}");
-                process::exit(1);
-            });
+            let output = cfs_synapse::generate_docs_with_options(&args.files, &options)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error documenting inputs:\n{e}");
+                    process::exit(1);
+                });
             print!("{output}");
         }
         Some(dir) => {
-            let out_path = cfs_synapse::write_docs(&args.files, &dir).unwrap_or_else(|e| {
-                eprintln!("Error documenting inputs:\n{e}");
-                process::exit(1);
-            });
-            eprintln!("wrote {}", out_path.display());
-        }
-    }
-}
-
-fn registry_path(args: RegistryArgs) {
-    let format = cfs_synapse::RegistryFormat::from(args.format);
-    match args.output {
-        None => {
-            let output = cfs_synapse::generate_registry(&args.files, format).unwrap_or_else(|e| {
-                eprintln!("Error exporting registry:\n{e}");
-                process::exit(1);
-            });
-            print!("{output}");
-        }
-        Some(path) => {
-            let out_path =
-                cfs_synapse::write_registry(&args.files, &path, format).unwrap_or_else(|e| {
-                    eprintln!("Error exporting registry:\n{e}");
+            let out_path = cfs_synapse::write_docs_with_options(&args.files, &dir, &options)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error documenting inputs:\n{e}");
                     process::exit(1);
                 });
             eprintln!("wrote {}", out_path.display());
@@ -208,7 +235,32 @@ fn registry_path(args: RegistryArgs) {
     }
 }
 
+fn registry_path(args: RegistryArgs) {
+    let format = cfs_synapse::RegistryFormat::from(args.format);
+    let options = cfs_synapse::CfsOptions::from(args.cfs);
+    match args.output {
+        None => {
+            let output = cfs_synapse::generate_registry_with_options(&args.files, format, &options)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error exporting registry:\n{e}");
+                    process::exit(1);
+                });
+            print!("{output}");
+        }
+        Some(path) => {
+            let out_path =
+                cfs_synapse::write_registry_with_options(&args.files, &path, format, &options)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error exporting registry:\n{e}");
+                        process::exit(1);
+                    });
+            eprintln!("wrote {}", out_path.display());
+        }
+    }
+}
+
 fn generate_path(args: GenerateArgs) {
+    let options = cfs_synapse::CfsOptions::from(args.cfs);
     let file = args.file.unwrap_or_else(|| {
         Args::command()
             .error(
@@ -235,25 +287,28 @@ fn generate_path(args: GenerateArgs) {
             process::exit(1);
         }
         None => {
-            let output = cfs_synapse::generate_path(&file, lang).unwrap_or_else(|e| {
-                eprintln!("Error generating {}:\n{e}", file.display());
-                process::exit(1);
-            });
+            let output = cfs_synapse::generate_path_with_options(&file, lang, &options)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error generating {}:\n{e}", file.display());
+                    process::exit(1);
+                });
 
             print!("{output}");
         }
         Some(dir) if args.single_file => {
-            let out_path = cfs_synapse::generate_file(&file, &dir, lang).unwrap_or_else(|e| {
-                eprintln!("Error generating {}: {e}", file.display());
-                process::exit(1);
-            });
+            let out_path = cfs_synapse::generate_file_with_options(&file, &dir, lang, &options)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error generating {}: {e}", file.display());
+                    process::exit(1);
+                });
             eprintln!("wrote {}", out_path.display());
         }
         Some(dir) => {
-            let out_paths = cfs_synapse::generate_files(&file, &dir, lang).unwrap_or_else(|e| {
-                eprintln!("Error generating {}: {e}", file.display());
-                process::exit(1);
-            });
+            let out_paths = cfs_synapse::generate_files_with_options(&file, &dir, lang, &options)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error generating {}: {e}", file.display());
+                    process::exit(1);
+                });
             for out_path in out_paths {
                 eprintln!("wrote {}", out_path.display());
             }

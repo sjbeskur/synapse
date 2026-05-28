@@ -95,7 +95,7 @@ Open questions:
 Status: Implemented
 
 > [!NOTE]
-> Synapse currently assumes cFE `MISSION_MSG_V1` / legacy CCSDS-style MsgIds for command-vs-telemetry validation. In that policy, commands are expected to have bit `0x1000` set and telemetry is expected to have that bit clear. Modern cFE treats MsgIds as opaque and can use other message-ID layouts, so future support should make MsgId validation policy-driven rather than hard-coding raw bit layout assumptions.
+> Synapse defaults to cFE `MISSION_MSG_V1` / legacy CCSDS-style MsgIds for command-vs-telemetry validation. In that policy, commands are expected to have bit `0x1000` set and telemetry is expected to have that bit clear. Modern cFE treats MsgIds as opaque and can use other message-ID layouts, so Synapse also supports `--msgid-layout opaque` to resolve and check MIDs without inspecting command/telemetry bits.
 
 Direction:
 
@@ -103,6 +103,7 @@ Direction:
 - Detect duplicate telemetry literal MIDs in a generated file - implemented as a cFS codegen error.
 - Allow commands to share a literal MID when literal command codes differ.
 - Validate command/telemetry MID bit patterns when the MID is a literal - implemented as a cFS codegen error.
+- Add `--msgid-layout ccsds-v1|opaque`, defaulting to `ccsds-v1`, so non-legacy cFE missions can skip raw MID bit validation while keeping MID/CC resolution and uniqueness checks - implemented.
 - Resolve local integer constants used in `@mid(...)` for range and duplicate validation - implemented.
 - Resolve directly imported integer constants used in `@mid(...)` for range and duplicate validation - implemented.
 - Check multiple roots together through `synapse check` for mission-wide duplicate telemetry MIDs - implemented.
@@ -111,7 +112,7 @@ Remaining questions:
 
 - Should a future mission manifest define owned MID ranges per app/namespace?
 - Should packet IDs be validated against configurable mission policies beyond command/telemetry bit patterns?
-- Should Synapse expose an explicit MsgId layout option, such as `ccsds-v1`, `cfe-v2`, or `opaque`, for generation, validation, and registry output?
+- Should Synapse expose a real `cfe-v2` MsgId layout policy once it is pinned down against mission configuration, or is `opaque` the right compatibility boundary?
 
 ## Command Codes
 

@@ -8,7 +8,9 @@ use synapse_parser::ast::{
     StructDef, SynFile, TypeExpr,
 };
 
-use crate::{Error, ImportGraph, ParsedUnit, format_mid, imported_constants_for_unit, namespace};
+use crate::{
+    CfsOptions, Error, ImportGraph, ParsedUnit, format_mid, imported_constants_for_unit, namespace,
+};
 
 const DOC_PAGE_TEMPLATE: &str = include_str!("templates/docs/page.html");
 const DOC_STYLE: &str = include_str!("templates/docs/style.css");
@@ -27,6 +29,7 @@ struct DocSummary {
 pub(crate) fn render_html_docs(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+    options: &CfsOptions,
 ) -> Result<String, Error> {
     let context = DocContext::new(graph);
     let summary = doc_summary(graph);
@@ -46,7 +49,7 @@ pub(crate) fn render_html_docs(
     let mut content_html = String::new();
 
     for unit in &graph.units {
-        render_doc_unit(&mut content_html, unit, units_by_path, &context)?;
+        render_doc_unit(&mut content_html, unit, units_by_path, &context, options)?;
     }
 
     Ok(render_page_template(
@@ -198,10 +201,11 @@ fn render_doc_unit(
     unit: &ParsedUnit,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
     context: &DocContext,
+    options: &CfsOptions,
 ) -> Result<(), Error> {
     let namespace = namespace(&unit.file);
     let namespace_label = namespace_label(&namespace);
-    let packet_facts = packet_facts_for_unit(unit, units_by_path)?;
+    let packet_facts = packet_facts_for_unit(unit, units_by_path, options)?;
     let unit_id = unit_id(unit, &namespace_label, context);
     let unit_search = unit_search_text(unit, &namespace_label, context);
 
@@ -325,10 +329,14 @@ fn render_enum_variants(out: &mut String, e: &synapse_parser::ast::EnumDef) {
 fn packet_facts_for_unit(
     unit: &ParsedUnit,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
+    options: &CfsOptions,
 ) -> Result<HashMap<String, synapse_codegen_cfs::CfsPacket>, Error> {
     let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-    let packets =
-        synapse_codegen_cfs::collect_cfs_packets_with_constants(&unit.file, &imported_constants)?;
+    let packets = synapse_codegen_cfs::collect_cfs_packets_with_constants_and_options(
+        &unit.file,
+        &imported_constants,
+        options,
+    )?;
     Ok(packets
         .into_iter()
         .map(|packet| (packet_fact_key(&packet.name, packet.kind), packet))

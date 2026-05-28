@@ -113,7 +113,7 @@ command SetMode {
 The cFS generator requires `@mid(...)` on `command` and `telemetry` items and requires `@cc(...)` on `command` items. It emits message ID constants for both packet kinds and command-code constants for commands.
 
 > [!NOTE]
-> Current cFS MID validation assumes cFE `MISSION_MSG_V1` / legacy CCSDS-style MsgIds: command MIDs have bit `0x1000` set, and telemetry MIDs have that bit clear. cFE can be configured for other message-ID layouts where MsgIds are opaque, so this check is a Synapse `0.2.x` policy assumption rather than a universal cFS rule.
+> Current cFS MID validation defaults to cFE `MISSION_MSG_V1` / legacy CCSDS-style MsgIds: command MIDs have bit `0x1000` set, and telemetry MIDs have that bit clear. cFE can be configured for other message-ID layouts where MsgIds are opaque, so this check is a Synapse `0.2.x` policy assumption rather than a universal cFS rule. Use `--msgid-layout opaque` to resolve and check MIDs without command/telemetry bit validation.
 
 Missing MIDs, unresolved symbolic MIDs, missing command codes, duplicate telemetry MIDs, duplicate command MID/CC pairs, and command/telemetry bit-pattern mismatches are cFS codegen errors when values are literal or resolve to visible integer constants. Local constants may be used in attributes, for example `@mid(NAV_TLM_MID)` or `@cc(SET_MODE_CC)`. Directly imported namespace constants may also be used, for example `@mid(nav_app::NAV_TLM_MID)`.
 
