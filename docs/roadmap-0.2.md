@@ -41,11 +41,10 @@ Direction:
 - Use `//` as ordinary non-emitted comments.
 - Use `///` as doc comments attached to the next declaration, enum variant, or field.
 - Emit doc comments for generated C and Rust declarations and fields.
-- Keep generated comment style simple for now: `///`.
+- Keep generated comment style simple for the `0.2.x` line: `///`.
 
 Open questions:
 
-- Should generated C comments eventually use Doxygen block style, such as `/** ... */`?
 - Should generated documentation include declaration anchors stable enough for external ICD links?
 
 ## Parsed-Only ABI Hazards
@@ -207,10 +206,10 @@ Direction:
 
 - Add a deterministic generated-file header comment.
 - Avoid timestamps and source paths so generated output stays reproducible.
+- Include the Synapse package version in generated headers so stale files are easier to identify - implemented.
 
 Open questions:
 
-- Should generated headers eventually include the Synapse package version?
 - Should generated C headers include include guards in addition to `#pragma once`?
 
 ## Registry And Documentation Outputs
