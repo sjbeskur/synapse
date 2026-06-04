@@ -29,7 +29,7 @@ See `docs/roadmap-0.2.md` for the decision tracker.
 ### Codegen output quality
 
 - [x] Emit parsed `///` doc comments into generated C and Rust output.
-- [ ] Decide whether generated C docs should stay as `///` or switch to Doxygen block comments.
+- [x] Keep generated C docs as `///` for the `0.2.x` line.
 - [ ] Add schema hash or generation timestamp to the file banner so stale headers are detectable.
 - [x] Normalize hex formatting for typed integer constants and packet MID constants.
 - [x] Include namespace ownership in generated C enum variant macros.

@@ -41,11 +41,10 @@ Direction:
 - Use `//` as ordinary non-emitted comments.
 - Use `///` as doc comments attached to the next declaration, enum variant, or field.
 - Emit doc comments for generated C and Rust declarations and fields.
-- Keep generated comment style simple for now: `///`.
+- Keep generated comment style simple for the `0.2.x` line: `///`.
 
 Open questions:
 
-- Should generated C comments eventually use Doxygen block style, such as `/** ... */`?
 - Should generated documentation include declaration anchors stable enough for external ICD links?
 
 ## Parsed-Only ABI Hazards
