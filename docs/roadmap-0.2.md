@@ -206,10 +206,10 @@ Direction:
 
 - Add a deterministic generated-file header comment.
 - Avoid timestamps and source paths so generated output stays reproducible.
+- Include the Synapse package version in generated headers so stale files are easier to identify - implemented.
 
 Open questions:
 
-- Should generated headers eventually include the Synapse package version?
 - Should generated C headers include include guards in addition to `#pragma once`?
 
 ## Registry And Documentation Outputs
