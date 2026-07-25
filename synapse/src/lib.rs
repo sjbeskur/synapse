@@ -1,5 +1,6 @@
 mod docs;
 mod errors;
+mod mission;
 mod registry;
 
 use std::{
@@ -11,6 +12,11 @@ use std::{
 use synapse_parser::ast::{BaseType, FieldDef, Item, SynFile};
 
 pub use errors::Error;
+pub use mission::{
+    MissionManifest, check_paths_with_manifest, check_paths_with_manifest_and_options,
+    generate_routing_header, generate_routing_header_with_options, write_routing_header,
+    write_routing_header_with_options,
+};
 pub use synapse_codegen_cfs::{CfsOptions, MsgIdLayout};
 
 /// Target language for Synapse code generation.

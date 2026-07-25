@@ -11,6 +11,7 @@ use clap::{Args as ClapArgs, CommandFactory, Parser, Subcommand, ValueEnum, erro
   synapse --lang c -o generated synapse-integration-tests/syn/camera_msgs.syn
   synapse generate --lang rust -o generated synapse-integration-tests/syn/camera_msgs.syn
   synapse check examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn
+  synapse routes --manifest mission.toml -o mission_topics.h schemas/*.syn
   synapse doc -o docs synapse-integration-tests/syn/camera_msgs.syn
   synapse registry --format csv -o registry.csv examples/mission-demo/syn/*.syn"
 )]
@@ -26,12 +27,12 @@ struct Args {
 enum Command {
     /// Validate .syn files and imports without writing generated output.
     #[command(
-        long_about = "Validate one or more root .syn files, including their import closures. When multiple roots are provided, Synapse also checks mission-wide packet ID conflicts such as duplicate telemetry MIDs and duplicate command MID/CC pairs."
+        long_about = "Validate one or more root .syn files, including their import closures. When multiple roots are provided, Synapse also checks mission-wide routing conflicts. With --manifest, every logical command and telemetry topic must have exactly one correctly typed mission assignment."
     )]
     Check(CheckArgs),
     /// Generate searchable static HTML documentation.
     #[command(
-        long_about = "Generate a self-contained static HTML documentation site for one or more root .syn files. The generated page includes packet IDs, command codes, fields, doc comments, source links, and a sidebar search index."
+        long_about = "Generate a self-contained static HTML documentation site for one or more root .syn files. The generated page includes logical topics, optional legacy packet IDs, command codes, fields, doc comments, source links, and a sidebar search index."
     )]
     Doc(DocArgs),
     /// Generate C headers or Rust repr(C) bindings.
@@ -44,15 +45,25 @@ enum Command {
         long_about = "Emit a packet registry for one or more root .syn files. Registry output captures resolved packet facts such as namespace, packet name, kind, source file, MID, and command code."
     )]
     Registry(RegistryArgs),
+    /// Generate a cFE topic-ID and MsgId routing header from a mission manifest.
+    #[command(
+        long_about = "Validate mission-owned topic assignments against one or more root .syn files and generate a standalone C header. The header maps logical topics through CFE_PLATFORM_CMD_TOPICID_TO_MIDV and CFE_PLATFORM_TLM_TOPICID_TO_MIDV. The manifest is never modified."
+    )]
+    Routes(RoutesArgs),
 }
 
 #[derive(ClapArgs)]
 #[command(after_long_help = "Examples:
   synapse check synapse-integration-tests/syn/camera_msgs.syn
+  synapse check --manifest mission.toml schemas/camera.syn schemas/navigation.syn
   synapse check examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn examples/mission-demo/syn/payload_app.syn")]
 struct CheckArgs {
     #[command(flatten)]
     cfs: CfsArgs,
+
+    /// Validate logical topic assignments from this mission TOML file.
+    #[arg(long, value_name = "MISSION_TOML")]
+    manifest: Option<PathBuf>,
 
     /// Root .syn files to validate together.
     #[arg(required = true)]
@@ -94,6 +105,27 @@ struct RegistryArgs {
     output: Option<PathBuf>,
 
     /// Root .syn files to export together.
+    #[arg(required = true)]
+    files: Vec<PathBuf>,
+}
+
+#[derive(ClapArgs)]
+#[command(after_long_help = "Examples:
+  synapse routes --manifest mission.toml schemas/camera.syn
+  synapse routes --manifest mission.toml -o generated/mission_topics.h schemas/camera.syn schemas/navigation.syn")]
+struct RoutesArgs {
+    #[command(flatten)]
+    cfs: CfsArgs,
+
+    /// Mission TOML containing command and telemetry topic assignments.
+    #[arg(long, value_name = "MISSION_TOML", required = true)]
+    manifest: PathBuf,
+
+    /// Write the routing header to this file instead of stdout.
+    #[arg(long, short = 'o')]
+    output: Option<PathBuf>,
+
+    /// Root .syn files comprising the mission-visible schema set.
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
@@ -198,13 +230,20 @@ pub(crate) fn run() {
         Some(Command::Doc(doc)) => doc_path(doc),
         Some(Command::Generate(generate)) => generate_path(generate),
         Some(Command::Registry(registry)) => registry_path(registry),
+        Some(Command::Routes(routes)) => routes_path(routes),
         None => generate_path(args.generate),
     }
 }
 
 fn check_path(args: CheckArgs) {
     let options = cfs_synapse::CfsOptions::from(args.cfs);
-    cfs_synapse::check_paths_with_options(&args.files, &options).unwrap_or_else(|e| {
+    let result = match args.manifest {
+        Some(path) => cfs_synapse::MissionManifest::load(&path).and_then(|manifest| {
+            cfs_synapse::check_paths_with_manifest_and_options(&args.files, &manifest, &options)
+        }),
+        None => cfs_synapse::check_paths_with_options(&args.files, &options),
+    };
+    result.unwrap_or_else(|e| {
         eprintln!("Error checking inputs:\n{e}");
         process::exit(1);
     });
@@ -255,6 +294,39 @@ fn registry_path(args: RegistryArgs) {
                         process::exit(1);
                     });
             eprintln!("wrote {}", out_path.display());
+        }
+    }
+}
+
+fn routes_path(args: RoutesArgs) {
+    let options = cfs_synapse::CfsOptions::from(args.cfs);
+    let manifest = cfs_synapse::MissionManifest::load(&args.manifest).unwrap_or_else(|e| {
+        eprintln!("Error loading mission manifest:\n{e}");
+        process::exit(1);
+    });
+
+    match args.output {
+        None => {
+            let output =
+                cfs_synapse::generate_routing_header_with_options(&args.files, &manifest, &options)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error generating mission routing header:\n{e}");
+                        process::exit(1);
+                    });
+            print!("{output}");
+        }
+        Some(path) => {
+            let output = cfs_synapse::write_routing_header_with_options(
+                &args.files,
+                &manifest,
+                &path,
+                &options,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Error generating mission routing header:\n{e}");
+                process::exit(1);
+            });
+            eprintln!("wrote {}", output.display());
         }
     }
 }

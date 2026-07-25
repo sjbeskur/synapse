@@ -11,15 +11,18 @@ The registry is an export artifact. It is not the source of truth and it is not 
 
 ## What Is Exported
 
-The current registry is packet-level. It includes `command` and `telemetry` declarations with resolved message IDs and command codes. It does not yet export every struct, table, enum, constant, or field-level schema.
+The current registry is packet-level. It includes `command` and `telemetry`
+declarations with logical topics, optional legacy message IDs, and command
+codes. It does not yet export every struct, table, enum, constant, or
+field-level schema.
 
 Before writing registry output, Synapse loads the same import graph used for generation and validates cFS packet facts. That means registry export fails on problems such as:
 
-- Missing `@mid(...)` on command or telemetry packets.
 - Missing `@cc(...)` on commands.
 - `@cc(...)` used on telemetry, structs, or tables.
-- Unresolved or non-integer MID/CC attributes.
-- Command/telemetry MID bit-pattern mismatches.
+- Duplicate function codes within one logical command topic.
+- Unresolved or non-integer legacy MID/CC attributes.
+- Legacy command/telemetry MID bit-pattern mismatches.
 - Duplicate telemetry MIDs across the collected roots.
 - Duplicate command MID/CC pairs across the collected roots.
 
@@ -46,8 +49,9 @@ Example:
       "qualified_name": "camera_app::SetExposure",
       "kind": "command",
       "source": "mission/camera_app.syn",
-      "mid": 6272,
-      "mid_hex": "0x1880",
+      "topic": "CameraCommands",
+      "mid": null,
+      "mid_hex": null,
       "cc": 2
     },
     {
@@ -56,8 +60,9 @@ Example:
       "qualified_name": "camera_app::CameraStatus",
       "kind": "telemetry",
       "source": "mission/camera_app.syn",
-      "mid": 2177,
-      "mid_hex": "0x0881",
+      "topic": "CameraStatus",
+      "mid": null,
+      "mid_hex": null,
       "cc": null
     }
   ]
@@ -75,14 +80,14 @@ synapse registry --format csv -o packets.csv mission/camera_app.syn
 Header:
 
 ```csv
-namespace,name,qualified_name,kind,source,mid,mid_hex,cc
+namespace,name,qualified_name,kind,source,mid,mid_hex,cc,topic
 ```
 
 Example rows:
 
 ```csv
-"camera_app","SetExposure","camera_app::SetExposure","command","mission/camera_app.syn","6272","0x1880","2"
-"camera_app","CameraStatus","camera_app::CameraStatus","telemetry","mission/camera_app.syn","2177","0x0881",""
+"camera_app","SetExposure","camera_app::SetExposure","command","mission/camera_app.syn","","","2","CameraCommands"
+"camera_app","CameraStatus","camera_app::CameraStatus","telemetry","mission/camera_app.syn","","","","CameraStatus"
 ```
 
 All CSV fields are quoted. Telemetry packets use an empty `cc` field.
@@ -96,8 +101,9 @@ All CSV fields are quoted. Telemetry packets use an empty `cc` field.
 | `qualified_name` | Namespace plus packet name, or just `name` when no namespace is declared. |
 | `kind` | Packet kind: `command` or `telemetry`. |
 | `source` | Source `.syn` file that declared the packet. |
-| `mid` | Resolved numeric cFS message ID as a decimal integer. |
-| `mid_hex` | Same message ID formatted as four-digit uppercase hex, such as `0x0881`. |
+| `topic` | Logical command-group or telemetry topic name. |
+| `mid` | Resolved legacy cFS message ID, or `null`/empty when mission routing owns it. |
+| `mid_hex` | Legacy message ID formatted as four-digit uppercase hex, or `null`/empty. |
 | `cc` | Resolved numeric command code for commands. `null` in JSON and empty in CSV for telemetry. |
 
 ## Intended Uses

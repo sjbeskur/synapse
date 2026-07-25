@@ -225,6 +225,8 @@ fn mission_demo_validates_multiple_roots() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
         .arg("check")
+        .arg("--manifest")
+        .arg(repo.join("examples/mission-demo/mission.toml"))
         .arg(repo.join("examples/mission-demo/syn/nav_app.syn"))
         .arg(repo.join("examples/mission-demo/syn/camera_app.syn"))
         .arg(repo.join("examples/mission-demo/syn/payload_app.syn"))
@@ -334,5 +336,89 @@ fn registry_writes_json_and_csv() {
         fs::read_to_string(csv_path)
             .unwrap()
             .contains("\"status_app::Status\"")
+    );
+}
+
+#[test]
+fn routes_generates_header_from_mission_manifest() {
+    let dir = test_dir("routes");
+    let input = dir.join("camera.syn");
+    fs::write(
+        &input,
+        r#"namespace camera_app
+commands CameraCommands {
+    @cc(1)
+    command SetMode { mode: u8 }
+}
+telemetry CameraStatus { mode: u8 }
+"#,
+    )
+    .unwrap();
+    let manifest = dir.join("mission.toml");
+    fs::write(
+        &manifest,
+        r#"version = 1
+[topics.command]
+"camera_app::CameraCommands" = 0x82
+[topics.telemetry]
+"camera_app::CameraStatus" = 0x83
+"#,
+    )
+    .unwrap();
+    let header = dir.join("generated").join("mission_topics.h");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("routes")
+        .arg("--manifest")
+        .arg(&manifest)
+        .arg("-o")
+        .arg(&header)
+        .arg(&input)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        output.status.success(),
+        "synapse failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let generated = fs::read_to_string(header).unwrap();
+    assert!(generated.contains("#include \"cfe_core_api_base_msgids.h\""));
+    assert!(generated.contains("CAMERA_APP_CAMERA_COMMANDS_TOPICID"));
+    assert!(generated.contains("CFE_PLATFORM_CMD_TOPICID_TO_MIDV"));
+    assert!(generated.contains("CAMERA_APP_CAMERA_STATUS_TOPICID"));
+    assert!(generated.contains("CFE_PLATFORM_TLM_TOPICID_TO_MIDV"));
+}
+
+#[test]
+fn check_with_manifest_rejects_missing_topic_assignment() {
+    let dir = test_dir("check-manifest");
+    let input = dir.join("camera.syn");
+    fs::write(
+        &input,
+        "namespace camera_app\ntelemetry CameraStatus { mode: u8 }",
+    )
+    .unwrap();
+    let manifest = dir.join("mission.toml");
+    fs::write(&manifest, "version = 1\n[topics]\n").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_synapse"))
+        .arg("check")
+        .arg("--manifest")
+        .arg(&manifest)
+        .arg(&input)
+        .output()
+        .expect("run synapse");
+
+    assert!(
+        !output.status.success(),
+        "synapse unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("missing telemetry topic assignment for `camera_app::CameraStatus`")
     );
 }

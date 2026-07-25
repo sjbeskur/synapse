@@ -1,6 +1,6 @@
 # Synapse Routing Model
 
-Status: accepted design direction; implementation in progress.
+Status: implemented for logical-topic validation and C routing-header generation.
 
 ## Boundary
 
@@ -62,29 +62,43 @@ command and telemetry mappings.
 Structure-only generation does not require a mission manifest. It emits ABI
 types and command function codes.
 
-Deployable generation requires a mission manifest. It additionally emits topic
-definitions and MsgId mapping macros, and fails when a logical topic is missing
-an assignment.
+Deployable routing generation requires a mission manifest. It emits topic
+definitions and MsgId mapping macros, and fails when an assignment is missing,
+stale, duplicated, or placed in the wrong command/telemetry section.
 
-Generation never edits the mission manifest. Allocation and synchronization
-are explicit operations so existing assignments cannot be renumbered
-silently.
+Generation never edits the mission manifest, so existing assignments cannot be
+renumbered silently.
+
+Validate a complete mission-visible schema set:
+
+```bash
+synapse check --manifest mission.toml \
+  schemas/camera.syn schemas/navigation.syn
+```
+
+Generate a standalone routing header:
+
+```bash
+synapse routes --manifest mission.toml \
+  -o generated/mission_topics.h \
+  schemas/camera.syn schemas/navigation.syn
+```
 
 ## C Mapping
 
 Generated deployment headers use cFE's mission mapping:
 
 ```c
-#define CAMERA_COMMANDS_TOPICID 0x82U
-#define CAMERA_COMMANDS_MID \
-    CFE_PLATFORM_CMD_TOPICID_TO_MIDV(CAMERA_COMMANDS_TOPICID)
+#define CAMERA_APP_CAMERA_COMMANDS_TOPICID 0x0082U
+#define CAMERA_APP_CAMERA_COMMANDS_MID \
+    CFE_PLATFORM_CMD_TOPICID_TO_MIDV(CAMERA_APP_CAMERA_COMMANDS_TOPICID)
 ```
 
 Applications convert the integer MsgId value at an API boundary:
 
 ```c
 CFE_SB_Subscribe(
-    CFE_SB_ValueToMsgId(CAMERA_COMMANDS_MID),
+    CFE_SB_ValueToMsgId(CAMERA_APP_CAMERA_COMMANDS_MID),
     CommandPipe
 );
 ```

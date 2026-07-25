@@ -88,15 +88,18 @@ CFS_ROOT=/path/to/cFS just test-cfs
 
 ```bash
 synapse check <file.syn> [more-roots.syn ...]
+synapse check --manifest <mission.toml> <file.syn> [more-roots.syn ...]
 synapse doc [-o <out-dir>] <file.syn> [more-roots.syn ...]
 synapse registry [--format <json|csv>] [-o <file>] <file.syn> [more-roots.syn ...]
+synapse routes --manifest <mission.toml> [-o <header.h>] <file.syn> [more-roots.syn ...]
 synapse --lang <c|rust> [-o <out-dir>] <file.syn>
 synapse generate --lang <c|rust> [-o <out-dir>] <file.syn>
 ```
 
-- `check` validates input roots, their import graphs, and cFS codegen support without writing generated output. Multiple roots are checked together for mission-wide telemetry MID and command MID/CC conflicts.
-- `doc` generates static HTML documentation for input roots, their import graphs, packet IDs, command codes, fields, types, and doc comments. Without `-o`, HTML is written to stdout; with `-o`, Synapse writes `index.html`.
+- `check` validates input roots, their import graphs, and cFS codegen support without writing generated output. Add `--manifest` to require complete, correctly typed logical-topic assignments.
+- `doc` generates static HTML documentation for input roots, their import graphs, logical topics, optional legacy packet IDs, command codes, fields, types, and doc comments. Without `-o`, HTML is written to stdout; with `-o`, Synapse writes `index.html`.
 - `registry` emits a validated packet registry for input roots as JSON or CSV. Without `-o`, registry output is written to stdout.
+- `routes` validates a mission TOML file and generates a standalone cFE routing header. It never modifies the manifest.
 - `--msgid-layout <ccsds-v1|opaque>` selects MID validation policy. The default is `ccsds-v1`, which validates the legacy `0x1000` command/telemetry bit. Use `opaque` for missions where cFE treats MsgIds as mission-owned opaque values.
 - `--lang c` generates a cFS C header (`.h`) that includes `cfe.h`.
 - `--lang rust` generates Rust `#[repr(C)]` bindings (`.rs`) that reference `cfs_sys` header types by default.
@@ -124,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The library facade also exposes `check_path`, `check_str`, `generate_rust_file`, `generate_file`, `generate_files`, `generate_path`, and `generate_str` for custom build flows. Path-based generation validates the import graph rooted at the input file. Use `generate_files` when a build should emit the root file plus its transitive imports.
+The library facade also exposes `check_path`, `check_str`, `generate_file`, `generate_files`, `generate_path`, and `generate_str` for custom build flows. Mission-aware builds can load `MissionManifest` and call `check_paths_with_manifest`, `generate_routing_header`, or `write_routing_header`. Path-based generation validates the import graph rooted at the input file. Use `generate_files` when a build should emit the root file plus its transitive imports.
 
 ## Mental Model
 
@@ -150,28 +153,51 @@ enum u8 CameraMode {
 
 Represented enums generate fixed-width C/Rust aliases and named constants. The explicit representation is what makes them safe to use in generated cFS packet and table fields.
 
-Use `command` for Software Bus packets sent to an app:
+Use a `commands` group for Software Bus packets sharing one logical command
+topic. Function codes select the command within that topic:
 
 ```syn
-@mid(0x1880)
-@cc(1)
-command SetMode {
-    mode: CameraMode
+commands CameraCommands {
+    @cc(1)
+    command SetMode {
+        mode: CameraMode
+    }
 }
 ```
 
-Generated commands place `CFE_MSG_CommandHeader_t` first and emit both `_MID` and `_CC` constants. Commands may share a command MID when their literal command codes differ.
+Generated commands place `CFE_MSG_CommandHeader_t` first and emit `_CC`
+constants. The mission manifest assigns the group topic ID.
 
 Use `telemetry` for Software Bus packets published by an app:
 
 ```syn
-@mid(0x0801)
 telemetry NavState {
     position: geometry_msgs::Point
 }
 ```
 
-Generated telemetry packets place `CFE_MSG_TelemetryHeader_t` first.
+Generated telemetry packets place `CFE_MSG_TelemetryHeader_t` first. Each
+telemetry declaration is one logical topic assigned by the mission manifest.
+
+Keep deployment routing in a mission TOML file:
+
+```toml
+version = 1
+
+[topics.command]
+"camera_app::CameraCommands" = 0x82
+
+[topics.telemetry]
+"nav_app::NavState" = 0x83
+```
+
+Validate and generate the cFE mapping header:
+
+```bash
+synapse check --manifest mission.toml schemas/camera.syn schemas/nav.syn
+synapse routes --manifest mission.toml -o generated/mission_topics.h \
+  schemas/camera.syn schemas/nav.syn
+```
 
 Use `table` for cFS Table Services payload data:
 

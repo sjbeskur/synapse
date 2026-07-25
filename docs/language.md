@@ -65,29 +65,36 @@ Represented enums generate fixed-width integer aliases and named constants. In C
 
 Unrepresented enums still parse, but cFS codegen rejects them when used as field types because they do not define an ABI width.
 
-### `command`
+### `commands` and `command`
 
 ```syn
-@mid(0x1880)
-@cc(1)
-command SetMode {
-    mode: CameraMode
+commands CameraCommands {
+    @cc(1)
+    command SetMode {
+        mode: CameraMode
+    }
 }
 ```
 
-Commands generate Software Bus packet structs with `CFE_MSG_CommandHeader_t` as the first C field and `cfs_sys::CFE_MSG_CommandHeader_t` as the first Rust field. They also emit command-code constants from `@cc(...)`.
+A `commands` group defines one logical command topic. Its nested commands
+generate Software Bus packet structs with `CFE_MSG_CommandHeader_t` as the
+first C field and `cfs_sys::CFE_MSG_CommandHeader_t` as the first Rust field.
+Each command requires an `@cc(...)`, unique within the group. The topic ID is
+assigned in the mission manifest rather than the schema.
 
 ### `telemetry`
 
 ```syn
-@mid(0x0801)
 telemetry NavState {
     x: f64
     y: f64
 }
 ```
 
-Telemetry packets generate Software Bus packet structs with `CFE_MSG_TelemetryHeader_t` as the first C field and `cfs_sys::CFE_MSG_TelemetryHeader_t` as the first Rust field.
+Each telemetry declaration defines one logical telemetry topic. Telemetry
+packets generate Software Bus packet structs with `CFE_MSG_TelemetryHeader_t`
+as the first C field and `cfs_sys::CFE_MSG_TelemetryHeader_t` as the first Rust
+field. The topic ID is assigned in the mission manifest.
 
 ### `table`
 
@@ -100,22 +107,27 @@ table NavConfig {
 
 Tables generate plain data structs without cFS Software Bus headers. They are intended for cFS Table Services payload data, not table-management commands.
 
-### `@mid(...)`
+### Mission Topic Assignments
 
-```syn
-@mid(0x1880)
-@cc(1)
-command SetMode {
-    mode: u8
-}
+```toml
+version = 1
+
+[topics.command]
+"camera_app::CameraCommands" = 0x82
+
+[topics.telemetry]
+"nav_app::NavState" = 0x83
 ```
 
-The cFS generator requires `@mid(...)` on `command` and `telemetry` items and requires `@cc(...)` on `command` items. It emits message ID constants for both packet kinds and command-code constants for commands.
+Use `synapse check --manifest mission.toml ...` to validate completeness and
+`synapse routes --manifest mission.toml ...` to emit cFE topic-ID and MsgId
+mapping macros. Command and telemetry topic-ID spaces are checked separately.
+Synapse reads but never modifies the manifest.
 
 > [!NOTE]
-> Current cFS MID validation defaults to cFE `MISSION_MSG_V1` / legacy CCSDS-style MsgIds: command MIDs have bit `0x1000` set, and telemetry MIDs have that bit clear. cFE can be configured for other message-ID layouts where MsgIds are opaque, so this check is a Synapse `0.2.x` policy assumption rather than a universal cFS rule. Use `--msgid-layout opaque` to resolve and check MIDs without command/telemetry bit validation.
-
-Missing MIDs, unresolved symbolic MIDs, missing command codes, duplicate telemetry MIDs, duplicate command MID/CC pairs, and command/telemetry bit-pattern mismatches are cFS codegen errors when values are literal or resolve to visible integer constants. Local constants may be used in attributes, for example `@mid(NAV_TLM_MID)` or `@cc(SET_MODE_CC)`. Directly imported namespace constants may also be used, for example `@mid(nav_app::NAV_TLM_MID)`.
+> Top-level packets using legacy `@mid(...)` syntax remain readable during the
+> transition. New schemas should use command groups and mission topic
+> assignments.
 
 ### Primitive Types
 

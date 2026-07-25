@@ -1,5 +1,25 @@
 # Release Notes
 
+## Unreleased
+
+### Added
+
+- Added logical `commands` groups, with function codes unique within each
+  command topic.
+- Added MID-free telemetry topics.
+- Added versioned mission TOML parsing and strict logical-topic assignment
+  validation.
+- Added `synapse check --manifest` for mission-aware validation.
+- Added `synapse routes --manifest` for generating cFE topic-ID and MsgId
+  mapping headers.
+- Added mission-manifest and routing-header library APIs.
+
+### Changed
+
+- Packet registries and documentation now expose logical topic names and allow
+  legacy MID fields to be absent.
+- Migrated the mission demo from schema-owned MIDs to mission-owned topic IDs.
+
 ## v0.2.13
 
 This release adds configurable cFE message ID layout validation for missions that do not use the legacy CCSDS-style `MISSION_MSG_V1` bit layout.

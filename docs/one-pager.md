@@ -46,15 +46,20 @@ That mission-wide question is the important one. It turns Synapse from a code ge
 ## Example
 
 ```bash
-synapse check mission/nav_app.syn mission/camera_app.syn mission/payload_app.syn
+synapse check --manifest mission.toml \
+  mission/nav_app.syn mission/camera_app.syn mission/payload_app.syn
 ```
 
-This validates each app root, loads its imports, resolves packet IDs, builds an internal mission registry, and reports conflicts like:
+This validates each app root, loads its imports, and checks the human-owned
+topic assignments. It reports problems such as:
 
 ```text
-duplicate telemetry MID `0x0801`
-duplicate command MID/CC pair `0x1881`/`1`
+missing telemetry topic assignment for `nav_app::NavState`
+duplicate function code `1` for command topic `camera_app::CameraCommands`
 ```
+
+`synapse routes --manifest mission.toml ...` then generates the cFE topic-ID
+and MsgId mapping header.
 
 ## Why It Is Relevant
 
@@ -65,7 +70,7 @@ That makes Synapse useful for:
 - cFS apps written in different languages.
 - Missions that need generated C headers plus Rust bindings.
 - Early integration checks before app code lands together.
-- Cleaner ownership of mission IDs and packet contracts.
+- Cleaner ownership of mission topic IDs and packet contracts.
 - Safer evolution of commands and telemetry across releases.
 
 ## Why Not CSV?
@@ -91,9 +96,9 @@ The current `0.2.x` work focuses on safety and clarity:
 - Stronger validation for supported cFS ABI features.
 - More examples and canaries for C, C++, Rust, and mission-level checks.
 - Mission-wide registry checks through `synapse check`.
+- Mission TOML validation and cFE routing-header generation.
 - Machine-readable registry export for downstream databases, ICD tooling, and reports.
 - Searchable documentation output generated from `.syn` files and doc comments.
-- Future mission manifests for repeatable roots and MID range ownership.
 
 See [`registry.md`](registry.md) for the current JSON and CSV packet registry schema.
 

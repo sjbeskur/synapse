@@ -1,7 +1,5 @@
 namespace nav_app
 
-import "mission_ids.syn"
-
 /// Current navigation operating mode.
 enum u8 NavMode {
     /// Initializing sensors and filters.
@@ -23,7 +21,6 @@ struct Vec3 {
 }
 
 /// Navigation state estimate.
-@mid(demo_mission_ids::NAV_STATE_TLM_MID)
 telemetry NavState {
     /// Estimated position.
     position: Vec3
@@ -33,11 +30,12 @@ telemetry NavState {
     mode: NavMode
 }
 
-/// Request a new navigation mode.
-@mid(demo_mission_ids::NAV_CMD_MID)
-@cc(demo_mission_ids::NAV_SET_MODE_CC)
-command SetNavMode {
-    /// Requested mode.
-    mode: NavMode
+/// Commands routed to the navigation application.
+commands NavCommands {
+    /// Request a new navigation mode.
+    @cc(1)
+    command SetNavMode {
+        /// Requested mode.
+        mode: NavMode
+    }
 }
-
