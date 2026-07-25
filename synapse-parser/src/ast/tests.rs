@@ -204,6 +204,33 @@ fn command_packet_kind() {
 }
 
 #[test]
+fn command_group_assigns_logical_topic_to_nested_commands() {
+    let f = p("commands CameraCommands {
+            @cc(1)
+            command SetMode { mode: u8 }
+
+            @cc(2)
+            command SetExposure { exposure_us: u32 }
+        }");
+    assert_eq!(f.items.len(), 2);
+
+    let Item::Command(set_mode) = &f.items[0] else {
+        panic!()
+    };
+    assert_eq!(set_mode.command_group.as_deref(), Some("CameraCommands"));
+    assert_eq!(set_mode.name, "SetMode");
+
+    let Item::Command(set_exposure) = &f.items[1] else {
+        panic!()
+    };
+    assert_eq!(
+        set_exposure.command_group.as_deref(),
+        Some("CameraCommands")
+    );
+    assert_eq!(set_exposure.name, "SetExposure");
+}
+
+#[test]
 fn telemetry_packet_kind() {
     let f = p("@mid(0x0801)\ntelemetry NavState { x: f64 }");
     let Item::Telemetry(m) = &f.items[0] else {

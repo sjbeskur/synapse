@@ -38,6 +38,59 @@ fn command_uses_command_header() {
 }
 
 #[test]
+fn command_group_generates_structures_and_function_codes_without_mids() {
+    let out = codegen(
+        "commands CameraCommands {
+            @cc(1)
+            command SetMode { mode: u8 }
+
+            @cc(2)
+            command SetExposure { exposure_us: u32 }
+        }",
+    );
+
+    assert!(!out.contains("/* Message IDs */"));
+    assert!(out.contains("#define SET_MODE_CC   1U"));
+    assert!(out.contains("#define SET_EXPOSURE_CC   2U"));
+    assert!(out.contains("} SetMode_t;"));
+    assert!(out.contains("} SetExposure_t;"));
+}
+
+#[test]
+fn telemetry_generates_structure_without_mid() {
+    let out = codegen("telemetry CameraStatus { mode: u8 }");
+
+    assert!(!out.contains("/* Message IDs */"));
+    assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
+    assert!(out.contains("} CameraStatus_t;"));
+}
+
+#[test]
+fn command_group_rejects_duplicate_function_codes() {
+    let file = parse(
+        "commands CameraCommands {
+            @cc(1)
+            command SetMode { mode: u8 }
+
+            @cc(1)
+            command SetExposure { exposure_us: u32 }
+        }",
+    )
+    .unwrap();
+    let err = try_generate_c(&file).unwrap_err();
+
+    assert_eq!(
+        err,
+        CodegenError::DuplicateCommandCodeInGroup {
+            group: "CameraCommands".to_string(),
+            cc: "1U".to_string(),
+            first_packet: "SetMode".to_string(),
+            second_packet: "SetExposure".to_string(),
+        }
+    );
+}
+
+#[test]
 fn telemetry_uses_telemetry_header() {
     let out = codegen("@mid(0x0801)\ntelemetry NavState { x: f64 }");
     assert!(out.contains("#define NAV_STATE_MID  0x0801U"));
@@ -334,7 +387,8 @@ fn opaque_msgid_layout_accepts_non_ccsds_telemetry_mid_bits() {
         collect_cfs_packets_with_constants_and_options(&file, &ResolvedConstants::new(), &options)
             .unwrap();
 
-    assert_eq!(packets[0].mid, 0x1880);
+    assert_eq!(packets[0].topic, "Status");
+    assert_eq!(packets[0].mid, Some(0x1880));
     assert_eq!(packets[0].kind, CfsPacketKind::Telemetry);
 }
 
@@ -679,15 +733,13 @@ fn rust_rejects_legacy_message() {
 }
 
 #[test]
-fn rust_rejects_telemetry_without_mid() {
+fn rust_generates_telemetry_without_mid() {
     let file = parse("telemetry Status { x: f32 }").unwrap();
-    let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
-    assert_eq!(
-        err,
-        CodegenError::MissingMid {
-            packet: "Status".to_string(),
-        }
-    );
+    let out = try_generate_rust(&file, &RustOptions::default()).unwrap();
+
+    assert!(!out.contains("// Message IDs"));
+    assert!(out.contains("pub struct Status"));
+    assert!(out.contains("pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t"));
 }
 
 #[test]

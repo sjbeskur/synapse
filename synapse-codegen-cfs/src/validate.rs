@@ -72,6 +72,7 @@ pub(crate) fn validate_supported(
     let enum_defs = enum_defs(file);
     let mut telemetry_mids = HashMap::new();
     let mut command_codes = HashMap::new();
+    let mut command_group_codes = HashMap::new();
     for item in &file.items {
         validate_item(
             item,
@@ -80,6 +81,7 @@ pub(crate) fn validate_supported(
             &enum_defs,
             &mut telemetry_mids,
             &mut command_codes,
+            &mut command_group_codes,
         )?;
     }
     Ok(())
@@ -92,9 +94,17 @@ fn validate_item(
     enum_defs: &HashMap<String, &EnumDef>,
     telemetry_mids: &mut HashMap<u64, String>,
     command_codes: &mut HashMap<(u64, u64), String>,
+    command_group_codes: &mut HashMap<(String, u64), String>,
 ) -> Result<(), CodegenError> {
     match item {
         Item::Struct(s) | Item::Table(s) => validate_plain_item(s, enum_defs),
+        Item::Command(m) if m.command_group.is_some() => {
+            validate_grouped_command_item(m, constants, enum_defs, command_group_codes)
+        }
+        Item::Telemetry(m) if find_mid_attr(&m.attrs).is_none() => {
+            reject_telemetry_command_code(m)?;
+            validate_fields(&m.name, &m.fields, enum_defs)
+        }
         Item::Command(m) | Item::Telemetry(m) => validate_packet_item(
             m,
             constants,
@@ -105,6 +115,37 @@ fn validate_item(
         ),
         _ => validate_non_packet_item(item),
     }
+}
+
+fn validate_grouped_command_item(
+    command: &MessageDef,
+    constants: &ConstContext<'_>,
+    enum_defs: &HashMap<String, &EnumDef>,
+    command_group_codes: &mut HashMap<(String, u64), String>,
+) -> Result<(), CodegenError> {
+    if find_mid_attr(&command.attrs).is_some() {
+        return Err(CodegenError::MessageIdUnsupported {
+            item: command.name.clone(),
+        });
+    }
+
+    let group = command
+        .command_group
+        .as_ref()
+        .expect("grouped command has a logical topic");
+    let cc = required_command_code(command)?;
+    let cc_value = resolved_command_code(command, cc, constants)?;
+    let key = (group.clone(), cc_value);
+    if let Some(first_packet) = command_group_codes.insert(key, command.name.clone()) {
+        return Err(CodegenError::DuplicateCommandCodeInGroup {
+            group: group.clone(),
+            cc: literal_cc_str(cc, constants),
+            first_packet,
+            second_packet: command.name.clone(),
+        });
+    }
+
+    validate_fields(&command.name, &command.fields, enum_defs)
 }
 
 fn validate_packet_item(
@@ -167,15 +208,24 @@ fn cfs_packet_from_item(
         return Ok(None);
     };
 
-    let mid = required_mid(packet)?;
-    let mid_value = resolved_mid(packet, mid, constants)?;
-    validate_mid_range(packet, mid_value, mid, constants, options)?;
+    let mid_value = if let Some(mid) = find_mid_attr(&packet.attrs) {
+        let value = resolved_mid(packet, mid, constants)?;
+        validate_mid_range(packet, value, mid, constants, options)?;
+        Some(value)
+    } else {
+        None
+    };
     let (kind, cc_value) = collected_packet_kind(packet, constants)?;
+    let topic = packet
+        .command_group
+        .clone()
+        .unwrap_or_else(|| packet.name.clone());
 
     Ok(Some(CfsPacket {
         namespace: namespace.to_vec(),
         name: packet.name.clone(),
         kind,
+        topic,
         mid: mid_value,
         cc: cc_value,
     }))

@@ -67,8 +67,10 @@ pub struct CfsPacket {
     pub name: String,
     /// Packet kind.
     pub kind: CfsPacketKind,
-    /// Resolved numeric message ID.
-    pub mid: u64,
+    /// Logical command or telemetry topic name.
+    pub topic: String,
+    /// Resolved legacy numeric message ID, when the schema still supplies one.
+    pub mid: Option<u64>,
     /// Resolved numeric command code for command packets.
     pub cc: Option<u64>,
 }

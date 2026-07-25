@@ -612,8 +612,15 @@ struct MissionPacket {
     namespace: Vec<String>,
     name: String,
     kind: synapse_codegen_cfs::CfsPacketKind,
-    mid: u64,
+    topic: String,
+    mid: Option<u64>,
     cc: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum MissionRoute {
+    LegacyMid(u64),
+    LogicalTopic(Vec<String>),
 }
 
 fn validate_mission_registry(
@@ -621,8 +628,8 @@ fn validate_mission_registry(
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
     options: &CfsOptions,
 ) -> Result<(), Error> {
-    let mut telemetry_mids = HashMap::<u64, MissionPacket>::new();
-    let mut command_codes = HashMap::<(u64, u64), MissionPacket>::new();
+    let mut telemetry_routes = HashMap::<MissionRoute, MissionPacket>::new();
+    let mut command_codes = HashMap::<(MissionRoute, u64), MissionPacket>::new();
 
     for unit in &graph.units {
         let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
@@ -634,7 +641,7 @@ fn validate_mission_registry(
 
         for packet in packets {
             let packet = mission_packet(unit, packet);
-            register_mission_packet(&packet, &mut telemetry_mids, &mut command_codes)?;
+            register_mission_packet(&packet, &mut telemetry_routes, &mut command_codes)?;
         }
     }
 
@@ -647,6 +654,7 @@ fn mission_packet(unit: &ParsedUnit, packet: synapse_codegen_cfs::CfsPacket) -> 
         namespace: packet.namespace,
         name: packet.name,
         kind: packet.kind,
+        topic: packet.topic,
         mid: packet.mid,
         cc: packet.cc,
     }
@@ -654,12 +662,12 @@ fn mission_packet(unit: &ParsedUnit, packet: synapse_codegen_cfs::CfsPacket) -> 
 
 fn register_mission_packet(
     packet: &MissionPacket,
-    telemetry_mids: &mut HashMap<u64, MissionPacket>,
-    command_codes: &mut HashMap<(u64, u64), MissionPacket>,
+    telemetry_routes: &mut HashMap<MissionRoute, MissionPacket>,
+    command_codes: &mut HashMap<(MissionRoute, u64), MissionPacket>,
 ) -> Result<(), Error> {
     match packet.kind {
         synapse_codegen_cfs::CfsPacketKind::Telemetry => {
-            register_mission_telemetry(packet, telemetry_mids)
+            register_mission_telemetry(packet, telemetry_routes)
         }
         synapse_codegen_cfs::CfsPacketKind::Command => {
             register_mission_command(packet, command_codes)
@@ -669,12 +677,23 @@ fn register_mission_packet(
 
 fn register_mission_telemetry(
     packet: &MissionPacket,
-    telemetry_mids: &mut HashMap<u64, MissionPacket>,
+    telemetry_routes: &mut HashMap<MissionRoute, MissionPacket>,
 ) -> Result<(), Error> {
-    if let Some(first) = telemetry_mids.insert(packet.mid, packet.clone()) {
+    let route = mission_route(packet);
+    if let Some(first) = telemetry_routes.insert(route, packet.clone()) {
+        if let Some(mid) = packet.mid {
+            return Err(Error::Mission(format!(
+                "duplicate telemetry MID `{}` across mission packets `{}` ({}) and `{}` ({})",
+                format_mid(mid),
+                packet_name(&first),
+                first.path.display(),
+                packet_name(packet),
+                packet.path.display()
+            )));
+        }
         return Err(Error::Mission(format!(
-            "duplicate telemetry MID `{}` across mission packets `{}` ({}) and `{}` ({})",
-            format_mid(packet.mid),
+            "duplicate telemetry topic `{}` across mission packets `{}` ({}) and `{}` ({})",
+            topic_name(packet),
             packet_name(&first),
             first.path.display(),
             packet_name(packet),
@@ -686,16 +705,27 @@ fn register_mission_telemetry(
 
 fn register_mission_command(
     packet: &MissionPacket,
-    command_codes: &mut HashMap<(u64, u64), MissionPacket>,
+    command_codes: &mut HashMap<(MissionRoute, u64), MissionPacket>,
 ) -> Result<(), Error> {
     let cc = packet
         .cc
         .expect("cFS packet collector resolves command codes");
-    if let Some(first) = command_codes.insert((packet.mid, cc), packet.clone()) {
+    if let Some(first) = command_codes.insert((mission_route(packet), cc), packet.clone()) {
+        if let Some(mid) = packet.mid {
+            return Err(Error::Mission(format!(
+                "duplicate command MID/CC pair `{}`/`{}` across mission packets `{}` ({}) and `{}` ({})",
+                format_mid(mid),
+                cc,
+                packet_name(&first),
+                first.path.display(),
+                packet_name(packet),
+                packet.path.display()
+            )));
+        }
         return Err(Error::Mission(format!(
-            "duplicate command MID/CC pair `{}`/`{}` across mission packets `{}` ({}) and `{}` ({})",
-            format_mid(packet.mid),
+            "duplicate function code `{}` for command topic `{}` across commands `{}` ({}) and `{}` ({})",
             cc,
+            topic_name(packet),
             packet_name(&first),
             first.path.display(),
             packet_name(packet),
@@ -703,6 +733,22 @@ fn register_mission_command(
         )));
     }
     Ok(())
+}
+
+fn mission_route(packet: &MissionPacket) -> MissionRoute {
+    if let Some(mid) = packet.mid {
+        MissionRoute::LegacyMid(mid)
+    } else {
+        let mut topic = packet.namespace.clone();
+        topic.push(packet.topic.clone());
+        MissionRoute::LogicalTopic(topic)
+    }
+}
+
+fn topic_name(packet: &MissionPacket) -> String {
+    let mut topic = packet.namespace.clone();
+    topic.push(packet.topic.clone());
+    topic.join("::")
 }
 
 fn packet_name(packet: &MissionPacket) -> String {
@@ -1208,6 +1254,49 @@ command SetMode {
         assert!(json.contains("\"mid\": 6272"));
         assert!(json.contains("\"mid_hex\": \"0x1880\""));
         assert!(json.contains("\"cc\": 2"));
+    }
+
+    #[test]
+    fn logical_topics_validate_and_render_without_mids() {
+        let dir = test_dir("logical-topics-without-mids");
+        let input = dir.join("camera.syn");
+        fs::write(
+            &input,
+            r#"namespace camera_app
+
+commands CameraCommands {
+    @cc(1)
+    command SetMode {
+        mode: u8
+    }
+
+    @cc(2)
+    command SetExposure {
+        exposure_us: u32
+    }
+}
+
+telemetry CameraStatus {
+    mode: u8
+}
+"#,
+        )
+        .unwrap();
+
+        check_path(&input).unwrap();
+
+        let json = generate_registry([&input], RegistryFormat::Json).unwrap();
+        assert!(json.contains("\"qualified_name\": \"camera_app::SetMode\""));
+        assert!(json.contains("\"topic\": \"CameraCommands\""));
+        assert!(json.contains("\"qualified_name\": \"camera_app::CameraStatus\""));
+        assert!(json.contains("\"topic\": \"CameraStatus\""));
+        assert!(json.contains("\"mid\": null"));
+        assert!(json.contains("\"mid_hex\": null"));
+
+        let html = generate_docs([&input]).unwrap();
+        assert!(html.contains("CameraCommands"));
+        assert!(html.contains("CameraStatus"));
+        assert!(!html.contains(">MID<"));
     }
 
     #[test]

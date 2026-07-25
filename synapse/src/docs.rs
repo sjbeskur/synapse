@@ -404,10 +404,17 @@ fn render_packet_doc(
     render_item_title(out, unit, kind, &packet.name, context);
     render_doc_lines_html(out, &packet.doc);
     if let Some(fact) = fact {
+        out.push_str("<dl>");
         out.push_str(&format!(
-            "<dl><dt>MID</dt><dd><code>{}</code></dd>",
-            escape_html(&format_mid(fact.mid))
+            "<dt>Topic</dt><dd><code>{}</code></dd>",
+            escape_html(&fact.topic)
         ));
+        if let Some(mid) = fact.mid {
+            out.push_str(&format!(
+                "<dt>MID</dt><dd><code>{}</code></dd>",
+                escape_html(&format_mid(mid))
+            ));
+        }
         if let Some(cc) = fact.cc {
             out.push_str(&format!("<dt>CC</dt><dd><code>{cc}</code></dd>"));
         }
@@ -619,8 +626,11 @@ fn packet_search_text(
         packet.doc.join(" "),
     ];
     if let Some(fact) = fact {
-        parts.push(format_mid(fact.mid));
-        parts.push(fact.mid.to_string());
+        parts.push(fact.topic.clone());
+        if let Some(mid) = fact.mid {
+            parts.push(format_mid(mid));
+            parts.push(mid.to_string());
+        }
         if let Some(cc) = fact.cc {
             parts.push(cc.to_string());
         }

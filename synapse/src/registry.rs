@@ -11,7 +11,8 @@ struct RegistryPacket {
     namespace: Vec<String>,
     name: String,
     kind: synapse_codegen_cfs::CfsPacketKind,
-    mid: u64,
+    topic: String,
+    mid: Option<u64>,
     cc: Option<u64>,
 }
 
@@ -47,6 +48,7 @@ fn collect_registry_packets(
             namespace: packet.namespace,
             name: packet.name,
             kind: packet.kind,
+            topic: packet.topic,
             mid: packet.mid,
             cc: packet.cc,
         }));
@@ -78,11 +80,23 @@ fn render_registry_json(packets: &[RegistryPacket]) -> String {
             "      \"source\": {},\n",
             json_string(&packet.source.display().to_string())
         ));
-        out.push_str(&format!("      \"mid\": {},\n", packet.mid));
         out.push_str(&format!(
-            "      \"mid_hex\": {},\n",
-            json_string(&format_mid(packet.mid))
+            "      \"topic\": {},\n",
+            json_string(&packet.topic)
         ));
+        match packet.mid {
+            Some(mid) => {
+                out.push_str(&format!("      \"mid\": {mid},\n"));
+                out.push_str(&format!(
+                    "      \"mid_hex\": {},\n",
+                    json_string(&format_mid(mid))
+                ));
+            }
+            None => {
+                out.push_str("      \"mid\": null,\n");
+                out.push_str("      \"mid_hex\": null,\n");
+            }
+        }
         match packet.cc {
             Some(cc) => out.push_str(&format!("      \"cc\": {cc}\n")),
             None => out.push_str("      \"cc\": null\n"),
@@ -94,7 +108,7 @@ fn render_registry_json(packets: &[RegistryPacket]) -> String {
 }
 
 fn render_registry_csv(packets: &[RegistryPacket]) -> String {
-    let mut out = String::from("namespace,name,qualified_name,kind,source,mid,mid_hex,cc\n");
+    let mut out = String::from("namespace,name,qualified_name,kind,source,mid,mid_hex,cc,topic\n");
     for packet in packets {
         let fields = [
             packet.namespace.join("::"),
@@ -102,9 +116,10 @@ fn render_registry_csv(packets: &[RegistryPacket]) -> String {
             registry_packet_name(packet),
             registry_kind(packet.kind).to_string(),
             packet.source.display().to_string(),
-            packet.mid.to_string(),
-            format_mid(packet.mid),
+            packet.mid.map(|mid| mid.to_string()).unwrap_or_default(),
+            packet.mid.map(format_mid).unwrap_or_default(),
             packet.cc.map(|cc| cc.to_string()).unwrap_or_default(),
+            packet.topic.clone(),
         ];
         out.push_str(
             &fields

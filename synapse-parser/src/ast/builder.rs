@@ -14,22 +14,33 @@ pub fn parse(input: &str) -> Result<SynFile, Error<Rule>> {
 // ── Builders ──────────────────────────────────────────────────────────────────
 
 fn build_file(pair: Pair<Rule>) -> SynFile {
-    let items = pair
-        .into_inner()
-        .filter_map(|p| match p.as_rule() {
-            Rule::namespace_decl => Some(Item::Namespace(build_namespace(p))),
-            Rule::import_decl => Some(Item::Import(build_import(p))),
-            Rule::const_decl => Some(Item::Const(build_const(p))),
-            Rule::enum_def => Some(Item::Enum(build_enum(p))),
-            Rule::struct_def => Some(Item::Struct(build_struct(p))),
-            Rule::table_def => Some(Item::Table(build_struct(p))),
-            Rule::command_def => Some(Item::Command(build_packet(p, PacketKind::Command))),
-            Rule::telemetry_def => Some(Item::Telemetry(build_packet(p, PacketKind::Telemetry))),
-            Rule::message_def => Some(Item::Message(build_packet(p, PacketKind::Message))),
-            Rule::EOI => None,
-            r => unreachable!("unexpected rule: {:?}", r),
-        })
-        .collect();
+    let mut items = Vec::new();
+    for pair in pair.into_inner() {
+        match pair.as_rule() {
+            Rule::namespace_decl => items.push(Item::Namespace(build_namespace(pair))),
+            Rule::import_decl => items.push(Item::Import(build_import(pair))),
+            Rule::const_decl => items.push(Item::Const(build_const(pair))),
+            Rule::enum_def => items.push(Item::Enum(build_enum(pair))),
+            Rule::struct_def => items.push(Item::Struct(build_struct(pair))),
+            Rule::table_def => items.push(Item::Table(build_struct(pair))),
+            Rule::command_group_def => items.extend(build_command_group(pair)),
+            Rule::command_def => {
+                items.push(Item::Command(build_packet(pair, PacketKind::Command, None)));
+            }
+            Rule::telemetry_def => {
+                items.push(Item::Telemetry(build_packet(
+                    pair,
+                    PacketKind::Telemetry,
+                    None,
+                )));
+            }
+            Rule::message_def => {
+                items.push(Item::Message(build_packet(pair, PacketKind::Message, None)));
+            }
+            Rule::EOI => {}
+            rule => unreachable!("unexpected rule: {rule:?}"),
+        }
+    }
     SynFile { items }
 }
 
@@ -106,7 +117,16 @@ fn build_struct(pair: Pair<Rule>) -> StructDef {
     }
 }
 
-fn build_packet(pair: Pair<Rule>, kind: PacketKind) -> MessageDef {
+fn build_command_group(pair: Pair<Rule>) -> Vec<Item> {
+    let mut inner = pair.into_inner().peekable();
+    let _doc = extract_doc(&mut inner);
+    let group = inner.next().unwrap().as_str().to_string();
+    inner
+        .map(|pair| Item::Command(build_packet(pair, PacketKind::Command, Some(group.clone()))))
+        .collect()
+}
+
+fn build_packet(pair: Pair<Rule>, kind: PacketKind, command_group: Option<String>) -> MessageDef {
     let mut inner = pair.into_inner().peekable();
     let doc = extract_doc(&mut inner);
     let attrs = extract_attrs(&mut inner);
@@ -114,6 +134,7 @@ fn build_packet(pair: Pair<Rule>, kind: PacketKind) -> MessageDef {
     let fields = inner.map(build_field).collect();
     MessageDef {
         kind,
+        command_group,
         name,
         fields,
         doc,

@@ -53,6 +53,13 @@ pub enum CodegenError {
         first_packet: String,
         second_packet: String,
     },
+    /// Function codes must be unique within one logical command topic.
+    DuplicateCommandCodeInGroup {
+        group: String,
+        cc: String,
+        first_packet: String,
+        second_packet: String,
+    },
     /// Literal command/telemetry MIDs must match the expected cFS command bit pattern.
     MidRangeMismatch {
         packet: String,
@@ -93,9 +100,9 @@ impl fmt::Display for CodegenError {
             CodegenError::MissingCommandCode { .. }
             | CodegenError::CommandCodeUnsupported { .. }
             | CodegenError::CommandCodeValueUnsupported { .. } => fmt_command_error(self, f),
-            CodegenError::DuplicateMid { .. } | CodegenError::DuplicateCommandCode { .. } => {
-                fmt_duplicate_error(self, f)
-            }
+            CodegenError::DuplicateMid { .. }
+            | CodegenError::DuplicateCommandCode { .. }
+            | CodegenError::DuplicateCommandCodeInGroup { .. } => fmt_duplicate_error(self, f),
         }
     }
 }
@@ -261,6 +268,15 @@ fn fmt_duplicate_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt:
         } => write!(
             f,
             "duplicate command MID/CC pair `{mid}`/`{cc}` used by packets `{first_packet}` and `{second_packet}`"
+        ),
+        CodegenError::DuplicateCommandCodeInGroup {
+            group,
+            cc,
+            first_packet,
+            second_packet,
+        } => write!(
+            f,
+            "duplicate function code `{cc}` in command topic `{group}` used by commands `{first_packet}` and `{second_packet}`"
         ),
         _ => unreachable!("non-duplicate error passed to fmt_duplicate_error"),
     }

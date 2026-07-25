@@ -210,6 +210,19 @@ fn command_basic() {
 }
 
 #[test]
+fn command_group_basic() {
+    assert!(parses_file(
+        "commands CameraCommands {
+            @cc(1)
+            command SetMode { mode: u8 }
+
+            @cc(2)
+            command SetExposure { exposure_us: u32 }
+        }"
+    ));
+}
+
+#[test]
 fn telemetry_basic() {
     assert!(parses_file(
         "@mid(0x0801)\ntelemetry NavState { x: f64  y: f64 }"
