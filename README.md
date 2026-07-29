@@ -14,6 +14,10 @@ Synapse is a small interface definition language and code generator for NASA cFS
 
 Install `synapse` with the path that best fits your environment.
 
+For the complete 0.3 workflow—logical topics, `mission.toml`, validation,
+packet bindings, and cFE routing-header generation—follow the
+[Synapse 0.3 Quick Start](docs/quick-start.md).
+
 For C developers and CI jobs without Rust installed, download a prebuilt binary from GitHub Releases:
 
 ```bash
