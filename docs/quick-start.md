@@ -8,6 +8,20 @@ The commands below run from a Synapse source checkout and use the checked-in
 [`mission-demo`](../examples/mission-demo) schemas. If `synapse` is already
 installed, replace `cargo run -p cfs-synapse --` with `synapse`.
 
+## 0.3 Support Scope
+
+Synapse 0.3 targets standard, non-EDS cFS builds. Generated C headers are the
+primary flight-integration output. The application still owns its cFE
+lifecycle and calls APIs such as `CFE_MSG_Init`, `CFE_SB_Subscribe`,
+`CFE_SB_ReceiveBuffer`, and `CFE_SB_TransmitMsg`.
+
+Generated Rust is intentionally limited to `#[repr(C)]` ABI types. Synapse and
+the repository's `cfs-sys` helper do not provide Rust wrappers for cFE runtime
+APIs or a Rust application framework.
+
+EDS-enabled builds are outside the 0.3 scope because EDS generates and owns the
+component interface headers.
+
 ## 1. Define Logical Topics
 
 A `.syn` schema owns packet structure and logical topic names. Commands belong
@@ -121,6 +135,8 @@ cargo run -p cfs-synapse -- routes \
 The routing header maps mission topic IDs through the cFE platform macros:
 
 ```c
+#include "cfe_core_api_msgid_mapping.h"
+
 #define CAMERA_APP_CAMERA_COMMANDS_TOPICID  0x0082U
 #define CAMERA_APP_CAMERA_COMMANDS_MID      CFE_PLATFORM_CMD_TOPICID_TO_MIDV(CAMERA_APP_CAMERA_COMMANDS_TOPICID)
 ```
@@ -134,7 +150,43 @@ CFE_SB_Subscribe(
 );
 ```
 
-## 6. Optional Documentation and Registry Outputs
+## 6. Use the Generated C Type in a cFS Application
+
+Include both generated artifacts and initialize a telemetry packet through the
+cFE Message API:
+
+```c
+#include "camera_app.h"
+#include "mission_topics.h"
+
+camera_app_CameraStatus_t CameraStatus;
+
+CFE_MSG_Init(
+    CFE_MSG_PTR(CameraStatus.Header),
+    CFE_SB_ValueToMsgId(CAMERA_APP_CAMERA_STATUS_MID),
+    sizeof(CameraStatus)
+);
+```
+
+Fill the generated payload fields, timestamp the packet, and transmit it
+through the Software Bus:
+
+```c
+CameraStatus.mode            = CAMERA_APP_CAMERA_MODE_IMAGING;
+CameraStatus.frames_captured = FramesCaptured;
+CameraStatus.detector_temp_c = DetectorTempC;
+
+CFE_SB_TimeStampMsg(CFE_MSG_PTR(CameraStatus.Header));
+CFE_SB_TransmitMsg(CFE_MSG_PTR(CameraStatus.Header), true);
+```
+
+Always use cFE Message and Software Bus APIs to initialize, inspect, and modify
+header fields. Synapse generates the packet layout and routing constants; it
+does not generate an application main loop, command dispatcher, or error
+handling. Production application code must check the status returned by each
+cFE API call.
+
+## 7. Optional Documentation and Registry Outputs
 
 Generate searchable HTML documentation:
 
@@ -167,6 +219,7 @@ cFE MsgId values remain mission/platform-owned and are not registry fields.
 - Validate the complete mission schema set when using `--manifest`.
 - Commit the schema, manifest, and generated routing header together when your
   project checks generated artifacts into source control.
+- Use cFE APIs rather than accessing generated message-header bits directly.
 
 For more detail, see the [language reference](language.md), the
 [mission-routing guide](mission.md), and the

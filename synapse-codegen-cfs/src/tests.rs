@@ -140,6 +140,16 @@ fn c_rejects_command_without_cc() {
 }
 
 #[test]
+fn c_rejects_command_code_outside_u16_range() {
+    let file = parse("commands NavCommands { @cc(65536) command SetMode { mode: u8 } }").unwrap();
+    let err = try_generate_c(&file).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "command `SetMode` has function code `65536` outside the supported `u16` range"
+    );
+}
+
+#[test]
 fn c_rejects_cc_on_telemetry() {
     let file = parse("@cc(1)\ntelemetry Status { x: f32 }").unwrap();
     let err = try_generate_c(&file).unwrap_err();

@@ -337,7 +337,7 @@ telemetry CameraStatus { mode: u8 }
         String::from_utf8_lossy(&output.stderr)
     );
     let generated = fs::read_to_string(header).unwrap();
-    assert!(generated.contains("#include \"cfe_core_api_base_msgids.h\""));
+    assert!(generated.contains("#include \"cfe_core_api_msgid_mapping.h\""));
     assert!(generated.contains("CAMERA_APP_CAMERA_COMMANDS_TOPICID"));
     assert!(generated.contains("CFE_PLATFORM_CMD_TOPICID_TO_MIDV"));
     assert!(generated.contains("CAMERA_APP_CAMERA_STATUS_TOPICID"));

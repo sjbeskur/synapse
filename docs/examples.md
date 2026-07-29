@@ -49,7 +49,9 @@ just gen-geometry
 
 The parser crate also has exploratory examples under `synapse-parser/examples`.
 
-- [`sample.syn`](../synapse-parser/examples/sample.syn): broad parser syntax coverage, including some features that are parsed but not fully generated in `0.1.x`.
+- [`sample.syn`](../synapse-parser/examples/sample.syn): broad parser syntax
+  coverage, including features that parse but remain outside supported cFS ABI
+  generation.
 - [`geometry.syn`](../synapse-parser/examples/geometry.syn): older parser-oriented geometry sample.
 - [`parse_synapse.rs`](../synapse-parser/examples/parse_synapse.rs): small parser inspection utility.
 

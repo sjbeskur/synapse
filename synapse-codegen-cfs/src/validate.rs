@@ -263,9 +263,18 @@ fn resolved_command_code(
     cc: &Literal,
     constants: &ConstContext<'_>,
 ) -> Result<u64, CodegenError> {
-    resolve_literal_to_u64(cc, constants).ok_or_else(|| CodegenError::CommandCodeValueUnsupported {
-        packet: packet.name.clone(),
-    })
+    let value = resolve_literal_to_u64(cc, constants).ok_or_else(|| {
+        CodegenError::CommandCodeValueUnsupported {
+            packet: packet.name.clone(),
+        }
+    })?;
+    if value > u16::MAX as u64 {
+        return Err(CodegenError::CommandCodeOutOfRange {
+            packet: packet.name.clone(),
+            value,
+        });
+    }
+    Ok(value)
 }
 
 fn required_command_code_value(

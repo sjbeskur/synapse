@@ -89,6 +89,8 @@ synapse routes --manifest mission.toml \
 Generated deployment headers use cFE's mission mapping:
 
 ```c
+#include "cfe_core_api_msgid_mapping.h"
+
 #define CAMERA_APP_CAMERA_COMMANDS_TOPICID 0x0082U
 #define CAMERA_APP_CAMERA_COMMANDS_MID \
     CFE_PLATFORM_CMD_TOPICID_TO_MIDV(CAMERA_APP_CAMERA_COMMANDS_TOPICID)
@@ -105,3 +107,7 @@ CFE_SB_Subscribe(
 
 Synapse does not interpret MsgId bits or select `MISSION_MSG_V1` versus
 `MISSION_MSG_V2`; that is owned by cFE mission/platform configuration.
+
+Synapse 0.3 generates this integration for standard, non-EDS cFS builds.
+EDS-enabled builds own interface-header generation and are not supported by
+this release.

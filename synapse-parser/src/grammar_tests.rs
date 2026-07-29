@@ -5,7 +5,7 @@ fn parses(rule: Rule, input: &str) -> bool {
     SynapseParser::parse(rule, input)
         .map(|mut p| {
             p.next()
-                .map_or(false, |pair| pair.as_span().end() == input.len())
+                .is_some_and(|pair| pair.as_span().end() == input.len())
         })
         .unwrap_or(false)
 }

@@ -3,23 +3,17 @@
 This document records the current Synapse IDL surface for cFS code generation.
 
 See `docs/examples.md` for current `.syn` examples and generated output links.
-See `docs/roadmap-0.2.md` for the active `0.2.x` language review.
+See `docs/roadmap-0.3.md` for the active `0.3.x` release scope.
 
 ## Release Posture
 
-`0.1.x` should be treated as a stabilization and inventory release:
+`0.3.x` keeps Synapse focused as a small message-definition and code-generation
+utility. It targets standard, non-EDS cFS builds, generates production-oriented
+C headers, and emits Rust ABI types without wrapping cFE runtime APIs.
 
-- Keep the current syntax mostly intact.
-- Document what code generation supports today.
-- Mark parsed-only features clearly.
-- Avoid large language redesigns before the first publish.
-- Prefer conservative behavior over broad promises.
+## Stable For 0.3
 
-`0.2.x` is the right place for deliberate IDL changes after the first release has real usage feedback.
-
-## Stable For 0.1
-
-These features are part of the intended `0.1.x` authoring path.
+These features are part of the intended `0.3.x` authoring path.
 
 ### `namespace`
 
@@ -80,7 +74,9 @@ A `commands` group defines one logical command topic. Its nested commands
 generate Software Bus packet structs with `CFE_MSG_CommandHeader_t` as the
 first C field and `cfs_sys::CFE_MSG_CommandHeader_t` as the first Rust field.
 Each command requires an `@cc(...)`, unique within the group. The topic ID is
-assigned in the mission manifest rather than the schema.
+assigned in the mission manifest rather than the schema. Resolved function
+codes must fit the generated `u16` ABI constant; a mission's selected cFE
+message implementation may impose a narrower range.
 
 ### `telemetry`
 
@@ -248,7 +244,7 @@ struct Point {
 
 Defaults parse into the AST, but generated C/Rust structs do not currently use them to create constructors, initializers, or validation metadata.
 
-In `0.2.x`, cFS codegen rejects field defaults until concrete initializer or defaulting semantics exist.
+cFS codegen rejects field defaults until concrete initializer or defaulting semantics exist.
 
 ### Optional Fields
 
@@ -258,31 +254,19 @@ struct Status {
 }
 ```
 
-Optional markers parse into the AST, but generated ABI structs do not currently encode optionality. Avoid optional fields for generated cFS ABI payloads in `0.1.x`.
+Optional markers parse into the AST, but generated ABI structs do not currently encode optionality.
 
-In `0.2.x`, cFS codegen rejects optional fields until a concrete ABI representation exists.
+cFS codegen rejects optional fields until a concrete ABI representation exists.
 
-## Under Review For 0.2
+## Deferred
 
-These are likely areas for intentional language work after `0.1.x`.
+These areas remain outside the stable `0.3.x` surface:
 
-- Symbolic command-code resolution.
-- Mission-level topic ownership and assignment validation.
-- Enum codegen and ABI representation.
 - Optional/default semantics.
 - Dynamic and bounded array representation for cFS packet/table structs.
 - More explicit table metadata.
-- Better generated documentation style for C headers.
-- Transitive import resolution and dependency graph validation.
+- EDS interface generation.
+- Rust wrappers for cFE runtime APIs.
 
-## 0.1 Release Checklist
-
-Before publishing `0.1.x`, review each feature above and choose one of:
-
-- Stable for `0.1`
-- Supported with caveats
-- Parsed only
-- Defer to `0.2`
-- Reject before publish
-
-The release should not imply that parsed-only features are fully supported by generated cFS output.
+The release does not imply that parsed-only features are supported by generated
+cFS output.

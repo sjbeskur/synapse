@@ -18,6 +18,11 @@ For the complete 0.3 workflow—logical topics, `mission.toml`, validation,
 packet bindings, and cFE routing-header generation—follow the
 [Synapse 0.3 Quick Start](docs/quick-start.md).
 
+Synapse 0.3 targets standard, non-EDS cFS builds. C headers are the primary
+flight-integration output. Rust generation provides ABI-compatible
+`#[repr(C)]` message types only; Synapse does not wrap cFE runtime APIs or
+provide a Rust cFS application framework.
+
 For C developers and CI jobs without Rust installed, download a prebuilt binary from GitHub Releases:
 
 ```bash
@@ -116,7 +121,7 @@ Rust projects can use Synapse from `build.rs` without requiring the `synapse` ex
 
 ```toml
 [build-dependencies]
-cfs-synapse = "0.1"
+cfs-synapse = "0.3"
 ```
 
 ```rust
@@ -232,12 +237,13 @@ The cFS generator currently emits:
 
 Enums need an explicit integer representation when used in generated cFS fields, for example `enum u8 CameraMode`. Unrepresented enums, unbounded strings, optional field markers, field defaults, dynamic arrays, and non-string bounded arrays are parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer represented enums, fixed arrays, and bounded strings for generated packet payloads.
 
-See `docs/language.md` for the current language status and `0.1.x` review checklist.
+See `docs/language.md` for the current language status and support boundaries.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.
 See `docs/one-pager.md` for a short explanation of why Synapse is relevant.
 See `docs/mission.md` for the mission-wide validation and registry concept.
 See `docs/registry.md` for the JSON and CSV packet registry schema.
 See `docs/roadmap-0.2.md` for the `0.2.x` language, validation, and output status.
+See `docs/roadmap-0.3.md` for the `0.3.x` routing and cFS compatibility scope.
 
 ## Documentation Comments
 
@@ -275,13 +281,16 @@ See `docs/examples.md` for links to all sample `.syn` files and checked-in gener
 - `cfs-synapse-parser`: Pest grammar and AST builder for `.syn`
 - `cfs-synapse-codegen-cfs`: C and Rust cFS code generation
 - `cfs-synapse`: public library facade and `synapse` CLI binary
-- `cfs-sys`: bindgen wrapper for selected cFS types
+- `cfs-sys`: bindgen wrapper for the selected cFS header types used by
+  generated Rust ABI bindings; it does not wrap cFE runtime APIs
 - `synapse-integration-tests`: sample `.syn` files and generated-code checks
 - `generated`: checked-in generated geometry examples
 
 ## Release Model
 
-CI runs the core test suite on pull requests and pushes to `main`. Pushing a tag like `v0.1.0` runs the release workflow, builds release binaries, and attaches platform archives to the GitHub Release.
+CI runs the core test suite on pull requests and pushes to `main`. Pushing a
+semantic-version tag runs the release workflow, builds release binaries, and
+attaches platform archives to the GitHub Release.
 
 Crates.io publishing is gated behind the repository variable `PUBLISH_CRATE=true` and the `CARGO_REGISTRY_TOKEN` secret. When enabled, the release workflow publishes `cfs-synapse-parser`, `cfs-synapse-codegen-cfs`, and then `cfs-synapse`.
 

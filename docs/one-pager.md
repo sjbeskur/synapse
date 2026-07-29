@@ -26,7 +26,7 @@ Synapse makes these contracts explicit, generated, and checkable.
 - Parses `.syn` message definition files.
 - Supports namespaces, imports, constants, represented enums, structs, tables, commands, and telemetry.
 - Generates cFS-compatible C headers.
-- Generates Rust `#[repr(C)]` bindings.
+- Generates Rust `#[repr(C)]` ABI bindings without wrapping cFE runtime APIs.
 - Validates cFS ABI hazards before code generation.
 - Resolves local and imported constants used in `@cc(...)`.
 - Checks multiple app roots together with `synapse check`.
@@ -97,14 +97,10 @@ Synapse uses an IDL because cFS messages are structured contracts, not just rows
 
 ## Near-Term Direction
 
-The current `0.2.x` work focuses on safety and clarity:
-
-- Stronger validation for supported cFS ABI features.
-- More examples and canaries for C, C++, Rust, and mission-level checks.
-- Mission-wide registry checks through `synapse check`.
-- Mission TOML validation and cFE routing-header generation.
-- Machine-readable registry export for downstream databases, ICD tooling, and reports.
-- Searchable documentation output generated from `.syn` files and doc comments.
+The `0.3.x` line focuses on mission-owned routing and standard, non-EDS cFS
+integration. C is the primary flight-integration output; Rust remains an ABI
+binding target rather than a cFS application framework. EDS integration is a
+candidate for `0.4.x`.
 
 See [`registry.md`](registry.md) for the current JSON and CSV packet registry schema.
 

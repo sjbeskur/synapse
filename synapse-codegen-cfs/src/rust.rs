@@ -71,16 +71,16 @@ fn emit_rust_items(
 fn emit_rust_command_code_consts(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
     let mut has_ccs = false;
     for item in &file.items {
-        if let Item::Command(m) = item {
-            if let Some(cc) = find_cc_attr(&m.attrs) {
-                if !has_ccs {
-                    out.push_str("// Command Codes\n");
-                    has_ccs = true;
-                }
-                let const_name = format!("{}_CC", to_screaming_snake(&m.name));
-                let val = rust_cc_str(cc, constants);
-                out.push_str(&format!("pub const {}: u16 = {};\n", const_name, val));
+        if let Item::Command(m) = item
+            && let Some(cc) = find_cc_attr(&m.attrs)
+        {
+            if !has_ccs {
+                out.push_str("// Command Codes\n");
+                has_ccs = true;
             }
+            let const_name = format!("{}_CC", to_screaming_snake(&m.name));
+            let val = rust_cc_str(cc, constants);
+            out.push_str(&format!("pub const {}: u16 = {};\n", const_name, val));
         }
     }
     if has_ccs {

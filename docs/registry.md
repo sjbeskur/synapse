@@ -112,4 +112,6 @@ The registry intentionally stays small. If another system needs storage, search,
 
 ## Current Stability
 
-The registry format is new in the `0.2.x` line. Treat the current fields as the initial packet registry shape. Future versions may add fields for original symbolic command-code expressions, field-level schemas, ownership metadata, or schema versioning.
+The registry fields documented above are the `0.3.x` packet registry shape.
+Future versions may add fields for original symbolic command-code expressions,
+field-level schemas, ownership metadata, or schema versioning.

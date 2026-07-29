@@ -103,7 +103,7 @@ synapse routes --manifest mission.toml \
 ```
 
 Without `-o`, the header is written to stdout. The output includes
-`cfe_core_api_base_msgids.h` and maps topic IDs using the mission-configured
+`cfe_core_api_msgid_mapping.h` and maps topic IDs using the mission-configured
 cFE macros:
 
 ```c
@@ -124,6 +124,10 @@ CFE_SB_Subscribe(
     CommandPipe
 );
 ```
+
+The generated routing header targets standard, non-EDS cFS builds. EDS-enabled
+builds generate their interface headers through the EDS toolchain and are
+outside the Synapse 0.3 support scope.
 
 ## Other Mission Outputs
 

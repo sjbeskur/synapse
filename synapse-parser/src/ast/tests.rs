@@ -44,6 +44,7 @@ fn import_path() {
 // ── Const ────────────────────────────────────────────────
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn const_float() {
     let f = p("const PI: f64 = 3.14");
     assert_eq!(

@@ -38,6 +38,8 @@ pub enum CodegenError {
     CommandCodeUnsupported { item: String },
     /// Command codes must be literal non-negative integers for cFS codegen today.
     CommandCodeValueUnsupported { packet: String },
+    /// Generated command-code constants use the cFE function-code ABI type.
+    CommandCodeOutOfRange { packet: String, value: u64 },
     /// Function codes must be unique within one logical command topic.
     DuplicateCommandCodeInGroup {
         group: String,
@@ -76,7 +78,8 @@ impl fmt::Display for CodegenError {
             | CodegenError::CommandGroupRequired { .. } => fmt_packet_error(self, f),
             CodegenError::MissingCommandCode { .. }
             | CodegenError::CommandCodeUnsupported { .. }
-            | CodegenError::CommandCodeValueUnsupported { .. } => fmt_command_error(self, f),
+            | CodegenError::CommandCodeValueUnsupported { .. }
+            | CodegenError::CommandCodeOutOfRange { .. } => fmt_command_error(self, f),
             CodegenError::DuplicateCommandCodeInGroup { .. } => fmt_duplicate_error(self, f),
         }
     }
@@ -194,6 +197,10 @@ fn fmt_command_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::R
         CodegenError::CommandCodeValueUnsupported { packet } => write!(
             f,
             "command `{packet}` has unresolved or non-integer `@cc(...)`; cFS codegen requires an integer, hex, or local integer constant command code"
+        ),
+        CodegenError::CommandCodeOutOfRange { packet, value } => write!(
+            f,
+            "command `{packet}` has function code `{value}` outside the supported `u16` range"
         ),
         _ => unreachable!("non-command error passed to fmt_command_error"),
     }

@@ -132,10 +132,10 @@ where
 {
     let registry = generate_registry(inputs, format)?;
     let output = output.as_ref();
-    if let Some(parent) = output.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
     }
     fs::write(output, registry)?;
     Ok(output.to_path_buf())
@@ -717,13 +717,13 @@ fn validate_type_ref(
     if symbols.contains(segments) {
         return Ok(());
     }
-    if segments.len() == 1 {
-        if let Some(suggestion) = imported_type_suggestions.get(&segments[0]) {
-            return Err(Error::Import(format!(
-                "imported type reference `{}` in `{owner}` must be namespace-qualified as `{suggestion}`",
-                segments[0]
-            )));
-        }
+    if segments.len() == 1
+        && let Some(suggestion) = imported_type_suggestions.get(&segments[0])
+    {
+        return Err(Error::Import(format!(
+            "imported type reference `{}` in `{owner}` must be namespace-qualified as `{suggestion}`",
+            segments[0]
+        )));
     }
     Err(Error::Import(format!(
         "unresolved type reference `{}` in `{owner}`",
