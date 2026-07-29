@@ -1,7 +1,5 @@
 namespace demo_msgs
 
-import "mission_ids.syn"
-
 /// Demo sensor operating mode encoded as one byte.
 enum u8 SensorMode {
     /// Powered but idle.
@@ -18,18 +16,19 @@ struct SensorId {
     name: string[<=16]
 }
 
-/// Request a new operating mode for one sensor.
-@mid(mission_ids::SENSOR_CMD_MID)
-@cc(mission_ids::SET_SENSOR_MODE_CC)
-command SetSensorMode {
-    /// Sensor to configure.
-    sensor: SensorId
-    /// Requested mode.
-    mode: SensorMode
+/// Commands routed to the demo sensor application.
+commands SensorCommands {
+    /// Request a new operating mode for one sensor.
+    @cc(4)
+    command SetSensorMode {
+        /// Sensor to configure.
+        sensor: SensorId
+        /// Requested mode.
+        mode: SensorMode
+    }
 }
 
 /// Current sensor status.
-@mid(mission_ids::SENSOR_STATUS_MID)
 telemetry SensorStatus {
     /// Sensor that produced this status.
     sensor: SensorId

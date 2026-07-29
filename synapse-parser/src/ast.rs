@@ -147,7 +147,7 @@ pub enum Literal {
     Ident(ScopedIdent),
 }
 
-/// A declaration attribute, e.g. `@mid(0x0801)`.
+/// A declaration attribute, e.g. `@cc(1)`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub name: String,

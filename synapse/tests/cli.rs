@@ -141,59 +141,14 @@ struct Root { unsupported: bad::Unsupported }
 }
 
 #[test]
-fn msgid_layout_opaque_skips_command_telemetry_bit_validation() {
-    let dir = test_dir("opaque-msgid-layout");
-    let root = dir.join("root.syn");
-    fs::write(
-        &root,
-        "namespace root\n@mid(0x0801)\n@cc(1)\ncommand SetMode { mode: u8 }",
-    )
-    .unwrap();
-
-    let default_output = Command::new(env!("CARGO_BIN_EXE_synapse"))
-        .arg("check")
-        .arg(&root)
-        .output()
-        .expect("run synapse");
-    assert!(
-        !default_output.status.success(),
-        "synapse unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&default_output.stdout),
-        String::from_utf8_lossy(&default_output.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&default_output.stderr)
-            .contains("expected command MID with bit 0x1000 set")
-    );
-
-    let opaque_output = Command::new(env!("CARGO_BIN_EXE_synapse"))
-        .arg("check")
-        .arg("--msgid-layout")
-        .arg("opaque")
-        .arg(&root)
-        .output()
-        .expect("run synapse");
-    assert!(
-        opaque_output.status.success(),
-        "synapse failed\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&opaque_output.stdout),
-        String::from_utf8_lossy(&opaque_output.stderr)
-    );
-}
-
-#[test]
-fn check_accepts_multiple_roots_and_rejects_mission_mid_conflicts() {
+fn check_accepts_multiple_roots_and_rejects_mission_topic_conflicts() {
     let dir = test_dir("check-multiple-roots");
     let nav = dir.join("nav.syn");
-    fs::write(
-        &nav,
-        "namespace nav_app\n@mid(0x0801)\ntelemetry NavState { x: f64 }",
-    )
-    .unwrap();
+    fs::write(&nav, "namespace nav_app\ntelemetry NavState { x: f64 }").unwrap();
     let payload = dir.join("payload.syn");
     fs::write(
         &payload,
-        "namespace payload_app\n@mid(0x0801)\ntelemetry PayloadStatus { temp: f32 }",
+        "namespace nav_app\ntelemetry NavState { temp: f32 }",
     )
     .unwrap();
 
@@ -211,9 +166,8 @@ fn check_accepts_multiple_roots_and_rejects_mission_mid_conflicts() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("duplicate telemetry MID `0x0801`"));
+    assert!(stderr.contains("duplicate telemetry topic `nav_app::NavState`"));
     assert!(stderr.contains("nav_app::NavState"));
-    assert!(stderr.contains("payload_app::PayloadStatus"));
 }
 
 #[test]
@@ -249,7 +203,6 @@ fn doc_writes_static_html() {
         &input,
         r#"namespace status_app
 /// Status packet.
-@mid(0x0801)
 telemetry Status {
     /// Counter value.
     count: u32
@@ -278,7 +231,7 @@ telemetry Status {
     assert!(html.contains("Synapse Message Documentation"));
     assert!(html.contains("status_app"));
     assert!(html.contains("Status packet."));
-    assert!(html.contains("0x0801"));
+    assert!(html.contains("Topic"));
 }
 
 #[test]
@@ -287,7 +240,7 @@ fn registry_writes_json_and_csv() {
     let input = dir.join("status.syn");
     fs::write(
         &input,
-        "namespace status_app\n@mid(0x0801)\ntelemetry Status { count: u32 }",
+        "namespace status_app\ntelemetry Status { count: u32 }",
     )
     .unwrap();
     let json_path = dir.join("registry.json");
@@ -330,7 +283,7 @@ fn registry_writes_json_and_csv() {
     assert!(
         fs::read_to_string(json_path)
             .unwrap()
-            .contains("\"mid_hex\": \"0x0801\"")
+            .contains("\"topic\": \"Status\"")
     );
     assert!(
         fs::read_to_string(csv_path)

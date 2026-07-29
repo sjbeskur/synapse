@@ -24,9 +24,6 @@ fn build_file(pair: Pair<Rule>) -> SynFile {
             Rule::struct_def => items.push(Item::Struct(build_struct(pair))),
             Rule::table_def => items.push(Item::Table(build_struct(pair))),
             Rule::command_group_def => items.extend(build_command_group(pair)),
-            Rule::command_def => {
-                items.push(Item::Command(build_packet(pair, PacketKind::Command, None)));
-            }
             Rule::telemetry_def => {
                 items.push(Item::Telemetry(build_packet(
                     pair,

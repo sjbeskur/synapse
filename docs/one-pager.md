@@ -4,14 +4,17 @@
 
 Synapse is a message-definition and code-generation utility for NASA cFS missions. It lets teams describe commands, telemetry, tables, constants, enums, and shared structs once in a small `.syn` IDL, then generate language bindings for mission software.
 
-The bigger value is mission-wide validation: Synapse can check multiple app message definitions together and catch Software Bus conflicts, such as duplicate telemetry MIDs or duplicate command MID/CC pairs, before those conflicts reach integration.
+The bigger value is mission-wide validation: Synapse can check multiple app
+message definitions together and catch Software Bus conflicts, such as
+duplicate logical telemetry topics or duplicate command topic/function-code
+pairs, before those conflicts reach integration.
 
 ## Why It Matters
 
 cFS missions are built from many apps that communicate through Software Bus messages. Those messages are mission contracts. When the contracts are spread across handwritten headers, duplicated constants, and language-specific glue, integration risk grows quietly:
 
-- Two apps can accidentally reuse the same telemetry MID.
-- Two commands can collide on the same MID/CC pair.
+- Two apps can accidentally declare the same logical telemetry topic.
+- Two commands can collide on the same topic/function-code pair.
 - C and Rust bindings can drift from the same intended packet layout.
 - Parsed-but-unsupported IDL features can create misleading ABI assumptions.
 - Mission ID ownership can become tribal knowledge instead of checked policy.
@@ -25,9 +28,10 @@ Synapse makes these contracts explicit, generated, and checkable.
 - Generates cFS-compatible C headers.
 - Generates Rust `#[repr(C)]` bindings.
 - Validates cFS ABI hazards before code generation.
-- Resolves local and imported constants used in `@mid(...)` and `@cc(...)`.
+- Resolves local and imported constants used in `@cc(...)`.
 - Checks multiple app roots together with `synapse check`.
-- Detects duplicate telemetry MIDs and duplicate command MID/CC pairs across a mission-visible set.
+- Detects duplicate telemetry topics and duplicate command
+  topic/function-code pairs across a mission-visible set.
 - Generates static HTML documentation with `synapse doc`.
 - Emits JSON and CSV packet registries with `synapse registry`.
 
@@ -75,7 +79,9 @@ That makes Synapse useful for:
 
 ## Why Not CSV?
 
-CSV can work for a narrow packet registry: packet name, MID, command code, and maybe a few flat fields. It is familiar, easy to edit, and can be useful as an export format.
+CSV can work for a narrow packet registry: packet name, logical topic, command
+code, and maybe a few flat fields. It is familiar, easy to edit, and can be
+useful as an export format.
 
 But CSV becomes strained when it is used as the source of truth for message definitions:
 

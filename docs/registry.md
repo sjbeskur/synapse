@@ -12,21 +12,18 @@ The registry is an export artifact. It is not the source of truth and it is not 
 ## What Is Exported
 
 The current registry is packet-level. It includes `command` and `telemetry`
-declarations with logical topics, optional legacy message IDs, and command
-codes. It does not yet export every struct, table, enum, constant, or
-field-level schema.
+declarations with logical topics and command codes. It does not yet export
+every struct, table, enum, constant, or field-level schema.
 
 Before writing registry output, Synapse loads the same import graph used for generation and validates cFS packet facts. That means registry export fails on problems such as:
 
 - Missing `@cc(...)` on commands.
 - `@cc(...)` used on telemetry, structs, or tables.
 - Duplicate function codes within one logical command topic.
-- Unresolved or non-integer legacy MID/CC attributes.
-- Legacy command/telemetry MID bit-pattern mismatches.
-- Duplicate telemetry MIDs across the collected roots.
-- Duplicate command MID/CC pairs across the collected roots.
-
-Use `--msgid-layout opaque` when exporting registry data for a mission whose cFE MsgIds should not be interpreted with the legacy `0x1000` command/telemetry bit. In opaque mode, Synapse still resolves MIDs and checks duplicate telemetry MIDs and duplicate command MID/CC pairs.
+- Unresolved or non-integer command-code attributes.
+- Schema-level `@mid(...)` attributes.
+- Duplicate logical telemetry topics across the collected roots.
+- Duplicate command topic/function-code pairs across the collected roots.
 
 When multiple roots are passed to `synapse registry`, the output contains packet declarations from the validated roots and their loaded import closures. The command applies the same mission-wide duplicate checks as `synapse check` before writing output.
 
@@ -50,8 +47,6 @@ Example:
       "kind": "command",
       "source": "mission/camera_app.syn",
       "topic": "CameraCommands",
-      "mid": null,
-      "mid_hex": null,
       "cc": 2
     },
     {
@@ -61,8 +56,6 @@ Example:
       "kind": "telemetry",
       "source": "mission/camera_app.syn",
       "topic": "CameraStatus",
-      "mid": null,
-      "mid_hex": null,
       "cc": null
     }
   ]
@@ -80,14 +73,14 @@ synapse registry --format csv -o packets.csv mission/camera_app.syn
 Header:
 
 ```csv
-namespace,name,qualified_name,kind,source,mid,mid_hex,cc,topic
+namespace,name,qualified_name,kind,source,topic,cc
 ```
 
 Example rows:
 
 ```csv
-"camera_app","SetExposure","camera_app::SetExposure","command","mission/camera_app.syn","","","2","CameraCommands"
-"camera_app","CameraStatus","camera_app::CameraStatus","telemetry","mission/camera_app.syn","","","","CameraStatus"
+"camera_app","SetExposure","camera_app::SetExposure","command","mission/camera_app.syn","CameraCommands","2"
+"camera_app","CameraStatus","camera_app::CameraStatus","telemetry","mission/camera_app.syn","CameraStatus",""
 ```
 
 All CSV fields are quoted. Telemetry packets use an empty `cc` field.
@@ -102,8 +95,6 @@ All CSV fields are quoted. Telemetry packets use an empty `cc` field.
 | `kind` | Packet kind: `command` or `telemetry`. |
 | `source` | Source `.syn` file that declared the packet. |
 | `topic` | Logical command-group or telemetry topic name. |
-| `mid` | Resolved legacy cFS message ID, or `null`/empty when mission routing owns it. |
-| `mid_hex` | Legacy message ID formatted as four-digit uppercase hex, or `null`/empty. |
 | `cc` | Resolved numeric command code for commands. `null` in JSON and empty in CSV for telemetry. |
 
 ## Intended Uses
@@ -121,4 +112,4 @@ The registry intentionally stays small. If another system needs storage, search,
 
 ## Current Stability
 
-The registry format is new in the `0.2.x` line. Treat the current fields as the initial packet registry shape. Future versions may add fields for original symbolic MID/CC expressions, field-level schemas, ownership metadata, or schema versioning.
+The registry format is new in the `0.2.x` line. Treat the current fields as the initial packet registry shape. Future versions may add fields for original symbolic command-code expressions, field-level schemas, ownership metadata, or schema versioning.

@@ -32,7 +32,7 @@ enum Command {
     Check(CheckArgs),
     /// Generate searchable static HTML documentation.
     #[command(
-        long_about = "Generate a self-contained static HTML documentation site for one or more root .syn files. The generated page includes logical topics, optional legacy packet IDs, command codes, fields, doc comments, source links, and a sidebar search index."
+        long_about = "Generate a self-contained static HTML documentation site for one or more root .syn files. The generated page includes logical topics, command codes, fields, doc comments, source links, and a sidebar search index."
     )]
     Doc(DocArgs),
     /// Generate C headers or Rust repr(C) bindings.
@@ -42,7 +42,7 @@ enum Command {
     Generate(GenerateArgs),
     /// Emit a machine-readable packet registry.
     #[command(
-        long_about = "Emit a packet registry for one or more root .syn files. Registry output captures resolved packet facts such as namespace, packet name, kind, source file, MID, and command code."
+        long_about = "Emit a packet registry for one or more root .syn files. Registry output captures resolved packet facts such as namespace, packet name, kind, source file, logical topic, and command code."
     )]
     Registry(RegistryArgs),
     /// Generate a cFE topic-ID and MsgId routing header from a mission manifest.
@@ -58,9 +58,6 @@ enum Command {
   synapse check --manifest mission.toml schemas/camera.syn schemas/navigation.syn
   synapse check examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn examples/mission-demo/syn/payload_app.syn")]
 struct CheckArgs {
-    #[command(flatten)]
-    cfs: CfsArgs,
-
     /// Validate logical topic assignments from this mission TOML file.
     #[arg(long, value_name = "MISSION_TOML")]
     manifest: Option<PathBuf>,
@@ -76,9 +73,6 @@ struct CheckArgs {
   synapse doc -o docs synapse-integration-tests/syn/camera_msgs.syn
   synapse doc -o docs examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn")]
 struct DocArgs {
-    #[command(flatten)]
-    cfs: CfsArgs,
-
     /// Write index.html to this directory instead of stdout.
     #[arg(long, short = 'o')]
     out_dir: Option<PathBuf>,
@@ -93,9 +87,6 @@ struct DocArgs {
   synapse registry synapse-integration-tests/syn/camera_msgs.syn
   synapse registry --format csv -o registry.csv examples/mission-demo/syn/nav_app.syn examples/mission-demo/syn/camera_app.syn")]
 struct RegistryArgs {
-    #[command(flatten)]
-    cfs: CfsArgs,
-
     /// Registry output format.
     #[arg(long, value_enum, default_value_t = CliRegistryFormat::Json)]
     format: CliRegistryFormat,
@@ -114,9 +105,6 @@ struct RegistryArgs {
   synapse routes --manifest mission.toml schemas/camera.syn
   synapse routes --manifest mission.toml -o generated/mission_topics.h schemas/camera.syn schemas/navigation.syn")]
 struct RoutesArgs {
-    #[command(flatten)]
-    cfs: CfsArgs,
-
     /// Mission TOML containing command and telemetry topic assignments.
     #[arg(long, value_name = "MISSION_TOML", required = true)]
     manifest: PathBuf,
@@ -137,9 +125,6 @@ struct RoutesArgs {
   synapse generate --lang rust -o generated synapse-integration-tests/syn/geometry_msgs.syn
   synapse generate --lang c -o generated --single-file synapse-integration-tests/syn/geometry_msgs.syn")]
 struct GenerateArgs {
-    #[command(flatten)]
-    cfs: CfsArgs,
-
     /// Target language to generate.
     #[arg(long, value_enum)]
     lang: Option<CliLang>,
@@ -157,13 +142,6 @@ struct GenerateArgs {
     file: Option<PathBuf>,
 }
 
-#[derive(ClapArgs)]
-struct CfsArgs {
-    /// MID validation policy.
-    #[arg(long, value_enum, default_value_t = CliMsgIdLayout::CcsdsV1)]
-    msgid_layout: CliMsgIdLayout,
-}
-
 #[derive(Clone, ValueEnum)]
 enum CliLang {
     /// NASA cFS C header (.h)
@@ -178,14 +156,6 @@ enum CliRegistryFormat {
     Json,
     /// CSV packet registry.
     Csv,
-}
-
-#[derive(Clone, ValueEnum)]
-enum CliMsgIdLayout {
-    /// Legacy CCSDS-style cFE MISSION_MSG_V1: validate the 0x1000 command bit.
-    CcsdsV1,
-    /// Treat MsgIds as opaque mission-owned values; skip command/telemetry bit validation.
-    Opaque,
 }
 
 impl From<CliLang> for cfs_synapse::Lang {
@@ -206,23 +176,6 @@ impl From<CliRegistryFormat> for cfs_synapse::RegistryFormat {
     }
 }
 
-impl From<CliMsgIdLayout> for cfs_synapse::MsgIdLayout {
-    fn from(value: CliMsgIdLayout) -> Self {
-        match value {
-            CliMsgIdLayout::CcsdsV1 => cfs_synapse::MsgIdLayout::CcsdsV1,
-            CliMsgIdLayout::Opaque => cfs_synapse::MsgIdLayout::Opaque,
-        }
-    }
-}
-
-impl From<CfsArgs> for cfs_synapse::CfsOptions {
-    fn from(value: CfsArgs) -> Self {
-        cfs_synapse::CfsOptions {
-            msgid_layout: value.msgid_layout.into(),
-        }
-    }
-}
-
 pub(crate) fn run() {
     let args = Args::parse();
     match args.command {
@@ -236,12 +189,10 @@ pub(crate) fn run() {
 }
 
 fn check_path(args: CheckArgs) {
-    let options = cfs_synapse::CfsOptions::from(args.cfs);
     let result = match args.manifest {
-        Some(path) => cfs_synapse::MissionManifest::load(&path).and_then(|manifest| {
-            cfs_synapse::check_paths_with_manifest_and_options(&args.files, &manifest, &options)
-        }),
-        None => cfs_synapse::check_paths_with_options(&args.files, &options),
+        Some(path) => cfs_synapse::MissionManifest::load(&path)
+            .and_then(|manifest| cfs_synapse::check_paths_with_manifest(&args.files, &manifest)),
+        None => cfs_synapse::check_paths(&args.files),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error checking inputs:\n{e}");
@@ -253,22 +204,19 @@ fn check_path(args: CheckArgs) {
 }
 
 fn doc_path(args: DocArgs) {
-    let options = cfs_synapse::CfsOptions::from(args.cfs);
     match args.out_dir {
         None => {
-            let output = cfs_synapse::generate_docs_with_options(&args.files, &options)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error documenting inputs:\n{e}");
-                    process::exit(1);
-                });
+            let output = cfs_synapse::generate_docs(&args.files).unwrap_or_else(|e| {
+                eprintln!("Error documenting inputs:\n{e}");
+                process::exit(1);
+            });
             print!("{output}");
         }
         Some(dir) => {
-            let out_path = cfs_synapse::write_docs_with_options(&args.files, &dir, &options)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error documenting inputs:\n{e}");
-                    process::exit(1);
-                });
+            let out_path = cfs_synapse::write_docs(&args.files, &dir).unwrap_or_else(|e| {
+                eprintln!("Error documenting inputs:\n{e}");
+                process::exit(1);
+            });
             eprintln!("wrote {}", out_path.display());
         }
     }
@@ -276,30 +224,26 @@ fn doc_path(args: DocArgs) {
 
 fn registry_path(args: RegistryArgs) {
     let format = cfs_synapse::RegistryFormat::from(args.format);
-    let options = cfs_synapse::CfsOptions::from(args.cfs);
     match args.output {
         None => {
-            let output = cfs_synapse::generate_registry_with_options(&args.files, format, &options)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error exporting registry:\n{e}");
-                    process::exit(1);
-                });
+            let output = cfs_synapse::generate_registry(&args.files, format).unwrap_or_else(|e| {
+                eprintln!("Error exporting registry:\n{e}");
+                process::exit(1);
+            });
             print!("{output}");
         }
         Some(path) => {
             let out_path =
-                cfs_synapse::write_registry_with_options(&args.files, &path, format, &options)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Error exporting registry:\n{e}");
-                        process::exit(1);
-                    });
+                cfs_synapse::write_registry(&args.files, &path, format).unwrap_or_else(|e| {
+                    eprintln!("Error exporting registry:\n{e}");
+                    process::exit(1);
+                });
             eprintln!("wrote {}", out_path.display());
         }
     }
 }
 
 fn routes_path(args: RoutesArgs) {
-    let options = cfs_synapse::CfsOptions::from(args.cfs);
     let manifest = cfs_synapse::MissionManifest::load(&args.manifest).unwrap_or_else(|e| {
         eprintln!("Error loading mission manifest:\n{e}");
         process::exit(1);
@@ -307,32 +251,25 @@ fn routes_path(args: RoutesArgs) {
 
     match args.output {
         None => {
-            let output =
-                cfs_synapse::generate_routing_header_with_options(&args.files, &manifest, &options)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Error generating mission routing header:\n{e}");
-                        process::exit(1);
-                    });
+            let output = cfs_synapse::generate_routing_header(&args.files, &manifest)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error generating mission routing header:\n{e}");
+                    process::exit(1);
+                });
             print!("{output}");
         }
         Some(path) => {
-            let output = cfs_synapse::write_routing_header_with_options(
-                &args.files,
-                &manifest,
-                &path,
-                &options,
-            )
-            .unwrap_or_else(|e| {
-                eprintln!("Error generating mission routing header:\n{e}");
-                process::exit(1);
-            });
+            let output = cfs_synapse::write_routing_header(&args.files, &manifest, &path)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error generating mission routing header:\n{e}");
+                    process::exit(1);
+                });
             eprintln!("wrote {}", output.display());
         }
     }
 }
 
 fn generate_path(args: GenerateArgs) {
-    let options = cfs_synapse::CfsOptions::from(args.cfs);
     let file = args.file.unwrap_or_else(|| {
         Args::command()
             .error(
@@ -359,28 +296,25 @@ fn generate_path(args: GenerateArgs) {
             process::exit(1);
         }
         None => {
-            let output = cfs_synapse::generate_path_with_options(&file, lang, &options)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error generating {}:\n{e}", file.display());
-                    process::exit(1);
-                });
+            let output = cfs_synapse::generate_path(&file, lang).unwrap_or_else(|e| {
+                eprintln!("Error generating {}:\n{e}", file.display());
+                process::exit(1);
+            });
 
             print!("{output}");
         }
         Some(dir) if args.single_file => {
-            let out_path = cfs_synapse::generate_file_with_options(&file, &dir, lang, &options)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error generating {}: {e}", file.display());
-                    process::exit(1);
-                });
+            let out_path = cfs_synapse::generate_file(&file, &dir, lang).unwrap_or_else(|e| {
+                eprintln!("Error generating {}: {e}", file.display());
+                process::exit(1);
+            });
             eprintln!("wrote {}", out_path.display());
         }
         Some(dir) => {
-            let out_paths = cfs_synapse::generate_files_with_options(&file, &dir, lang, &options)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error generating {}: {e}", file.display());
-                    process::exit(1);
-                });
+            let out_paths = cfs_synapse::generate_files(&file, &dir, lang).unwrap_or_else(|e| {
+                eprintln!("Error generating {}: {e}", file.display());
+                process::exit(1);
+            });
             for out_path in out_paths {
                 eprintln!("wrote {}", out_path.display());
             }

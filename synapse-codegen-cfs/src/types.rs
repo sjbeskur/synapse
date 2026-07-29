@@ -21,34 +21,6 @@ pub const PREAMBLE: &str = concat!(
 /// Resolved integer constants visible to a file from imported namespaces.
 pub type ResolvedConstants = HashMap<Vec<String>, u64>;
 
-/// cFE message ID layout policy used for command/telemetry validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MsgIdLayout {
-    /// Legacy CCSDS-style cFE `MISSION_MSG_V1` layout.
-    ///
-    /// Command MIDs are expected to have bit `0x1000` set and telemetry MIDs
-    /// are expected to have that bit clear.
-    CcsdsV1,
-    /// Treat message IDs as opaque mission-owned values.
-    ///
-    /// Synapse still resolves MIDs and checks uniqueness, but it does not infer
-    /// command or telemetry kind from raw MID bits.
-    Opaque,
-}
-
-impl Default for MsgIdLayout {
-    fn default() -> Self {
-        Self::CcsdsV1
-    }
-}
-
-/// Options for cFS validation and code generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CfsOptions {
-    /// Message ID layout policy for command/telemetry bit-pattern validation.
-    pub msgid_layout: MsgIdLayout,
-}
-
 /// cFS packet category used by mission-wide validation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CfsPacketKind {
@@ -69,8 +41,6 @@ pub struct CfsPacket {
     pub kind: CfsPacketKind,
     /// Logical command or telemetry topic name.
     pub topic: String,
-    /// Resolved legacy numeric message ID, when the schema still supplies one.
-    pub mid: Option<u64>,
     /// Resolved numeric command code for command packets.
     pub cc: Option<u64>,
 }

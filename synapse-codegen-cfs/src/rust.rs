@@ -6,10 +6,10 @@ use synapse_parser::ast::{
 use crate::{
     constants::{ConstContext, const_context, resolve_ident_to_u64},
     error::CodegenError,
-    types::{CfsOptions, GENERATED_BANNER, ResolvedConstants, RustOptions},
+    types::{GENERATED_BANNER, ResolvedConstants, RustOptions},
     util::{
-        emit_doc_lines, emit_indented_doc_lines, find_cc_attr, find_mid_attr, import_rust_module,
-        packet_is_command, packet_item, to_screaming_snake,
+        emit_doc_lines, emit_indented_doc_lines, find_cc_attr, import_rust_module,
+        packet_is_command, to_screaming_snake,
     },
     validate::validate_supported,
 };
@@ -18,7 +18,7 @@ use crate::{
 ///
 /// `command` and `telemetry` packets become structs with the cFS header as the
 /// first field, matching the C ABI layout. `struct` and `table` items remain
-/// plain data structs. MID constants are emitted as `pub const`.
+/// plain data structs.
 pub fn generate_rust(file: &SynFile, opts: &RustOptions) -> String {
     try_generate_rust(file, opts).expect("parsed Synapse file is not supported by cFS Rust codegen")
 }
@@ -28,38 +28,14 @@ pub fn try_generate_rust(file: &SynFile, opts: &RustOptions) -> Result<String, C
     try_generate_rust_with_constants(file, opts, &ResolvedConstants::new())
 }
 
-/// Try to generate Rust bindings with validation options.
-pub fn try_generate_rust_with_options(
-    file: &SynFile,
-    opts: &RustOptions,
-    options: &CfsOptions,
-) -> Result<String, CodegenError> {
-    try_generate_rust_with_constants_and_options(file, opts, &ResolvedConstants::new(), options)
-}
-
 /// Try to generate Rust bindings with additional imported constants available for attributes.
 pub fn try_generate_rust_with_constants(
     file: &SynFile,
     opts: &RustOptions,
     imported_constants: &ResolvedConstants,
 ) -> Result<String, CodegenError> {
-    try_generate_rust_with_constants_and_options(
-        file,
-        opts,
-        imported_constants,
-        &CfsOptions::default(),
-    )
-}
-
-/// Try to generate Rust bindings with imported constants and validation options.
-pub fn try_generate_rust_with_constants_and_options(
-    file: &SynFile,
-    opts: &RustOptions,
-    imported_constants: &ResolvedConstants,
-    options: &CfsOptions,
-) -> Result<String, CodegenError> {
     let constants = const_context(file, imported_constants);
-    validate_supported(file, &constants, options)?;
+    validate_supported(file, &constants)?;
     let mut out = format!("// {GENERATED_BANNER}\n\n");
     emit_rust_imports(file, &mut out);
     emit_rust_items(file, opts, &mut out, &constants);
@@ -88,29 +64,8 @@ fn emit_rust_items(
     out: &mut String,
     constants: &ConstContext<'_>,
 ) {
-    emit_rust_mid_consts(file, out, constants);
     emit_rust_command_code_consts(file, out, constants);
     emit_rust_types(file, opts, out);
-}
-
-fn emit_rust_mid_consts(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
-    let mut has_mids = false;
-    for item in &file.items {
-        if let Some(m) = packet_item(item) {
-            if let Some(mid) = find_mid_attr(&m.attrs) {
-                if !has_mids {
-                    out.push_str("// Message IDs\n");
-                    has_mids = true;
-                }
-                let const_name = format!("{}_MID", to_screaming_snake(&m.name));
-                let val = rust_mid_str(mid, constants);
-                out.push_str(&format!("pub const {}: u16 = {};\n", const_name, val));
-            }
-        }
-    }
-    if has_mids {
-        out.push('\n');
-    }
 }
 
 fn emit_rust_command_code_consts(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
@@ -286,18 +241,6 @@ fn rust_primitive_str(p: PrimitiveType) -> &'static str {
         .iter()
         .find_map(|(ty, name)| (*ty == p).then_some(*name))
         .expect("all primitive types have Rust names")
-}
-
-fn rust_mid_str(lit: &Literal, constants: &ConstContext<'_>) -> String {
-    match lit {
-        Literal::Hex(n) => format!("0x{:04X}", n),
-        Literal::Int(n) => n.to_string(),
-        Literal::Ident(segs) if constants.is_local_bare_ident(segs) => segs.join("::"),
-        Literal::Ident(segs) => resolve_ident_to_u64(segs, constants)
-            .map(|value| format!("0x{:04X}", value))
-            .unwrap_or_else(|| segs.join("::")),
-        other => rust_literal_str(other),
-    }
 }
 
 fn rust_cc_str(lit: &Literal, constants: &ConstContext<'_>) -> String {

@@ -41,7 +41,9 @@ synapse check \
   examples/mission-demo/syn/payload_app.syn
 ```
 
-It also includes conflict fixtures under [`mission-demo/conflicts`](mission-demo/conflicts/) for duplicate telemetry MID and duplicate command MID/CC examples.
+It also includes conflict fixtures under [`mission-demo/conflicts`](mission-demo/conflicts/)
+for duplicate telemetry topic and duplicate command topic/function-code
+examples.
 
 ## Proposed Ground Loop Canary
 

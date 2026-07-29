@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <iomanip>
 #include <iostream>
 
 namespace {
@@ -27,13 +26,7 @@ int main() {
     status.sample_count = 42;
     status.temperature_c = 21.5F;
 
-    std::cout << "SetSensorMode MID: 0x" << std::hex << std::uppercase
-              << std::setw(4) << std::setfill('0') << SET_SENSOR_MODE_MID
-              << std::dec << '\n';
     std::cout << "SetSensorMode CC: " << SET_SENSOR_MODE_CC << '\n';
-    std::cout << "SensorStatus MID: 0x" << std::hex << std::uppercase
-              << std::setw(4) << std::setfill('0') << SENSOR_STATUS_MID
-              << std::dec << '\n';
     std::cout << "packet sizes: command=" << sizeof(cmd)
               << " telemetry=" << sizeof(status) << '\n';
     std::cout << "status sample_count=" << status.sample_count

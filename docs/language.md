@@ -1,6 +1,6 @@
 # Synapse Language Status
 
-This document records the current Synapse IDL surface before the soft `0.1.x` release. The goal for `0.1.x` is to publish a useful, honest tool while keeping room for intentional language improvements in `0.2.x`.
+This document records the current Synapse IDL surface for cFS code generation.
 
 See `docs/examples.md` for current `.syn` examples and generated output links.
 See `docs/roadmap-0.2.md` for the active `0.2.x` language review.
@@ -39,7 +39,7 @@ Imports generate C `#include` lines and Rust `use crate::...` lines. Path-based 
 
 Imported type references should be namespace-qualified. For example, after `import "std_msgs.syn"`, use `std_msgs::Header` rather than bare `Header`. Bare type references are reserved for declarations in the current file.
 
-Each file can reference only its local declarations and directly imported namespaces. Transitive imports are loaded and validated so dependency files are checked, but a root file must directly import any namespace it references. CLI output-directory generation emits the root file plus its transitive imports in dependency order by default; add `--single-file` to emit only the requested root file. In library code, use `generate_files` for the import closure and `generate_file` for only the root. Integer constants from directly imported namespaces may be used in attributes such as `@mid(nav_app::NAV_TLM_MID)`.
+Each file can reference only its local declarations and directly imported namespaces. Transitive imports are loaded and validated so dependency files are checked, but a root file must directly import any namespace it references. CLI output-directory generation emits the root file plus its transitive imports in dependency order by default; add `--single-file` to emit only the requested root file. In library code, use `generate_files` for the import closure and `generate_file` for only the root. Integer constants from directly imported namespaces may be used in attributes such as `@cc(nav_app::SET_MODE_CC)`.
 
 ### `struct`
 
@@ -124,10 +124,8 @@ Use `synapse check --manifest mission.toml ...` to validate completeness and
 mapping macros. Command and telemetry topic-ID spaces are checked separately.
 Synapse reads but never modifies the manifest.
 
-> [!NOTE]
-> Top-level packets using legacy `@mid(...)` syntax remain readable during the
-> transition. New schemas should use command groups and mission topic
-> assignments.
+Top-level `command` declarations and schema-level `@mid(...)` attributes are
+rejected. This keeps deployment routing out of reusable schemas.
 
 ### Primitive Types
 
@@ -219,12 +217,14 @@ Unbounded strings parse into the AST, but cFS codegen rejects them because they 
 const MAX_CAMERAS: u8 = 4
 ```
 
-Constants generate C `#define`s and Rust `pub const`s. Integer constants can be used by local or directly importing files in `@mid(...)` and `@cc(...)` attributes. Transitive-only constants are not visible unless the file imports their namespace directly.
+Constants generate C `#define`s and Rust `pub const`s. Integer constants can
+be used by local or directly importing files in `@cc(...)` attributes.
+Transitive-only constants are not visible unless the file imports their
+namespace directly.
 
 ### Legacy `message`
 
 ```syn
-@mid(0x0801)
 message NavState {
     x: f64
 }
@@ -267,8 +267,7 @@ In `0.2.x`, cFS codegen rejects optional fields until a concrete ABI representat
 These are likely areas for intentional language work after `0.1.x`.
 
 - Symbolic command-code resolution.
-- MID range validation for command/telemetry bit-pattern mismatches.
-- Namespace-scoped MID constants and constant resolution.
+- Mission-level topic ownership and assignment validation.
 - Enum codegen and ABI representation.
 - Optional/default semantics.
 - Dynamic and bounded array representation for cFS packet/table structs.

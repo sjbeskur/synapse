@@ -8,9 +8,7 @@ use synapse_parser::ast::{
     StructDef, SynFile, TypeExpr,
 };
 
-use crate::{
-    CfsOptions, Error, ImportGraph, ParsedUnit, format_mid, imported_constants_for_unit, namespace,
-};
+use crate::{Error, ImportGraph, ParsedUnit, imported_constants_for_unit, namespace};
 
 const DOC_PAGE_TEMPLATE: &str = include_str!("templates/docs/page.html");
 const DOC_STYLE: &str = include_str!("templates/docs/style.css");
@@ -29,7 +27,6 @@ struct DocSummary {
 pub(crate) fn render_html_docs(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
-    options: &CfsOptions,
 ) -> Result<String, Error> {
     let context = DocContext::new(graph);
     let summary = doc_summary(graph);
@@ -49,7 +46,7 @@ pub(crate) fn render_html_docs(
     let mut content_html = String::new();
 
     for unit in &graph.units {
-        render_doc_unit(&mut content_html, unit, units_by_path, &context, options)?;
+        render_doc_unit(&mut content_html, unit, units_by_path, &context)?;
     }
 
     Ok(render_page_template(
@@ -201,11 +198,10 @@ fn render_doc_unit(
     unit: &ParsedUnit,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
     context: &DocContext,
-    options: &CfsOptions,
 ) -> Result<(), Error> {
     let namespace = namespace(&unit.file);
     let namespace_label = namespace_label(&namespace);
-    let packet_facts = packet_facts_for_unit(unit, units_by_path, options)?;
+    let packet_facts = packet_facts_for_unit(unit, units_by_path)?;
     let unit_id = unit_id(unit, &namespace_label, context);
     let unit_search = unit_search_text(unit, &namespace_label, context);
 
@@ -329,14 +325,10 @@ fn render_enum_variants(out: &mut String, e: &synapse_parser::ast::EnumDef) {
 fn packet_facts_for_unit(
     unit: &ParsedUnit,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
-    options: &CfsOptions,
 ) -> Result<HashMap<String, synapse_codegen_cfs::CfsPacket>, Error> {
     let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-    let packets = synapse_codegen_cfs::collect_cfs_packets_with_constants_and_options(
-        &unit.file,
-        &imported_constants,
-        options,
-    )?;
+    let packets =
+        synapse_codegen_cfs::collect_cfs_packets_with_constants(&unit.file, &imported_constants)?;
     Ok(packets
         .into_iter()
         .map(|packet| (packet_fact_key(&packet.name, packet.kind), packet))
@@ -409,12 +401,6 @@ fn render_packet_doc(
             "<dt>Topic</dt><dd><code>{}</code></dd>",
             escape_html(&fact.topic)
         ));
-        if let Some(mid) = fact.mid {
-            out.push_str(&format!(
-                "<dt>MID</dt><dd><code>{}</code></dd>",
-                escape_html(&format_mid(mid))
-            ));
-        }
         if let Some(cc) = fact.cc {
             out.push_str(&format!("<dt>CC</dt><dd><code>{cc}</code></dd>"));
         }
@@ -627,10 +613,6 @@ fn packet_search_text(
     ];
     if let Some(fact) = fact {
         parts.push(fact.topic.clone());
-        if let Some(mid) = fact.mid {
-            parts.push(format_mid(mid));
-            parts.push(mid.to_string());
-        }
         if let Some(cc) = fact.cc {
             parts.push(cc.to_string());
         }

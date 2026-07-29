@@ -12,7 +12,8 @@ cargo run -p synapse-rust-canary
 
 The interesting pieces are:
 
-- `syn/mission_ids.syn`: mission-owned MID and command-code constants.
-- `syn/demo_msgs.syn`: imports those constants in `@mid(...)` and `@cc(...)`.
+- `syn/demo_msgs.syn`: declares a logical command group and telemetry topic.
+- Command codes remain schema-owned through `@cc(...)`; the mission manifest
+  owns the runtime cFS message IDs.
 - `build.rs`: calls `cfs_synapse::generate_files` and writes `generated/*.rs`.
 - `src/main.rs`: includes and uses the generated bindings.

@@ -6,13 +6,13 @@ table NavConfig {
     frame_id: string[<=32]
 }
 
-@mid(0x1880)
-@cc(1)
-command SetMode {
-    mode: u8
+commands NavCommands {
+    @cc(1)
+    command SetMode {
+        mode: u8
+    }
 }
 
-@mid(0x0801)
 telemetry NavState {
     x: f64
     y: f64

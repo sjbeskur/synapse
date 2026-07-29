@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use synapse_codegen_cfs::{CfsOptions, CfsPacketKind};
+use synapse_codegen_cfs::CfsPacketKind;
 
 use crate::{
     Error, ImportGraph, ParsedUnit, collect_input_paths, imported_constants_for_unit,
@@ -69,20 +69,7 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    check_paths_with_manifest_and_options(inputs, manifest, &CfsOptions::default())
-}
-
-/// Validate schema roots against a mission manifest and cFS validation options.
-pub fn check_paths_with_manifest_and_options<I, P>(
-    inputs: I,
-    manifest: &MissionManifest,
-    options: &CfsOptions,
-) -> Result<(), Error>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Path>,
-{
-    prepare_topics(inputs, manifest, options)?;
+    prepare_topics(inputs, manifest)?;
     Ok(())
 }
 
@@ -92,20 +79,7 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    generate_routing_header_with_options(inputs, manifest, &CfsOptions::default())
-}
-
-/// Generate a cFE routing header with cFS validation options.
-pub fn generate_routing_header_with_options<I, P>(
-    inputs: I,
-    manifest: &MissionManifest,
-    options: &CfsOptions,
-) -> Result<String, Error>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Path>,
-{
-    let topics = prepare_topics(inputs, manifest, options)?;
+    let topics = prepare_topics(inputs, manifest)?;
     Ok(render_routing_header(&topics, manifest))
 }
 
@@ -119,21 +93,7 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    write_routing_header_with_options(inputs, manifest, output, &CfsOptions::default())
-}
-
-/// Generate and write a cFE routing header with cFS validation options.
-pub fn write_routing_header_with_options<I, P>(
-    inputs: I,
-    manifest: &MissionManifest,
-    output: impl AsRef<Path>,
-    options: &CfsOptions,
-) -> Result<PathBuf, Error>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Path>,
-{
-    let header = generate_routing_header_with_options(inputs, manifest, options)?;
+    let header = generate_routing_header(inputs, manifest)?;
     let output = output.as_ref();
     if let Some(parent) = output.parent()
         && !parent.as_os_str().is_empty()
@@ -284,39 +244,31 @@ fn manifest_error(message: impl Into<String>) -> Error {
     Error::Manifest(message.into())
 }
 
-fn prepare_topics<I, P>(
-    inputs: I,
-    manifest: &MissionManifest,
-    options: &CfsOptions,
-) -> Result<Vec<LogicalTopic>, Error>
+fn prepare_topics<I, P>(inputs: I, manifest: &MissionManifest) -> Result<Vec<LogicalTopic>, Error>
 where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
     let inputs = collect_input_paths(inputs, "mission routing")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_cfs_graph(&graph, options)?;
-    let topics = collect_logical_topics(&graph, options)?;
+    validate_cfs_graph(&graph)?;
+    let topics = collect_logical_topics(&graph)?;
     validate_topic_symbols(&topics)?;
     validate_assignments(&topics, manifest)?;
     Ok(topics)
 }
 
-fn collect_logical_topics(
-    graph: &ImportGraph,
-    options: &CfsOptions,
-) -> Result<Vec<LogicalTopic>, Error> {
+fn collect_logical_topics(graph: &ImportGraph) -> Result<Vec<LogicalTopic>, Error> {
     let units = units_by_path(graph);
     let mut topics = BTreeSet::new();
 
     for unit in &graph.units {
-        collect_unit_topics(unit, &units, options, &mut topics)?;
+        collect_unit_topics(unit, &units, &mut topics)?;
     }
 
     if topics.is_empty() {
         return Err(Error::Mission(
-            "mission routing requires at least one logical topic without a schema-defined MID"
-                .to_string(),
+            "mission routing requires at least one logical command or telemetry topic".to_string(),
         ));
     }
 
@@ -326,17 +278,13 @@ fn collect_logical_topics(
 fn collect_unit_topics(
     unit: &ParsedUnit,
     units: &HashMap<PathBuf, &ParsedUnit>,
-    options: &CfsOptions,
     topics: &mut BTreeSet<LogicalTopic>,
 ) -> Result<(), Error> {
     let imported_constants = imported_constants_for_unit(unit, units)?;
-    let packets = synapse_codegen_cfs::collect_cfs_packets_with_constants_and_options(
-        &unit.file,
-        &imported_constants,
-        options,
-    )?;
+    let packets =
+        synapse_codegen_cfs::collect_cfs_packets_with_constants(&unit.file, &imported_constants)?;
 
-    for packet in packets.into_iter().filter(|packet| packet.mid.is_none()) {
+    for packet in packets {
         let mut qualified = packet.namespace;
         qualified.push(packet.topic);
         topics.insert(LogicalTopic {
@@ -738,7 +686,7 @@ topic = {}
     }
 
     #[test]
-    fn ignores_legacy_packets_with_schema_defined_mids() {
+    fn rejects_schema_defined_mids() {
         let schema = r#"namespace camera_app
 
 commands CameraCommands {
@@ -754,11 +702,16 @@ telemetry LegacyStatus { mode: u8 }
             r#"version = 1
 [topics.command]
 "camera_app::CameraCommands" = 0x82
+[topics.telemetry]
+"camera_app::LegacyStatus" = 0x83
 "#,
         )
         .unwrap();
 
-        check_paths_with_manifest([&schema], &manifest).unwrap();
+        let error = check_paths_with_manifest([&schema], &manifest).unwrap_err();
+        assert!(error.to_string().contains(
+            "`@mid(...)` is not supported on `LegacyStatus`; assign its logical topic in the mission manifest"
+        ));
     }
 
     #[test]

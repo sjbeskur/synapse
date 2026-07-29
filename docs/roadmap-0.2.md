@@ -89,31 +89,20 @@ Open questions:
 - Should bounded arrays generate inline storage plus an explicit length field?
 - Should `bytes[<=N]` be a special inline byte-buffer form?
 
-## MID Validation
+## MsgId Ownership
 
-Status: Implemented for legacy `@mid(...)` schemas; superseded for new schemas
-by logical topics and mission-owned topic assignments.
+Status: Implemented through logical topics and mission-owned assignments.
 
-> [!NOTE]
-> Synapse defaults to cFE `MISSION_MSG_V1` / legacy CCSDS-style MsgIds for command-vs-telemetry validation. In that policy, commands are expected to have bit `0x1000` set and telemetry is expected to have that bit clear. Modern cFE treats MsgIds as opaque and can use other message-ID layouts, so Synapse also supports `--msgid-layout opaque` to resolve and check MIDs without inspecting command/telemetry bits.
-
-Direction:
-
-- Require `@mid(...)` for `command` and `telemetry` - implemented as a cFS codegen error.
-- Detect duplicate telemetry literal MIDs in a generated file - implemented as a cFS codegen error.
-- Allow commands to share a literal MID when literal command codes differ.
-- Validate command/telemetry MID bit patterns when the MID is a literal - implemented as a cFS codegen error.
-- Add `--msgid-layout ccsds-v1|opaque`, defaulting to `ccsds-v1`, so non-legacy cFE missions can skip raw MID bit validation while keeping MID/CC resolution and uniqueness checks - implemented.
-- Resolve local integer constants used in `@mid(...)` for range and duplicate validation - implemented.
-- Resolve directly imported integer constants used in `@mid(...)` for range and duplicate validation - implemented.
-- Check multiple roots together through `synapse check` for mission-wide duplicate telemetry MIDs - implemented.
+Synapse no longer accepts schema-level `@mid(...)`, interprets raw MsgId bits,
+or exposes a MsgId layout option. Reusable schemas name logical topics; the
+mission manifest assigns topic IDs; cFE mission/platform macros map those IDs
+to final MsgId values.
 
 Remaining questions:
 
 - Should the mission manifest support optional topic-ID range ownership per
   app/namespace?
-- Should packet IDs be validated against configurable mission policies beyond command/telemetry bit patterns?
-- Should Synapse expose a real `cfe-v2` MsgId layout policy once it is pinned down against mission configuration, or is `opaque` the right compatibility boundary?
+- Which reserved/system topic-ID policies should be configurable?
 
 ## Logical Topic Routing
 
@@ -134,24 +123,25 @@ Direction:
 
 Status: Implemented
 
-Possible syntax:
+Syntax:
 
 ```syn
-@mid(0x1880)
-@cc(2)
-command SetMode {
-    mode: u8
+commands NavCommands {
+    @cc(2)
+    command SetMode {
+        mode: u8
+    }
 }
 ```
 
 Direction:
 
 - Require `@cc(...)` on every `command`.
-- Emit `_CC` constants beside command `_MID` constants.
+- Emit `_CC` constants for commands.
 - Reject `@cc(...)` on telemetry, struct, and table items.
-- Reject duplicate literal command MID/CC pairs.
+- Reject duplicate command codes within a logical command topic.
 - Resolve local and directly imported integer constants used in `@cc(...)` for duplicate validation - implemented.
-- Check multiple roots together through `synapse check` for duplicate command MID/CC pairs - implemented.
+- Check multiple roots together through `synapse check` for duplicate command topic/CC pairs - implemented.
 
 Remaining questions:
 

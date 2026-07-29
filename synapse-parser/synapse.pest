@@ -51,7 +51,7 @@ COMMENT = _{ "//" ~ !"/" ~ (!("\n" | "\r") ~ ANY)* }
 doc_comment = @{ "///" ~ (!("\n" | "\r") ~ ANY)* }
 doc_block   =  { doc_comment+ }
 
-// Attribute: @name(literal)  e.g. @mid(0x0801)  @mid(nav_app::NAV_TLM_MID)
+// Attribute: @name(literal)  e.g. @cc(1)  @tag(nav_app::ROUTE_TAG)
 attribute = { "@" ~ ident ~ "(" ~ literal ~ ")" }
 
 // ============================================================
@@ -67,7 +67,6 @@ item = _{
   | enum_def
   | struct_def
   | command_group_def
-  | command_def
   | telemetry_def
   | table_def
   | message_def

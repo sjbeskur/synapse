@@ -16,9 +16,13 @@
 
 ### Changed
 
-- Packet registries and documentation now expose logical topic names and allow
-  legacy MID fields to be absent.
+- Packet registries and documentation now expose logical topic names and no
+  longer contain legacy MID fields.
 - Migrated the mission demo from schema-owned MIDs to mission-owned topic IDs.
+- Removed schema-level `@mid(...)`, top-level `command` declarations,
+  schema-generated MID constants, raw MsgId layout validation, and
+  `--msgid-layout`.
+- Commands must now be declared inside a logical `commands` group.
 
 ## v0.2.13
 

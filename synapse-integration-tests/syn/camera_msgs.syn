@@ -52,40 +52,39 @@ table CameraCalibration {
     valid: bool
 }
 
-/// Set a camera's operating mode.
-@mid(0x1880)
-@cc(1)
-command SetCameraMode {
-    /// Camera to control.
-    camera: CameraId
-    /// Requested operating mode.
-    mode: CameraMode
-}
+/// Commands routed to the camera application.
+commands CameraCommands {
+    /// Set a camera's operating mode.
+    @cc(1)
+    command SetCameraMode {
+        /// Camera to control.
+        camera: CameraId
+        /// Requested operating mode.
+        mode: CameraMode
+    }
 
-/// Set exposure parameters for a camera.
-@mid(0x1880)
-@cc(2)
-command SetExposure {
-    /// Camera to control.
-    camera: CameraId
-    /// Exposure time in microseconds.
-    exposure_us: u32
-    /// Sensor gain multiplier.
-    gain: f32
-}
+    /// Set exposure parameters for a camera.
+    @cc(2)
+    command SetExposure {
+        /// Camera to control.
+        camera: CameraId
+        /// Exposure time in microseconds.
+        exposure_us: u32
+        /// Sensor gain multiplier.
+        gain: f32
+    }
 
-/// Send a new intrinsic calibration matrix directly over the Software Bus.
-@mid(0x1880)
-@cc(3)
-command UpdateIntrinsics {
-    /// Camera to update.
-    camera: CameraId
-    /// New intrinsic calibration values.
-    intrinsics: CameraIntrinsics
+    /// Send a new intrinsic calibration matrix directly over the Software Bus.
+    @cc(3)
+    command UpdateIntrinsics {
+        /// Camera to update.
+        camera: CameraId
+        /// New intrinsic calibration values.
+        intrinsics: CameraIntrinsics
+    }
 }
 
 /// Camera operating status telemetry.
-@mid(0x0881)
 telemetry CameraStatus {
     /// Standard sequence, timestamp, and frame metadata.
     header: std_msgs::Header
@@ -104,7 +103,6 @@ telemetry CameraStatus {
 }
 
 /// Active calibration telemetry for a camera.
-@mid(0x0882)
 telemetry CameraCalibrationStatus {
     /// Standard sequence, timestamp, and frame metadata.
     header: std_msgs::Header

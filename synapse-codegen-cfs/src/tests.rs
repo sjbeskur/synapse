@@ -8,10 +8,10 @@ fn codegen(src: &str) -> String {
 }
 
 #[test]
-fn telemetry_with_hex_mid() {
-    let out = codegen("@mid(0x0801)\ntelemetry NavTlm { x: f64  y: f64 }");
+fn telemetry_generates_cfs_packet() {
+    let out = codegen("telemetry NavTlm { x: f64  y: f64 }");
     assert!(out.starts_with(&format!("/* {GENERATED_BANNER} */\n")));
-    assert!(out.contains("#define NAV_TLM_MID  0x0801U"));
+    assert!(!out.contains("NAV_TLM_MID"));
     assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
     assert!(out.contains("typedef struct {"));
     assert!(out.contains("} NavTlm_t;"));
@@ -21,8 +21,8 @@ fn telemetry_with_hex_mid() {
 
 #[test]
 fn command_uses_declared_packet_kind() {
-    let out = codegen("@mid(0x1881)\n@cc(1)\ncommand NavCmd { seq: u16 }");
-    assert!(out.contains("#define NAV_CMD_MID  0x1881U"));
+    let out = codegen("commands NavCommands { @cc(1) command NavCmd { seq: u16 } }");
+    assert!(!out.contains("NAV_CMD_MID"));
     assert!(out.contains("#define NAV_CMD_CC   1U"));
     assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
     assert!(out.contains("} NavCmd_t;"));
@@ -30,8 +30,8 @@ fn command_uses_declared_packet_kind() {
 
 #[test]
 fn command_uses_command_header() {
-    let out = codegen("@mid(0x1880)\n@cc(2)\ncommand SetMode { mode: u8 }");
-    assert!(out.contains("#define SET_MODE_MID  0x1880U"));
+    let out = codegen("commands NavCommands { @cc(2) command SetMode { mode: u8 } }");
+    assert!(!out.contains("SET_MODE_MID"));
     assert!(out.contains("#define SET_MODE_CC   2U"));
     assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
     assert!(!out.contains("CFE_MSG_TelemetryHeader_t Header;"));
@@ -92,8 +92,8 @@ fn command_group_rejects_duplicate_function_codes() {
 
 #[test]
 fn telemetry_uses_telemetry_header() {
-    let out = codegen("@mid(0x0801)\ntelemetry NavState { x: f64 }");
-    assert!(out.contains("#define NAV_STATE_MID  0x0801U"));
+    let out = codegen("telemetry NavState { x: f64 }");
+    assert!(!out.contains("NAV_STATE_MID"));
     assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
     assert!(!out.contains("CFE_MSG_CommandHeader_t Header;"));
 }
@@ -124,24 +124,8 @@ fn c_rejects_legacy_message() {
 }
 
 #[test]
-fn c_rejects_command_without_mid() {
-    let file = parse("command SetMode { mode: u8 }").unwrap();
-    let err = try_generate_c(&file).unwrap_err();
-    assert_eq!(
-        err,
-        CodegenError::MissingMid {
-            packet: "SetMode".to_string(),
-        }
-    );
-    assert_eq!(
-        err.to_string(),
-        "packet `SetMode` is missing required `@mid(...)`"
-    );
-}
-
-#[test]
 fn c_rejects_command_without_cc() {
-    let file = parse("@mid(0x1880)\ncommand SetMode { mode: u8 }").unwrap();
+    let file = parse("commands NavCommands { command SetMode { mode: u8 } }").unwrap();
     let err = try_generate_c(&file).unwrap_err();
     assert_eq!(
         err,
@@ -157,7 +141,7 @@ fn c_rejects_command_without_cc() {
 
 #[test]
 fn c_rejects_cc_on_telemetry() {
-    let file = parse("@mid(0x0801)\n@cc(1)\ntelemetry Status { x: f32 }").unwrap();
+    let file = parse("@cc(1)\ntelemetry Status { x: f32 }").unwrap();
     let err = try_generate_c(&file).unwrap_err();
     assert_eq!(
         err,
@@ -191,13 +175,14 @@ fn c_rejects_mid_on_table() {
     );
     assert_eq!(
         err.to_string(),
-        "`@mid(...)` is only supported on command and telemetry packets, found on `Config`"
+        "`@mid(...)` is not supported on `Config`; assign its logical topic in the mission manifest"
     );
 }
 
 #[test]
 fn c_rejects_unresolved_symbolic_command_code() {
-    let file = parse("@mid(0x1880)\n@cc(SET_MODE_CC)\ncommand SetMode { mode: u8 }").unwrap();
+    let file =
+        parse("commands NavCommands { @cc(SET_MODE_CC) command SetMode { mode: u8 } }").unwrap();
     let err = try_generate_c(&file).unwrap_err();
     assert_eq!(
         err,
@@ -208,193 +193,53 @@ fn c_rejects_unresolved_symbolic_command_code() {
 }
 
 #[test]
-fn c_rejects_unresolved_symbolic_mid() {
-    let file = parse("@mid(NAV_TLM_MID)\ntelemetry Status { x: f32 }").unwrap();
+fn c_rejects_mid_on_telemetry() {
+    let file = parse("@mid(0x0801)\ntelemetry Status { x: f32 }").unwrap();
     let err = try_generate_c(&file).unwrap_err();
     assert_eq!(
         err,
-        CodegenError::MessageIdValueUnsupported {
-            packet: "Status".to_string(),
+        CodegenError::MessageIdUnsupported {
+            item: "Status".to_string(),
         }
     );
 }
 
 #[test]
-fn c_resolves_local_symbolic_mid_and_command_code() {
+fn c_resolves_local_symbolic_command_code() {
     let out = codegen(
-        "const SET_MODE_MID_VALUE: u16 = 0x1880\nconst SET_MODE_CODE: u16 = 1\n@mid(SET_MODE_MID_VALUE)\n@cc(SET_MODE_CODE)\ncommand SetMode { mode: u8 }",
+        "const SET_MODE_CODE: u16 = 1\ncommands NavCommands { @cc(SET_MODE_CODE) command SetMode { mode: u8 } }",
     );
-    assert!(out.contains("#define SET_MODE_MID  SET_MODE_MID_VALUE"));
     assert!(out.contains("#define SET_MODE_CC   SET_MODE_CODE"));
 }
 
 #[test]
-fn c_resolves_imported_symbolic_mid_and_command_code() {
-    let file = parse(
-        "@mid(nav_app::SET_MODE_MID_VALUE)\n@cc(nav_app::SET_MODE_CODE)\ncommand SetMode { mode: u8 }",
-    )
-    .unwrap();
+fn c_resolves_imported_symbolic_command_code() {
+    let file =
+        parse("commands NavCommands { @cc(nav_app::SET_MODE_CODE) command SetMode { mode: u8 } }")
+            .unwrap();
     let mut constants = ResolvedConstants::new();
-    constants.insert(
-        vec!["nav_app".to_string(), "SET_MODE_MID_VALUE".to_string()],
-        0x1880,
-    );
     constants.insert(vec!["nav_app".to_string(), "SET_MODE_CODE".to_string()], 2);
 
     let out = try_generate_c_with_constants(&file, &constants).unwrap();
-    assert!(out.contains("#define SET_MODE_MID  0x1880U"));
     assert!(out.contains("#define SET_MODE_CC   2U"));
 }
 
 #[test]
-fn c_validates_local_symbolic_mid_range() {
-    let file = parse(
-        "const SET_MODE_MID_VALUE: u16 = 0x0801\n@mid(SET_MODE_MID_VALUE)\n@cc(1)\ncommand SetMode { mode: u8 }",
-    )
-    .unwrap();
-    let err = try_generate_c(&file).unwrap_err();
-    assert_eq!(
-        err,
-        CodegenError::MidRangeMismatch {
-            packet: "SetMode".to_string(),
-            mid: "SET_MODE_MID_VALUE".to_string(),
-            expected: "command MID with bit 0x1000 set",
-        }
-    );
-}
-
-#[test]
-fn c_detects_duplicate_local_symbolic_command_codes() {
-    let file = parse(
-        "const CMD_MID: u16 = 0x1880\nconst SET_CC: u16 = 1\n@mid(CMD_MID)\n@cc(SET_CC)\ncommand A { x: u8 }\n@mid(CMD_MID)\n@cc(SET_CC)\ncommand B { x: u8 }",
-    )
-    .unwrap();
-    let err = try_generate_c(&file).unwrap_err();
-    assert_eq!(
-        err,
-        CodegenError::DuplicateCommandCode {
-            mid: "CMD_MID".to_string(),
-            cc: "SET_CC".to_string(),
-            first_packet: "A".to_string(),
-            second_packet: "B".to_string(),
-        }
-    );
-}
-
-#[test]
-fn c_rejects_duplicate_telemetry_mids() {
+fn c_rejects_mid_on_command() {
     let file =
-        parse("@mid(0x0801)\ntelemetry A { x: u8 }\n@mid(0x0801)\ntelemetry B { x: u8 }").unwrap();
+        parse("commands NavCommands { @mid(0x1880) @cc(1) command SetMode { mode: u8 } }").unwrap();
     let err = try_generate_c(&file).unwrap_err();
     assert_eq!(
         err,
-        CodegenError::DuplicateMid {
-            mid: "0x0801U".to_string(),
-            first_packet: "A".to_string(),
-            second_packet: "B".to_string(),
+        CodegenError::MessageIdUnsupported {
+            item: "SetMode".to_string(),
         }
     );
-    assert_eq!(
-        err.to_string(),
-        "duplicate MID `0x0801U` used by packets `A` and `B`"
-    );
-}
-
-#[test]
-fn c_allows_shared_command_mid_with_distinct_ccs() {
-    let out = codegen(
-        "@mid(0x1880)\n@cc(1)\ncommand A { x: u8 }\n@mid(0x1880)\n@cc(2)\ncommand B { x: u8 }",
-    );
-    assert!(out.contains("#define A_MID  0x1880U"));
-    assert!(out.contains("#define B_MID  0x1880U"));
-    assert!(out.contains("#define A_CC   1U"));
-    assert!(out.contains("#define B_CC   2U"));
-}
-
-#[test]
-fn c_rejects_duplicate_command_mid_cc_pairs() {
-    let file = parse(
-        "@mid(0x1880)\n@cc(1)\ncommand A { x: u8 }\n@mid(0x1880)\n@cc(1)\ncommand B { x: u8 }",
-    )
-    .unwrap();
-    let err = try_generate_c(&file).unwrap_err();
-    assert_eq!(
-        err,
-        CodegenError::DuplicateCommandCode {
-            mid: "0x1880U".to_string(),
-            cc: "1U".to_string(),
-            first_packet: "A".to_string(),
-            second_packet: "B".to_string(),
-        }
-    );
-    assert_eq!(
-        err.to_string(),
-        "duplicate command MID/CC pair `0x1880U`/`1U` used by packets `A` and `B`"
-    );
-}
-
-#[test]
-fn c_rejects_command_mid_without_command_bit() {
-    let file = parse("@mid(0x0801)\n@cc(1)\ncommand SetMode { mode: u8 }").unwrap();
-    let err = try_generate_c(&file).unwrap_err();
-    assert_eq!(
-        err,
-        CodegenError::MidRangeMismatch {
-            packet: "SetMode".to_string(),
-            mid: "0x0801U".to_string(),
-            expected: "command MID with bit 0x1000 set",
-        }
-    );
-    assert_eq!(
-        err.to_string(),
-        "packet `SetMode` has MID `0x0801U`, expected command MID with bit 0x1000 set"
-    );
-}
-
-#[test]
-fn c_rejects_telemetry_mid_with_command_bit() {
-    let file = parse("@mid(0x1880)\ntelemetry Status { x: f32 }").unwrap();
-    let err = try_generate_c(&file).unwrap_err();
-    assert_eq!(
-        err,
-        CodegenError::MidRangeMismatch {
-            packet: "Status".to_string(),
-            mid: "0x1880U".to_string(),
-            expected: "telemetry MID with bit 0x1000 clear",
-        }
-    );
-}
-
-#[test]
-fn opaque_msgid_layout_accepts_non_ccsds_command_mid_bits() {
-    let file = parse("@mid(0x0801)\n@cc(1)\ncommand SetMode { mode: u8 }").unwrap();
-    let options = CfsOptions {
-        msgid_layout: MsgIdLayout::Opaque,
-    };
-    let out = try_generate_c_with_options(&file, &options).unwrap();
-
-    assert!(out.contains("#define SET_MODE_MID  0x0801U"));
-    assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
-}
-
-#[test]
-fn opaque_msgid_layout_accepts_non_ccsds_telemetry_mid_bits() {
-    let file = parse("@mid(0x1880)\ntelemetry Status { x: f32 }").unwrap();
-    let options = CfsOptions {
-        msgid_layout: MsgIdLayout::Opaque,
-    };
-    let packets =
-        collect_cfs_packets_with_constants_and_options(&file, &ResolvedConstants::new(), &options)
-            .unwrap();
-
-    assert_eq!(packets[0].topic, "Status");
-    assert_eq!(packets[0].mid, Some(0x1880));
-    assert_eq!(packets[0].kind, CfsPacketKind::Telemetry);
 }
 
 #[test]
 fn c_rejects_optional_fields() {
-    let file = parse("@mid(0x0801)\ntelemetry Status { error_code?: u32 }").unwrap();
+    let file = parse("telemetry Status { error_code?: u32 }").unwrap();
     let err = try_generate_c(&file).unwrap_err();
     assert_eq!(
         err,
@@ -428,10 +273,9 @@ fn c_rejects_default_values() {
 
 #[test]
 fn c_rejects_enum_fields() {
-    let file = parse(
-        "enum CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
-    )
-    .unwrap();
+    let file =
+        parse("enum CameraMode { Idle = 0 Streaming = 1 }\ntelemetry Status { mode: CameraMode }")
+            .unwrap();
     let err = try_generate_c(&file).unwrap_err();
     assert_eq!(
         err,
@@ -450,7 +294,7 @@ fn c_rejects_enum_fields() {
 #[test]
 fn c_emits_represented_enum_fields() {
     let file = parse(
-        "enum u8 CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
+        "enum u8 CameraMode { Idle = 0 Streaming = 1 }\ntelemetry Status { mode: CameraMode }",
     )
     .unwrap();
     let out = try_generate_c(&file).unwrap();
@@ -463,7 +307,7 @@ fn c_emits_represented_enum_fields() {
 #[test]
 fn c_namespaces_represented_enum_variant_constants() {
     let file = parse(
-        "namespace camera_app\nenum u8 CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
+        "namespace camera_app\nenum u8 CameraMode { Idle = 0 Streaming = 1 }\ntelemetry Status { mode: CameraMode }",
     )
     .unwrap();
     let out = try_generate_c(&file).unwrap();
@@ -516,7 +360,7 @@ fn c_rejects_represented_enum_out_of_range() {
 
 #[test]
 fn c_rejects_dynamic_arrays() {
-    let file = parse("@mid(0x0801)\ntelemetry Samples { values: f32[] }").unwrap();
+    let file = parse("telemetry Samples { values: f32[] }").unwrap();
     let err = try_generate_c(&file).unwrap_err();
     assert_eq!(
         err,
@@ -552,26 +396,26 @@ fn c_rejects_non_string_bounded_arrays() {
 
 #[test]
 fn const_emits_define() {
-    let out = codegen("const NAV_TLM_MID: u16 = 0x0801");
-    assert!(out.contains("#define NAV_TLM_MID  0x0801U"));
+    let out = codegen("const SAMPLE_LIMIT: u16 = 0x0801");
+    assert!(out.contains("#define SAMPLE_LIMIT  0x0801U"));
 }
 
 #[test]
 fn fixed_array_field() {
-    let out = codegen("@mid(0x0802)\ntelemetry Imu { covariance: f64[9] }");
+    let out = codegen("telemetry Imu { covariance: f64[9] }");
     assert!(out.contains("    double covariance[9];"));
 }
 
 #[test]
 fn c_refs_use_declared_typedef_names() {
-    let out = codegen("struct Point { x: f64 }\n@mid(0x0801)\ntelemetry Pose { point: Point }");
+    let out = codegen("struct Point { x: f64 }\ntelemetry Pose { point: Point }");
     assert!(out.contains("} Point_t;"));
     assert!(out.contains("    Point_t point;"));
 }
 
 #[test]
 fn c_qualified_refs_use_declared_typedef_names() {
-    let out = codegen("@mid(0x0801)\ntelemetry Stamped { header: std_msgs::Header }");
+    let out = codegen("telemetry Stamped { header: std_msgs::Header }");
     assert!(out.contains("    std_msgs_Header_t header;"));
 }
 
@@ -619,9 +463,9 @@ fn rust_codegen(src: &str) -> String {
 
 #[test]
 fn rust_tlm_struct() {
-    let out = rust_codegen("@mid(0x0801)\ntelemetry NavTlm { x: f64  y: f64 }");
+    let out = rust_codegen("telemetry NavTlm { x: f64  y: f64 }");
     assert!(out.starts_with(&format!("// {GENERATED_BANNER}\n")));
-    assert!(out.contains("pub const NAV_TLM_MID: u16 = 0x0801;"));
+    assert!(!out.contains("NAV_TLM_MID"));
     assert!(out.contains("#[repr(C)]"));
     assert!(out.contains("pub struct NavTlm {"));
     assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
@@ -631,43 +475,38 @@ fn rust_tlm_struct() {
 
 #[test]
 fn rust_cmd_struct() {
-    let out = rust_codegen("@mid(0x1880)\n@cc(1)\ncommand NavCmd { seq: u16 }");
-    assert!(out.contains("pub const NAV_CMD_MID: u16 = 0x1880;"));
+    let out = rust_codegen("commands NavCommands { @cc(1) command NavCmd { seq: u16 } }");
+    assert!(!out.contains("NAV_CMD_MID"));
     assert!(out.contains("pub const NAV_CMD_CC: u16 = 1;"));
     assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
 }
 
 #[test]
 fn rust_command_uses_command_header() {
-    let out = rust_codegen("@mid(0x1881)\n@cc(2)\ncommand SetMode { mode: u8 }");
-    assert!(out.contains("pub const SET_MODE_MID: u16 = 0x1881;"));
+    let out = rust_codegen("commands NavCommands { @cc(2) command SetMode { mode: u8 } }");
+    assert!(!out.contains("SET_MODE_MID"));
     assert!(out.contains("pub const SET_MODE_CC: u16 = 2;"));
     assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_CommandHeader_t,"));
     assert!(!out.contains("CFE_MSG_TelemetryHeader_t"));
 }
 
 #[test]
-fn rust_resolves_imported_symbolic_mid_and_command_code() {
-    let file = parse(
-        "@mid(nav_app::SET_MODE_MID_VALUE)\n@cc(nav_app::SET_MODE_CODE)\ncommand SetMode { mode: u8 }",
-    )
-    .unwrap();
+fn rust_resolves_imported_symbolic_command_code() {
+    let file =
+        parse("commands NavCommands { @cc(nav_app::SET_MODE_CODE) command SetMode { mode: u8 } }")
+            .unwrap();
     let mut constants = ResolvedConstants::new();
-    constants.insert(
-        vec!["nav_app".to_string(), "SET_MODE_MID_VALUE".to_string()],
-        0x1880,
-    );
     constants.insert(vec!["nav_app".to_string(), "SET_MODE_CODE".to_string()], 2);
 
     let out = try_generate_rust_with_constants(&file, &RustOptions::default(), &constants).unwrap();
-    assert!(out.contains("pub const SET_MODE_MID: u16 = 0x1880;"));
+    assert!(!out.contains("SET_MODE_MID"));
     assert!(out.contains("pub const SET_MODE_CC: u16 = 2;"));
 }
 
 #[test]
 fn rust_telemetry_uses_telemetry_header() {
-    let out = rust_codegen("@mid(0x0801)\ntelemetry NavState { x: f64 }");
-    assert!(out.contains("pub const NAV_STATE_MID: u16 = 0x0801;"));
+    let out = rust_codegen("telemetry NavState { x: f64 }");
+    assert!(!out.contains("NAV_STATE_MID"));
     assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
     assert!(!out.contains("CFE_MSG_CommandHeader_t"));
 }
@@ -682,7 +521,7 @@ fn rust_table_is_plain_data_without_bus_header() {
 
 #[test]
 fn rust_fixed_array() {
-    let out = rust_codegen("@mid(0x0802)\ntelemetry Imu { covariance: f64[9] }");
+    let out = rust_codegen("telemetry Imu { covariance: f64[9] }");
     assert!(out.contains("    pub covariance: [f64; 9],"));
 }
 
@@ -692,10 +531,7 @@ fn rust_custom_module() {
         cfs_module: "my_cfs",
         ..Default::default()
     };
-    let out = generate_rust(
-        &parse("@mid(0x0801)\ntelemetry T { x: f32 }").unwrap(),
-        &opts,
-    );
+    let out = generate_rust(&parse("telemetry T { x: f32 }").unwrap(), &opts);
     assert!(out.contains("my_cfs::CFE_MSG_TelemetryHeader_t"));
 }
 
@@ -705,24 +541,21 @@ fn rust_bare_module() {
         cfs_module: "",
         ..Default::default()
     };
-    let out = generate_rust(
-        &parse("@mid(0x0801)\ntelemetry T { x: f32 }").unwrap(),
-        &opts,
-    );
+    let out = generate_rust(&parse("telemetry T { x: f32 }").unwrap(), &opts);
     assert!(out.contains("    pub cfs_header: CFE_MSG_TelemetryHeader_t,"));
     assert!(!out.contains("::CFE_MSG_TelemetryHeader_t"));
 }
 
 #[test]
 fn rust_message_can_have_payload_header_field() {
-    let out = rust_codegen("@mid(0x0801)\ntelemetry Stamped { header: std_msgs::Header }");
+    let out = rust_codegen("telemetry Stamped { header: std_msgs::Header }");
     assert!(out.contains("    pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
     assert!(out.contains("    pub header: std_msgs::Header,"));
 }
 
 #[test]
 fn rust_rejects_legacy_message() {
-    let file = parse("@mid(0x0801)\nmessage Bare { x: f32 }").unwrap();
+    let file = parse("message Bare { x: f32 }").unwrap();
     let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
     assert_eq!(
         err,
@@ -743,15 +576,13 @@ fn rust_generates_telemetry_without_mid() {
 }
 
 #[test]
-fn rust_rejects_mid_range_mismatch() {
+fn rust_rejects_mid_on_telemetry() {
     let file = parse("@mid(0x1880)\ntelemetry Status { x: f32 }").unwrap();
     let err = try_generate_rust(&file, &RustOptions::default()).unwrap_err();
     assert_eq!(
         err,
-        CodegenError::MidRangeMismatch {
-            packet: "Status".to_string(),
-            mid: "0x1880U".to_string(),
-            expected: "telemetry MID with bit 0x1000 clear",
+        CodegenError::MessageIdUnsupported {
+            item: "Status".to_string(),
         }
     );
 }
@@ -840,11 +671,11 @@ fn rust_rejects_non_string_bounded_arrays() {
 #[test]
 fn rust_const_uses_declared_type() {
     let out = rust_codegen(
-        "const PI: f64 = 3.14\nconst ENABLED: bool = true\nconst NAV_TLM_MID: u16 = 0x0801",
+        "const PI: f64 = 3.14\nconst ENABLED: bool = true\nconst SAMPLE_LIMIT: u16 = 0x0801",
     );
     assert!(out.contains("pub const PI: f64 = 3.14;"));
     assert!(out.contains("pub const ENABLED: bool = true;"));
-    assert!(out.contains("pub const NAV_TLM_MID: u16 = 0x0801;"));
+    assert!(out.contains("pub const SAMPLE_LIMIT: u16 = 0x0801;"));
 }
 
 #[test]

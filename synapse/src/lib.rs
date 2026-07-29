@@ -13,11 +13,8 @@ use synapse_parser::ast::{BaseType, FieldDef, Item, SynFile};
 
 pub use errors::Error;
 pub use mission::{
-    MissionManifest, check_paths_with_manifest, check_paths_with_manifest_and_options,
-    generate_routing_header, generate_routing_header_with_options, write_routing_header,
-    write_routing_header_with_options,
+    MissionManifest, check_paths_with_manifest, generate_routing_header, write_routing_header,
 };
-pub use synapse_codegen_cfs::{CfsOptions, MsgIdLayout};
 
 /// Target language for Synapse code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,28 +46,14 @@ impl Lang {
 
 /// Generate code from `.syn` source text.
 pub fn generate_str(source: &str, lang: Lang) -> Result<String, Error> {
-    generate_str_with_options(source, lang, &CfsOptions::default())
-}
-
-/// Generate code from `.syn` source text with cFS validation options.
-pub fn generate_str_with_options(
-    source: &str,
-    lang: Lang,
-    options: &CfsOptions,
-) -> Result<String, Error> {
     let file = synapse_parser::ast::parse(source)?;
-    generate_parsed(&file, lang, options)
+    generate_parsed(&file, lang)
 }
 
 /// Check `.syn` source text for parser and cFS codegen support.
 pub fn check_str(source: &str) -> Result<(), Error> {
-    check_str_with_options(source, &CfsOptions::default())
-}
-
-/// Check `.syn` source text for parser and cFS codegen support with options.
-pub fn check_str_with_options(source: &str, options: &CfsOptions) -> Result<(), Error> {
     let file = synapse_parser::ast::parse(source)?;
-    synapse_codegen_cfs::validate_cfs_with_options(&file, options)?;
+    synapse_codegen_cfs::validate_cfs(&file)?;
     Ok(())
 }
 
@@ -79,33 +62,19 @@ pub fn check_path(input: impl AsRef<Path>) -> Result<(), Error> {
     check_paths([input.as_ref()])
 }
 
-/// Check a `.syn` input path with cFS validation options.
-pub fn check_path_with_options(input: impl AsRef<Path>, options: &CfsOptions) -> Result<(), Error> {
-    check_paths_with_options([input.as_ref()], options)
-}
-
 /// Check one or more `.syn` input paths as a mission-visible set.
 ///
 /// Each root and its imports are validated normally. When more than one root is
-/// supplied, Synapse also validates mission-wide packet ID uniqueness across the
+/// supplied, Synapse also validates logical-topic uniqueness across the
 /// deduplicated import closure.
 pub fn check_paths<I, P>(inputs: I) -> Result<(), Error>
 where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    check_paths_with_options(inputs, &CfsOptions::default())
-}
-
-/// Check one or more `.syn` input paths with cFS validation options.
-pub fn check_paths_with_options<I, P>(inputs: I, options: &CfsOptions) -> Result<(), Error>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Path>,
-{
     let inputs = collect_input_paths(inputs, "check")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_cfs_graph(&graph, options)?;
+    validate_cfs_graph(&graph)?;
     Ok(())
 }
 
@@ -115,21 +84,12 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    generate_docs_with_options(inputs, &CfsOptions::default())
-}
-
-/// Generate static HTML documentation with cFS validation options.
-pub fn generate_docs_with_options<I, P>(inputs: I, options: &CfsOptions) -> Result<String, Error>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Path>,
-{
     let inputs = collect_input_paths(inputs, "doc")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_cfs_graph(&graph, options)?;
+    validate_cfs_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
 
-    docs::render_html_docs(&graph, &units_by_path, options)
+    docs::render_html_docs(&graph, &units_by_path)
 }
 
 /// Generate static HTML documentation and write it to `out_dir/index.html`.
@@ -138,20 +98,7 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    write_docs_with_options(inputs, out_dir, &CfsOptions::default())
-}
-
-/// Generate static HTML documentation with options and write it to `out_dir/index.html`.
-pub fn write_docs_with_options<I, P>(
-    inputs: I,
-    out_dir: impl AsRef<Path>,
-    options: &CfsOptions,
-) -> Result<PathBuf, Error>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Path>,
-{
-    let output = generate_docs_with_options(inputs, options)?;
+    let output = generate_docs(inputs)?;
     let out_dir = out_dir.as_ref();
     fs::create_dir_all(out_dir)?;
     let out_path = out_dir.join("index.html");
@@ -165,25 +112,12 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    generate_registry_with_options(inputs, format, &CfsOptions::default())
-}
-
-/// Generate a machine-readable packet registry with cFS validation options.
-pub fn generate_registry_with_options<I, P>(
-    inputs: I,
-    format: RegistryFormat,
-    options: &CfsOptions,
-) -> Result<String, Error>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Path>,
-{
     let inputs = collect_input_paths(inputs, "registry")?;
     let graph = load_import_graphs(&inputs)?;
-    validate_cfs_graph(&graph, options)?;
+    validate_cfs_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
 
-    registry::render_registry(&graph, &units_by_path, format, options)
+    registry::render_registry(&graph, &units_by_path, format)
 }
 
 /// Generate a machine-readable packet registry and write it to `output`.
@@ -196,21 +130,7 @@ where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    write_registry_with_options(inputs, output, format, &CfsOptions::default())
-}
-
-/// Generate a machine-readable packet registry with options and write it to `output`.
-pub fn write_registry_with_options<I, P>(
-    inputs: I,
-    output: impl AsRef<Path>,
-    format: RegistryFormat,
-    options: &CfsOptions,
-) -> Result<PathBuf, Error>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Path>,
-{
-    let registry = generate_registry_with_options(inputs, format, options)?;
+    let registry = generate_registry(inputs, format)?;
     let output = output.as_ref();
     if let Some(parent) = output.parent() {
         if !parent.as_os_str().is_empty() {
@@ -223,15 +143,6 @@ where
 
 /// Generate code from a `.syn` input path, validating the import graph rooted at that file.
 pub fn generate_path(input: impl AsRef<Path>, lang: Lang) -> Result<String, Error> {
-    generate_path_with_options(input, lang, &CfsOptions::default())
-}
-
-/// Generate code from a `.syn` input path with cFS validation options.
-pub fn generate_path_with_options(
-    input: impl AsRef<Path>,
-    lang: Lang,
-    options: &CfsOptions,
-) -> Result<String, Error> {
     let graph = load_import_graph(input.as_ref())?;
     validate_import_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
@@ -240,16 +151,11 @@ pub fn generate_path_with_options(
         .last()
         .expect("import graph always contains the root input");
     let imported_constants = imported_constants_for_unit(root, &units_by_path)?;
-    generate_parsed_with_constants(&root.file, lang, &imported_constants, options)
+    generate_parsed_with_constants(&root.file, lang, &imported_constants)
 }
 
-fn generate_parsed(file: &SynFile, lang: Lang, options: &CfsOptions) -> Result<String, Error> {
-    generate_parsed_with_constants(
-        file,
-        lang,
-        &synapse_codegen_cfs::ResolvedConstants::new(),
-        options,
-    )
+fn generate_parsed(file: &SynFile, lang: Lang) -> Result<String, Error> {
+    generate_parsed_with_constants(file, lang, &synapse_codegen_cfs::ResolvedConstants::new())
 }
 
 fn collect_input_paths<I, P>(inputs: I, command: &str) -> Result<Vec<PathBuf>, Error>
@@ -269,25 +175,20 @@ where
     Ok(inputs)
 }
 
-fn validate_cfs_graph(graph: &ImportGraph, options: &CfsOptions) -> Result<(), Error> {
+fn validate_cfs_graph(graph: &ImportGraph) -> Result<(), Error> {
     validate_import_graph(graph)?;
     let units_by_path = units_by_path(graph);
-    validate_cfs_units(graph, &units_by_path, options)?;
-    validate_mission_registry(graph, &units_by_path, options)
+    validate_cfs_units(graph, &units_by_path)?;
+    validate_mission_registry(graph, &units_by_path)
 }
 
 fn validate_cfs_units(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
-    options: &CfsOptions,
 ) -> Result<(), Error> {
     for unit in &graph.units {
         let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-        synapse_codegen_cfs::validate_cfs_with_constants_and_options(
-            &unit.file,
-            &imported_constants,
-            options,
-        )?;
+        synapse_codegen_cfs::validate_cfs_with_constants(&unit.file, &imported_constants)?;
     }
     Ok(())
 }
@@ -296,19 +197,13 @@ fn generate_parsed_with_constants(
     file: &SynFile,
     lang: Lang,
     imported_constants: &synapse_codegen_cfs::ResolvedConstants,
-    options: &CfsOptions,
 ) -> Result<String, Error> {
     let output = match lang {
-        Lang::C => synapse_codegen_cfs::try_generate_c_with_constants_and_options(
-            file,
-            imported_constants,
-            options,
-        )?,
-        Lang::Rust => synapse_codegen_cfs::try_generate_rust_with_constants_and_options(
+        Lang::C => synapse_codegen_cfs::try_generate_c_with_constants(file, imported_constants)?,
+        Lang::Rust => synapse_codegen_cfs::try_generate_rust_with_constants(
             file,
             &Default::default(),
             imported_constants,
-            options,
         )?,
     };
     Ok(output)
@@ -324,18 +219,7 @@ pub fn generate_file(
     lang: Lang,
 ) -> Result<PathBuf, Error> {
     let input = input.as_ref();
-    generate_file_with_options(input, out_dir, lang, &CfsOptions::default())
-}
-
-/// Generate code from an input file with cFS validation options and write it into `out_dir`.
-pub fn generate_file_with_options(
-    input: impl AsRef<Path>,
-    out_dir: impl AsRef<Path>,
-    lang: Lang,
-    options: &CfsOptions,
-) -> Result<PathBuf, Error> {
-    let input = input.as_ref();
-    let output = generate_path_with_options(input, lang, options)?;
+    let output = generate_path(input, lang)?;
 
     let out_dir = out_dir.as_ref();
     fs::create_dir_all(out_dir)?;
@@ -361,16 +245,6 @@ pub fn generate_files(
     out_dir: impl AsRef<Path>,
     lang: Lang,
 ) -> Result<Vec<PathBuf>, Error> {
-    generate_files_with_options(input, out_dir, lang, &CfsOptions::default())
-}
-
-/// Generate the root file and transitive imports with cFS validation options.
-pub fn generate_files_with_options(
-    input: impl AsRef<Path>,
-    out_dir: impl AsRef<Path>,
-    lang: Lang,
-    options: &CfsOptions,
-) -> Result<Vec<PathBuf>, Error> {
     let graph = load_import_graph(input.as_ref())?;
     validate_import_graph(&graph)?;
     let units_by_path = units_by_path(&graph);
@@ -380,13 +254,7 @@ pub fn generate_files_with_options(
 
     let mut written = Vec::new();
     for unit in &graph.units {
-        written.push(write_generated_unit(
-            unit,
-            &units_by_path,
-            out_dir,
-            lang,
-            options,
-        )?);
+        written.push(write_generated_unit(unit, &units_by_path, out_dir, lang)?);
     }
     Ok(written)
 }
@@ -396,10 +264,9 @@ fn write_generated_unit(
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
     out_dir: &Path,
     lang: Lang,
-    options: &CfsOptions,
 ) -> Result<PathBuf, Error> {
     let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-    let output = generate_parsed_with_constants(&unit.file, lang, &imported_constants, options)?;
+    let output = generate_parsed_with_constants(&unit.file, lang, &imported_constants)?;
     let out_path = output_path_for(&unit.path, out_dir, lang)?;
     fs::write(&out_path, output)?;
     Ok(out_path)
@@ -619,30 +486,21 @@ struct MissionPacket {
     name: String,
     kind: synapse_codegen_cfs::CfsPacketKind,
     topic: String,
-    mid: Option<u64>,
     cc: Option<u64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum MissionRoute {
-    LegacyMid(u64),
-    LogicalTopic(Vec<String>),
 }
 
 fn validate_mission_registry(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
-    options: &CfsOptions,
 ) -> Result<(), Error> {
-    let mut telemetry_routes = HashMap::<MissionRoute, MissionPacket>::new();
-    let mut command_codes = HashMap::<(MissionRoute, u64), MissionPacket>::new();
+    let mut telemetry_routes = HashMap::<Vec<String>, MissionPacket>::new();
+    let mut command_codes = HashMap::<(Vec<String>, u64), MissionPacket>::new();
 
     for unit in &graph.units {
         let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-        let packets = synapse_codegen_cfs::collect_cfs_packets_with_constants_and_options(
+        let packets = synapse_codegen_cfs::collect_cfs_packets_with_constants(
             &unit.file,
             &imported_constants,
-            options,
         )?;
 
         for packet in packets {
@@ -661,15 +519,14 @@ fn mission_packet(unit: &ParsedUnit, packet: synapse_codegen_cfs::CfsPacket) -> 
         name: packet.name,
         kind: packet.kind,
         topic: packet.topic,
-        mid: packet.mid,
         cc: packet.cc,
     }
 }
 
 fn register_mission_packet(
     packet: &MissionPacket,
-    telemetry_routes: &mut HashMap<MissionRoute, MissionPacket>,
-    command_codes: &mut HashMap<(MissionRoute, u64), MissionPacket>,
+    telemetry_routes: &mut HashMap<Vec<String>, MissionPacket>,
+    command_codes: &mut HashMap<(Vec<String>, u64), MissionPacket>,
 ) -> Result<(), Error> {
     match packet.kind {
         synapse_codegen_cfs::CfsPacketKind::Telemetry => {
@@ -683,20 +540,10 @@ fn register_mission_packet(
 
 fn register_mission_telemetry(
     packet: &MissionPacket,
-    telemetry_routes: &mut HashMap<MissionRoute, MissionPacket>,
+    telemetry_routes: &mut HashMap<Vec<String>, MissionPacket>,
 ) -> Result<(), Error> {
     let route = mission_route(packet);
     if let Some(first) = telemetry_routes.insert(route, packet.clone()) {
-        if let Some(mid) = packet.mid {
-            return Err(Error::Mission(format!(
-                "duplicate telemetry MID `{}` across mission packets `{}` ({}) and `{}` ({})",
-                format_mid(mid),
-                packet_name(&first),
-                first.path.display(),
-                packet_name(packet),
-                packet.path.display()
-            )));
-        }
         return Err(Error::Mission(format!(
             "duplicate telemetry topic `{}` across mission packets `{}` ({}) and `{}` ({})",
             topic_name(packet),
@@ -711,23 +558,12 @@ fn register_mission_telemetry(
 
 fn register_mission_command(
     packet: &MissionPacket,
-    command_codes: &mut HashMap<(MissionRoute, u64), MissionPacket>,
+    command_codes: &mut HashMap<(Vec<String>, u64), MissionPacket>,
 ) -> Result<(), Error> {
     let cc = packet
         .cc
         .expect("cFS packet collector resolves command codes");
     if let Some(first) = command_codes.insert((mission_route(packet), cc), packet.clone()) {
-        if let Some(mid) = packet.mid {
-            return Err(Error::Mission(format!(
-                "duplicate command MID/CC pair `{}`/`{}` across mission packets `{}` ({}) and `{}` ({})",
-                format_mid(mid),
-                cc,
-                packet_name(&first),
-                first.path.display(),
-                packet_name(packet),
-                packet.path.display()
-            )));
-        }
         return Err(Error::Mission(format!(
             "duplicate function code `{}` for command topic `{}` across commands `{}` ({}) and `{}` ({})",
             cc,
@@ -741,14 +577,10 @@ fn register_mission_command(
     Ok(())
 }
 
-fn mission_route(packet: &MissionPacket) -> MissionRoute {
-    if let Some(mid) = packet.mid {
-        MissionRoute::LegacyMid(mid)
-    } else {
-        let mut topic = packet.namespace.clone();
-        topic.push(packet.topic.clone());
-        MissionRoute::LogicalTopic(topic)
-    }
+fn mission_route(packet: &MissionPacket) -> Vec<String> {
+    let mut topic = packet.namespace.clone();
+    topic.push(packet.topic.clone());
+    topic
 }
 
 fn topic_name(packet: &MissionPacket) -> String {
@@ -765,10 +597,6 @@ fn packet_name(packet: &MissionPacket) -> String {
         segments.push(packet.name.clone());
         segments.join("::")
     }
-}
-
-pub(crate) fn format_mid(mid: u64) -> String {
-    format!("0x{mid:04X}")
 }
 
 fn output_path_for(input: &Path, out_dir: &Path, lang: Lang) -> Result<PathBuf, Error> {
@@ -927,29 +755,25 @@ mod tests {
     #[test]
     fn generate_c_from_string() {
         let out = generate_str(
-            "@mid(0x1880)\n@cc(1)\ncommand SetMode { mode: u8 }",
+            "commands NavCommands { @cc(1) command SetMode { mode: u8 } }",
             Lang::C,
         )
         .unwrap();
-        assert!(out.contains("#define SET_MODE_MID  0x1880U"));
+        assert!(!out.contains("SET_MODE_MID"));
         assert!(out.contains("#define SET_MODE_CC   1U"));
         assert!(out.contains("CFE_MSG_CommandHeader_t Header;"));
     }
 
     #[test]
     fn generate_rust_from_string() {
-        let out = generate_str("@mid(0x0801)\ntelemetry NavState { x: f64 }", Lang::Rust).unwrap();
-        assert!(out.contains("pub const NAV_STATE_MID: u16 = 0x0801;"));
+        let out = generate_str("telemetry NavState { x: f64 }", Lang::Rust).unwrap();
+        assert!(!out.contains("NAV_STATE_MID"));
         assert!(out.contains("pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
     }
 
     #[test]
     fn rejects_optional_fields() {
-        let err = generate_str(
-            "@mid(0x0801)\ntelemetry Status { error_code?: u32 }",
-            Lang::C,
-        )
-        .unwrap_err();
+        let err = generate_str("telemetry Status { error_code?: u32 }", Lang::C).unwrap_err();
         assert_eq!(
             err.to_string(),
             "optional field `Status.error_code` is not supported by cFS codegen yet"
@@ -958,7 +782,7 @@ mod tests {
 
     #[test]
     fn check_str_validates_cfs_codegen_support() {
-        let err = check_str("@mid(0x0801)\ntelemetry Status { error_code?: u32 }").unwrap_err();
+        let err = check_str("telemetry Status { error_code?: u32 }").unwrap_err();
         assert_eq!(
             err.to_string(),
             "optional field `Status.error_code` is not supported by cFS codegen yet"
@@ -977,7 +801,7 @@ mod tests {
     #[test]
     fn rejects_enum_fields() {
         let err = generate_str(
-            "enum CameraMode { Idle = 0 Streaming = 1 }\n@mid(0x0801)\ntelemetry Status { mode: CameraMode }",
+            "enum CameraMode { Idle = 0 Streaming = 1 }\ntelemetry Status { mode: CameraMode }",
             Lang::C,
         )
         .unwrap_err();
@@ -998,7 +822,7 @@ mod tests {
 
     #[test]
     fn rejects_legacy_message() {
-        let err = generate_str("@mid(0x0801)\nmessage Status { x: f32 }", Lang::C).unwrap_err();
+        let err = generate_str("message Status { x: f32 }", Lang::C).unwrap_err();
         assert_eq!(
             err.to_string(),
             "legacy message `Status` is not supported by cFS codegen; use `command` or `telemetry`"
@@ -1006,17 +830,21 @@ mod tests {
     }
 
     #[test]
-    fn rejects_packet_without_mid() {
-        let err = generate_str("command SetMode { mode: u8 }", Lang::C).unwrap_err();
+    fn rejects_schema_defined_mid() {
+        let err = generate_str("@mid(0x0801)\ntelemetry Status { x: f32 }", Lang::C).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "packet `SetMode` is missing required `@mid(...)`"
+            "`@mid(...)` is not supported on `Status`; assign its logical topic in the mission manifest"
         );
     }
 
     #[test]
     fn rejects_command_without_cc() {
-        let err = generate_str("@mid(0x1880)\ncommand SetMode { mode: u8 }", Lang::C).unwrap_err();
+        let err = generate_str(
+            "commands NavCommands { command SetMode { mode: u8 } }",
+            Lang::C,
+        )
+        .unwrap_err();
         assert_eq!(
             err.to_string(),
             "command `SetMode` is missing required `@cc(...)`"
@@ -1024,22 +852,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_mid_range_mismatch() {
-        let err = generate_str(
-            "@mid(0x0801)\n@cc(1)\ncommand SetMode { mode: u8 }",
-            Lang::C,
-        )
-        .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "packet `SetMode` has MID `0x0801U`, expected command MID with bit 0x1000 set"
-        );
-    }
-
-    #[test]
     fn rejects_dynamic_arrays() {
-        let err =
-            generate_str("@mid(0x0801)\ntelemetry Samples { values: f32[] }", Lang::C).unwrap_err();
+        let err = generate_str("telemetry Samples { values: f32[] }", Lang::C).unwrap_err();
         assert_eq!(
             err.to_string(),
             "dynamic array field `Samples.values` with type `f32[]` is not supported by cFS codegen yet"
@@ -1068,7 +882,6 @@ mod tests {
             &input,
             r#"namespace camera_app
 import "std_msgs.syn"
-@mid(0x0881)
 telemetry CameraStatus {
     header: std_msgs::Header
 }
@@ -1107,64 +920,61 @@ struct Root { unsupported: bad::Unsupported }
     }
 
     #[test]
-    fn check_paths_rejects_duplicate_telemetry_mids_across_roots() {
-        let dir = test_dir("check-paths-duplicate-telemetry-mids");
+    fn check_paths_rejects_duplicate_telemetry_topics_across_roots() {
+        let dir = test_dir("check-paths-duplicate-telemetry-topics");
         let nav = dir.join("nav.syn");
-        fs::write(
-            &nav,
-            "namespace nav_app\n@mid(0x0801)\ntelemetry NavState { x: f64 }",
-        )
-        .unwrap();
+        fs::write(&nav, "namespace nav_app\ntelemetry NavState { x: f64 }").unwrap();
         let payload = dir.join("payload.syn");
         fs::write(
             &payload,
-            "namespace payload_app\n@mid(0x0801)\ntelemetry PayloadStatus { temp: f32 }",
+            "namespace nav_app\ntelemetry NavState { temp: f32 }",
         )
         .unwrap();
 
         let err = check_paths([&nav, &payload]).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("duplicate telemetry MID `0x0801`"));
+        assert!(msg.contains("duplicate telemetry topic `nav_app::NavState`"));
         assert!(msg.contains("nav_app::NavState"));
-        assert!(msg.contains("payload_app::PayloadStatus"));
     }
 
     #[test]
-    fn check_paths_rejects_duplicate_command_mid_cc_pairs_across_roots() {
+    fn check_paths_rejects_duplicate_command_topic_cc_pairs_across_roots() {
         let dir = test_dir("check-paths-duplicate-command-codes");
         let camera = dir.join("camera.syn");
         fs::write(
             &camera,
-            "namespace camera_app\n@mid(0x1880)\n@cc(1)\ncommand SetMode { mode: u8 }",
+            "namespace camera_app\ncommands AppCommands { @cc(1) command SetMode { mode: u8 } }",
         )
         .unwrap();
         let radio = dir.join("radio.syn");
         fs::write(
             &radio,
-            "namespace radio_app\n@mid(0x1880)\n@cc(1)\ncommand SetMode { mode: u8 }",
+            "namespace camera_app\ncommands AppCommands { @cc(1) command Reset { mode: u8 } }",
         )
         .unwrap();
 
         let err = check_paths([&camera, &radio]).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("duplicate command MID/CC pair `0x1880`/`1`"));
+        assert!(
+            msg.contains("duplicate function code `1` for command topic `camera_app::AppCommands`")
+        );
         assert!(msg.contains("camera_app::SetMode"));
-        assert!(msg.contains("radio_app::SetMode"));
+        assert!(msg.contains("camera_app::Reset"));
     }
 
     #[test]
-    fn check_paths_allows_shared_command_mid_with_distinct_command_codes() {
-        let dir = test_dir("check-paths-shared-command-mid");
+    fn check_paths_allows_shared_command_topic_with_distinct_command_codes() {
+        let dir = test_dir("check-paths-shared-command-topic");
         let camera = dir.join("camera.syn");
         fs::write(
             &camera,
-            "namespace camera_app\n@mid(0x1880)\n@cc(1)\ncommand SetMode { mode: u8 }",
+            "namespace camera_app\ncommands AppCommands { @cc(1) command SetMode { mode: u8 } }",
         )
         .unwrap();
         let radio = dir.join("radio.syn");
         fs::write(
             &radio,
-            "namespace radio_app\n@mid(0x1880)\n@cc(2)\ncommand SetMode { mode: u8 }",
+            "namespace camera_app\ncommands AppCommands { @cc(2) command Reset { mode: u8 } }",
         )
         .unwrap();
 
@@ -1172,25 +982,18 @@ struct Root { unsupported: bad::Unsupported }
     }
 
     #[test]
-    fn generate_docs_includes_packet_ids_fields_and_docs() {
+    fn generate_docs_includes_topics_fields_and_docs() {
         let dir = test_dir("generate-docs");
-        fs::write(
-            dir.join("mission_ids.syn"),
-            "namespace mission_ids\nconst NAV_STATE_MID: u16 = 0x0801",
-        )
-        .unwrap();
         let input = dir.join("nav.syn");
         fs::write(
             &input,
             r#"namespace nav_app
-import "mission_ids.syn"
 /// Navigation mode.
 enum u8 NavMode {
     /// Tracking target attitude.
     Track = 1
 }
 /// Navigation state estimate.
-@mid(mission_ids::NAV_STATE_MID)
 telemetry NavState {
     /// Current mode.
     mode: NavMode
@@ -1203,7 +1006,7 @@ telemetry NavState {
         assert!(html.contains("Synapse Message Documentation"));
         assert!(html.contains("nav_app"));
         assert!(html.contains("NavState"));
-        assert!(html.contains("0x0801"));
+        assert!(html.contains("Topic"));
         assert!(html.contains("Current mode."));
         assert!(html.contains("NavMode"));
         assert!(html.contains("id=\"doc-search\""));
@@ -1220,7 +1023,7 @@ telemetry NavState {
         let input = dir.join("status.syn");
         fs::write(
             &input,
-            "namespace status_app\n@mid(0x0801)\ntelemetry Status { count: u32 }",
+            "namespace status_app\ntelemetry Status { count: u32 }",
         )
         .unwrap();
 
@@ -1233,20 +1036,15 @@ telemetry NavState {
     #[test]
     fn generate_registry_json_includes_packet_facts() {
         let dir = test_dir("generate-registry-json");
-        fs::write(
-            dir.join("mission_ids.syn"),
-            "namespace mission_ids\nconst CMD_MID: u16 = 0x1880\nconst SET_MODE_CC: u16 = 2",
-        )
-        .unwrap();
         let input = dir.join("camera.syn");
         fs::write(
             &input,
             r#"namespace camera_app
-import "mission_ids.syn"
-@mid(mission_ids::CMD_MID)
-@cc(mission_ids::SET_MODE_CC)
-command SetMode {
-    mode: u8
+commands CameraCommands {
+    @cc(2)
+    command SetMode {
+        mode: u8
+    }
 }
 "#,
         )
@@ -1257,8 +1055,8 @@ command SetMode {
         assert!(json.contains("\"namespace\": \"camera_app\""));
         assert!(json.contains("\"qualified_name\": \"camera_app::SetMode\""));
         assert!(json.contains("\"kind\": \"command\""));
-        assert!(json.contains("\"mid\": 6272"));
-        assert!(json.contains("\"mid_hex\": \"0x1880\""));
+        assert!(json.contains("\"topic\": \"CameraCommands\""));
+        assert!(!json.contains("\"mid\""));
         assert!(json.contains("\"cc\": 2"));
     }
 
@@ -1296,8 +1094,7 @@ telemetry CameraStatus {
         assert!(json.contains("\"topic\": \"CameraCommands\""));
         assert!(json.contains("\"qualified_name\": \"camera_app::CameraStatus\""));
         assert!(json.contains("\"topic\": \"CameraStatus\""));
-        assert!(json.contains("\"mid\": null"));
-        assert!(json.contains("\"mid_hex\": null"));
+        assert!(!json.contains("\"mid\""));
 
         let html = generate_docs([&input]).unwrap();
         assert!(html.contains("CameraCommands"));
@@ -1311,7 +1108,7 @@ telemetry CameraStatus {
         let input = dir.join("status.syn");
         fs::write(
             &input,
-            "namespace status_app\n@mid(0x0801)\ntelemetry Status { count: u32 }",
+            "namespace status_app\ntelemetry Status { count: u32 }",
         )
         .unwrap();
         let output = dir.join("registry.csv");
@@ -1319,9 +1116,9 @@ telemetry CameraStatus {
         let out_path = write_registry([&input], &output, RegistryFormat::Csv).unwrap();
         assert_eq!(out_path, output);
         let csv = fs::read_to_string(out_path).unwrap();
-        assert!(csv.starts_with("namespace,name,qualified_name,kind,source,mid,mid_hex,cc"));
+        assert!(csv.starts_with("namespace,name,qualified_name,kind,source,topic,cc"));
         assert!(csv.contains("\"status_app\",\"Status\",\"status_app::Status\",\"telemetry\""));
-        assert!(csv.contains("\"2049\",\"0x0801\""));
+        assert!(csv.contains("\"Status\""));
     }
 
     #[test]
@@ -1329,7 +1126,7 @@ telemetry CameraStatus {
         let dir = test_dir("resolves-imported-constants-in-attrs");
         fs::write(
             dir.join("nav_ids.syn"),
-            "namespace nav_ids\nconst NAV_STATE_MID: u16 = 0x0801",
+            "namespace nav_ids\nconst SET_MODE_CC: u16 = 2",
         )
         .unwrap();
         let input = dir.join("nav.syn");
@@ -1337,16 +1134,18 @@ telemetry CameraStatus {
             &input,
             r#"namespace nav_app
 import "nav_ids.syn"
-@mid(nav_ids::NAV_STATE_MID)
-telemetry NavState {
-    x: f64
+commands NavCommands {
+    @cc(nav_ids::SET_MODE_CC)
+    command SetMode {
+        mode: u8
+    }
 }
 "#,
         )
         .unwrap();
 
         let out = generate_path(&input, Lang::C).unwrap();
-        assert!(out.contains("#define NAV_STATE_MID  0x0801U"));
+        assert!(out.contains("#define SET_MODE_CC   2U"));
     }
 
     #[test]
@@ -1354,15 +1153,14 @@ telemetry NavState {
         let dir = test_dir("resolves-imported-alias-constants-in-attrs");
         fs::write(
             dir.join("mission_ids.syn"),
-            "namespace mission_ids\nconst NAV_CMD_MID: u16 = 0x1880",
+            "namespace mission_ids\nconst NAV_SET_MODE_CC: u16 = 2",
         )
         .unwrap();
         fs::write(
             dir.join("nav_ids.syn"),
             r#"namespace nav_ids
 import "mission_ids.syn"
-const SET_MODE_MID: u16 = mission_ids::NAV_CMD_MID
-const SET_MODE_CC: u16 = 2
+const SET_MODE_CC: u16 = mission_ids::NAV_SET_MODE_CC
 "#,
         )
         .unwrap();
@@ -1371,17 +1169,17 @@ const SET_MODE_CC: u16 = 2
             &input,
             r#"namespace nav_app
 import "nav_ids.syn"
-@mid(nav_ids::SET_MODE_MID)
-@cc(nav_ids::SET_MODE_CC)
-command SetMode {
-    mode: u8
+commands NavCommands {
+    @cc(nav_ids::SET_MODE_CC)
+    command SetMode {
+        mode: u8
+    }
 }
 "#,
         )
         .unwrap();
 
         let out = generate_path(&input, Lang::Rust).unwrap();
-        assert!(out.contains("pub const SET_MODE_MID: u16 = 0x1880;"));
         assert!(out.contains("pub const SET_MODE_CC: u16 = 2;"));
     }
 
@@ -1390,14 +1188,14 @@ command SetMode {
         let dir = test_dir("rejects-transitive-only-constant-refs");
         fs::write(
             dir.join("mission_ids.syn"),
-            "namespace mission_ids\nconst NAV_STATE_MID: u16 = 0x0801",
+            "namespace mission_ids\nconst SET_MODE_CC: u16 = 2",
         )
         .unwrap();
         fs::write(
             dir.join("nav_ids.syn"),
             r#"namespace nav_ids
 import "mission_ids.syn"
-const LOCAL_MID: u16 = mission_ids::NAV_STATE_MID
+const LOCAL_CC: u16 = mission_ids::SET_MODE_CC
 "#,
         )
         .unwrap();
@@ -1406,9 +1204,11 @@ const LOCAL_MID: u16 = mission_ids::NAV_STATE_MID
             &input,
             r#"namespace nav_app
 import "nav_ids.syn"
-@mid(mission_ids::NAV_STATE_MID)
-telemetry NavState {
-    x: f64
+commands NavCommands {
+    @cc(mission_ids::SET_MODE_CC)
+    command SetMode {
+        mode: u8
+    }
 }
 "#,
         )
@@ -1417,7 +1217,7 @@ telemetry NavState {
         let err = generate_path(&input, Lang::C).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "packet `NavState` has unresolved or non-integer `@mid(...)`; cFS codegen requires an integer, hex, local integer constant, or imported integer constant message ID"
+            "command `SetMode` has unresolved or non-integer `@cc(...)`; cFS codegen requires an integer, hex, or local integer constant command code"
         );
     }
 
@@ -1434,7 +1234,6 @@ telemetry NavState {
             &input,
             r#"namespace camera_app
 import "std_msgs.syn"
-@mid(0x0881)
 telemetry CameraStatus {
     header: Header
 }
@@ -1466,7 +1265,7 @@ telemetry CameraStatus {
         let input = dir.join("camera.syn");
         fs::write(
             &input,
-            "@mid(0x0881)\ntelemetry CameraStatus { header: std_msgs::Header }",
+            "telemetry CameraStatus { header: std_msgs::Header }",
         )
         .unwrap();
 
@@ -1498,7 +1297,6 @@ struct Header { stamp: time::Time }
             &input,
             r#"namespace camera_app
 import "std_msgs.syn"
-@mid(0x0881)
 telemetry CameraStatus {
     header: std_msgs::Header
 }
@@ -1527,7 +1325,6 @@ struct Header { seq: u32 }
             &input,
             r#"namespace camera_app
 import "std_msgs.syn"
-@mid(0x0881)
 telemetry CameraStatus {
     header: std_msgs::Header
 }
@@ -1561,7 +1358,6 @@ struct Header { stamp: time::Time }
             &input,
             r#"namespace camera_app
 import "std_msgs.syn"
-@mid(0x0881)
 telemetry CameraStatus {
     stamp: time::Time
 }
@@ -1597,7 +1393,6 @@ struct Header { stamp: time::Time }
             &input,
             r#"namespace camera_app
 import "std_msgs.syn"
-@mid(0x0881)
 telemetry CameraStatus {
     header: std_msgs::Header
 }

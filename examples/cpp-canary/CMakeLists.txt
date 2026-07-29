@@ -27,7 +27,6 @@ endif()
 
 add_custom_command(
     OUTPUT
-        "${SYNAPSE_GENERATED_DIR}/mission_ids.h"
         "${SYNAPSE_GENERATED_DIR}/demo_msgs.h"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${SYNAPSE_GENERATED_DIR}"
     COMMAND
@@ -36,7 +35,6 @@ add_custom_command(
         -o "${SYNAPSE_GENERATED_DIR}"
         "${SYNAPSE_IDL_DIR}/demo_msgs.syn"
     DEPENDS
-        "${SYNAPSE_IDL_DIR}/mission_ids.syn"
         "${SYNAPSE_IDL_DIR}/demo_msgs.syn"
     WORKING_DIRECTORY "${SYNAPSE_REPO_ROOT}"
     VERBATIM
@@ -45,7 +43,6 @@ add_custom_command(
 add_custom_target(
     generate_synapse_cpp_canary_headers
     DEPENDS
-        "${SYNAPSE_GENERATED_DIR}/mission_ids.h"
         "${SYNAPSE_GENERATED_DIR}/demo_msgs.h"
 )
 

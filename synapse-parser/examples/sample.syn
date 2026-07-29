@@ -58,7 +58,6 @@ struct Odometry {
     covariance: f64[36]
 }
 
-@mid(0x0801)
 telemetry RobotState {
     header:      Header
     mode:        DriveMode        = DriveMode::Idle
@@ -70,9 +69,11 @@ telemetry RobotState {
     error_code?: i32              // present only when mode == Error
 }
 
-@mid(0x1880)
-command SetDriveMode {
-    mode: DriveMode
+commands RobotCommands {
+    @cc(1)
+    command SetDriveMode {
+        mode: DriveMode
+    }
 }
 
 table RobotConfig {

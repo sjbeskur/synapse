@@ -205,8 +205,8 @@ fn message_basic() {
 }
 
 #[test]
-fn command_basic() {
-    assert!(parses_file("@mid(0x1880)\ncommand SetMode { mode: u8 }"));
+fn top_level_command_is_rejected() {
+    assert!(!parses_file("command SetMode { mode: u8 }"));
 }
 
 #[test]
@@ -224,9 +224,7 @@ fn command_group_basic() {
 
 #[test]
 fn telemetry_basic() {
-    assert!(parses_file(
-        "@mid(0x0801)\ntelemetry NavState { x: f64  y: f64 }"
-    ));
+    assert!(parses_file("telemetry NavState { x: f64  y: f64 }"));
 }
 
 #[test]

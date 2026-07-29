@@ -135,13 +135,12 @@ synapse registry --format json -o generated/packets.json \
   schemas/navigation.syn schemas/camera.syn
 ```
 
-The registry reports logical topics and command codes. Its legacy MID fields
-are `null` for manifest-routed schemas because final MsgId values belong to cFE
-mission/platform mapping.
+The registry reports logical topics and command codes. Final MsgId values are
+not registry fields because they belong to the cFE mission/platform mapping.
 
-## Legacy Transition
+## Schema Boundary
 
-Top-level packets with `@mid(...)` remain readable during the current
-transition and are excluded from mission-manifest completeness checks. New
-schemas should use command groups and MID-free telemetry. Legacy support can be
-removed once remaining fixtures and consumers have migrated.
+Schema-level `@mid(...)` attributes and top-level `command` declarations are
+rejected. Commands must be nested in a `commands` group, telemetry declarations
+name their own logical topic, and every mission-visible topic must be assigned
+by the manifest.

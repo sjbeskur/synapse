@@ -21,7 +21,8 @@ cargo run -p cfs-synapse -- check \
   examples/mission-demo/syn/payload_app.syn
 ```
 
-It also includes intentional conflict roots that show duplicate telemetry MID and duplicate command MID/CC diagnostics.
+It also includes intentional conflict roots that show duplicate telemetry topic
+and duplicate command topic/function-code diagnostics.
 
 ## Generated Output
 

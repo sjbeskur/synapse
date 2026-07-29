@@ -97,10 +97,9 @@ synapse generate --lang <c|rust> [-o <out-dir>] <file.syn>
 ```
 
 - `check` validates input roots, their import graphs, and cFS codegen support without writing generated output. Add `--manifest` to require complete, correctly typed logical-topic assignments.
-- `doc` generates static HTML documentation for input roots, their import graphs, logical topics, optional legacy packet IDs, command codes, fields, types, and doc comments. Without `-o`, HTML is written to stdout; with `-o`, Synapse writes `index.html`.
+- `doc` generates static HTML documentation for input roots, their import graphs, logical topics, command codes, fields, types, and doc comments. Without `-o`, HTML is written to stdout; with `-o`, Synapse writes `index.html`.
 - `registry` emits a validated packet registry for input roots as JSON or CSV. Without `-o`, registry output is written to stdout.
 - `routes` validates a mission TOML file and generates a standalone cFE routing header. It never modifies the manifest.
-- `--msgid-layout <ccsds-v1|opaque>` selects MID validation policy. The default is `ccsds-v1`, which validates the legacy `0x1000` command/telemetry bit. Use `opaque` for missions where cFE treats MsgIds as mission-owned opaque values.
 - `--lang c` generates a cFS C header (`.h`) that includes `cfe.h`.
 - `--lang rust` generates Rust `#[repr(C)]` bindings (`.rs`) that reference `cfs_sys` header types by default.
 - Without `-o`, generated code is written to stdout.
@@ -220,9 +219,11 @@ The cFS generator currently emits:
 - `const` declarations as C `#define`s or Rust `pub const`s.
 - Represented enums such as `enum u8 CameraMode` as fixed-width type aliases and constants.
 - `struct` and `table` definitions as plain data structs.
-- `command` and `telemetry` definitions as Software Bus packet structs with cFS headers.
-- Required `@mid(...)` attributes as message ID constants.
+- `command` definitions nested inside logical `commands` groups and `telemetry`
+  definitions as Software Bus packet structs with cFS headers.
 - Required command `@cc(...)` attributes as command-code constants.
+- Mission manifests and generated routing headers for deployment-owned cFE
+  topic IDs and MsgId mappings.
 - Fixed arrays, bounded strings, and namespaced type references.
 
 Enums need an explicit integer representation when used in generated cFS fields, for example `enum u8 CameraMode`. Unrepresented enums, unbounded strings, optional field markers, field defaults, dynamic arrays, and non-string bounded arrays are parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer represented enums, fixed arrays, and bounded strings for generated packet payloads.
