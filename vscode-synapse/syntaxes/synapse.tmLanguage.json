@@ -13,6 +13,9 @@
       "include": "#attributes"
     },
     {
+      "include": "#declarations"
+    },
+    {
       "include": "#keywords"
     },
     {
@@ -25,9 +28,6 @@
       "include": "#numbers"
     },
     {
-      "include": "#declarations"
-    },
-    {
       "include": "#fields"
     }
   ],
@@ -36,11 +36,11 @@
       "patterns": [
         {
           "name": "comment.line.documentation.synapse",
-          "match": "##.*$"
+          "match": "///.*$"
         },
         {
-          "name": "comment.line.number-sign.synapse",
-          "match": "#(?!#).*$"
+          "name": "comment.line.double-slash.synapse",
+          "match": "//.*$"
         }
       ]
     },
@@ -103,7 +103,7 @@
       "patterns": [
         {
           "name": "keyword.declaration.synapse",
-          "match": "\\b(namespace|import|const|enum|struct|command|telemetry|table|message)\\b"
+          "match": "\\b(namespace|import|const|enum|struct|commands|command|telemetry|table|message)\\b"
         }
       ]
     },
@@ -154,8 +154,35 @@
           }
         },
         {
+          "name": "meta.declaration.enum.synapse",
+          "match": "\\b(enum)\\s+(?:(i8|i16|i32|i64|u8|u16|u32|u64)\\s+)?([A-Za-z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.synapse"
+            },
+            "2": {
+              "name": "storage.type.primitive.synapse"
+            },
+            "3": {
+              "name": "entity.name.type.enum.synapse"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.command-group.synapse",
+          "match": "\\b(commands)\\s+([A-Za-z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.synapse"
+            },
+            "2": {
+              "name": "entity.name.type.command-group.synapse"
+            }
+          }
+        },
+        {
           "name": "meta.declaration.type.synapse",
-          "match": "\\b(enum|struct|command|telemetry|table|message)\\s+([A-Za-z][A-Za-z0-9_]*)",
+          "match": "\\b(struct|command|telemetry|table|message)\\s+([A-Za-z][A-Za-z0-9_]*)",
           "captures": {
             "1": {
               "name": "keyword.declaration.synapse"
