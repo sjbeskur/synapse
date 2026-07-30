@@ -1,7 +1,5 @@
 namespace payload_app
 
-import "mission_ids.syn"
-
 /// Payload acquisition state.
 enum u8 PayloadState {
     /// Payload is idle.
@@ -13,7 +11,6 @@ enum u8 PayloadState {
 }
 
 /// Payload status packet.
-@mid(demo_mission_ids::PAYLOAD_STATUS_TLM_MID)
 telemetry PayloadStatus {
     /// Current payload state.
     state: PayloadState
@@ -23,11 +20,12 @@ telemetry PayloadStatus {
     storage_percent: u8
 }
 
-/// Start payload acquisition.
-@mid(demo_mission_ids::PAYLOAD_CMD_MID)
-@cc(demo_mission_ids::PAYLOAD_START_ACQUISITION_CC)
-command StartAcquisition {
-    /// Acquisition duration in seconds.
-    duration_s: u32
+/// Commands routed to the payload application.
+commands PayloadCommands {
+    /// Start payload acquisition.
+    @cc(1)
+    command StartAcquisition {
+        /// Acquisition duration in seconds.
+        duration_s: u32
+    }
 }
-

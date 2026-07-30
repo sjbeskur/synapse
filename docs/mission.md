@@ -1,270 +1,150 @@
-# Mission-Wide Validation
+# Mission-Wide Routing
 
-Synapse currently answers a file-local question:
+Synapse separates reusable message interfaces from mission deployment
+assignments:
 
-> Can this `.syn` root, plus its imports, be generated safely for cFS C/Rust ABI code?
+- `.syn` files define logical command and telemetry topics.
+- `mission.toml` assigns cFE topic IDs.
+- cFE mission/platform configuration maps those topic IDs to final MsgId
+  values.
 
-That is necessary, but it is not the whole mission problem. A cFS mission needs a stronger answer:
+This keeps deployment-specific numbers out of reusable schemas while still
+making the complete routing configuration reviewable and deterministic.
 
-> Can all of these apps coexist safely on one Software Bus?
+See [`routing-model.md`](routing-model.md) for the architectural boundary.
 
-Mission-wide validation is the feature that moves Synapse from a useful code generator toward a mission message utility.
+## Schema Topics
 
-## Current Shape
+A command group defines one logical command topic. Commands inside it are
+selected by function code:
 
-Single-root generation starts from one `.syn` file, loads its imports, validates the graph, checks cFS codegen constraints, and emits C/Rust output.
+```synapse
+namespace camera_app
 
-```mermaid
-flowchart LR
-    A[root .syn file] --> B[load imports]
-    B --> C[validate import graph]
-    C --> D[validate cFS codegen rules]
-    D --> E[generate C/Rust]
-```
+commands CameraCommands {
+    @cc(1)
+    command SetMode {
+        mode: u8
+    }
 
-This catches local problems:
-
-- Missing imports.
-- Unresolved type references.
-- Unsupported ABI constructs.
-- Missing `@mid(...)` or `@cc(...)`.
-- Duplicate MIDs within one generated file.
-- Duplicate command MID/CC pairs within one generated file.
-
-A single-root run does not answer cross-app questions. For example, two independent roots can both be locally valid while still reusing the same telemetry MID.
-
-## Mission Shape
-
-Mission validation starts from multiple roots and builds a registry of every packet-like declaration that participates in the mission.
-
-```mermaid
-flowchart TD
-    M[mission bundle] --> A[nav_app.syn]
-    M --> B[camera_app.syn]
-    M --> C[radio_app.syn]
-    M --> D[payload_app.syn]
-
-    A --> IA[imports + local constants]
-    B --> IB[imports + local constants]
-    C --> IC[imports + local constants]
-    D --> ID[imports + local constants]
-
-    IA --> R[mission registry]
-    IB --> R
-    IC --> R
-    ID --> R
-
-    R --> V1[MID uniqueness]
-    R --> V2[command MID/CC uniqueness]
-    R --> V3[MID range ownership]
-    R --> V4[namespace/type collisions]
-    R --> V5[report]
-```
-
-The key new concept is the **mission registry**.
-
-## Mission Registry
-
-The registry is an internal inventory of mission-visible message facts. It is not generated code and it is not a replacement for `.syn` files. It is the collected view Synapse needs in order to validate the mission as one system.
-
-For each packet-like declaration, the registry records facts such as:
-
-```text
-telemetry nav_app::NavState
-  source = mission/nav/nav_msgs.syn
-  MID    = 0x0801
-
-telemetry camera_app::CameraStatus
-  source = mission/camera/camera_msgs.syn
-  MID    = 0x0881
-
-command camera_app::SetExposure
-  source = mission/camera/camera_msgs.syn
-  MID    = 0x1880
-  CC     = 2
-```
-
-A more explicit registry entry might look like:
-
-```text
-PacketEntry {
-    namespace: ["camera_app"],
-    name: "SetExposure",
-    kind: Command,
-    source: "mission/camera/camera_msgs.syn",
-    mid: 0x1880,
-    cc: 2,
-    mid_source: "camera_ids::CAMERA_CMD_MID",
-    cc_source: "camera_ids::SET_EXPOSURE_CC",
+    @cc(2)
+    command SetExposure {
+        exposure_us: u32
+    }
 }
 ```
 
-The resolved numeric values are what enable validation. The source strings are what make diagnostics useful to humans.
+Each telemetry declaration defines one logical telemetry topic:
 
-The same registry could later be emitted as a machine-readable artifact, such as JSON, for tools that want to ingest packet definitions into a database, generate reports, publish ICDs, or build dashboards. That keeps Synapse focused: it produces and validates the message-contract data, while other tools can decide how to store, query, or present it.
-
-## What It Catches
-
-Duplicate telemetry MIDs:
-
-```text
-error: duplicate telemetry MID 0x0801
-  first:  nav_app::NavState
-          mission/nav/nav_msgs.syn
-  second: payload_app::PayloadStatus
-          mission/payload/payload_msgs.syn
+```synapse
+telemetry CameraStatus {
+    mode: u8
+}
 ```
 
-Duplicate command MID/CC pairs:
+The fully qualified topics are `camera_app::CameraCommands` and
+`camera_app::CameraStatus`.
 
-```text
-error: duplicate command MID/CC pair 0x1880/1
-  first:  camera_app::SetMode
-          mission/camera/camera_msgs.syn
-  second: radio_app::SetMode
-          mission/radio/radio_msgs.syn
-```
+## Mission Manifest
 
-Allowed shared command MID with distinct command codes:
-
-```text
-ok:
-  camera_app::SetMode      MID 0x1880 CC 1
-  camera_app::SetExposure  MID 0x1880 CC 2
-```
-
-Future policy checks could include reserved ranges:
-
-```text
-nav_app telemetry MIDs:    0x0800..0x083F
-camera_app telemetry MIDs: 0x0880..0x08BF
-radio_app command MIDs:    0x1900..0x193F
-```
-
-That would let Synapse catch a packet that is unique but owned by the wrong app range.
-
-## Why This Matters
-
-File-local validation makes one generated header safe.
-
-Mission-wide validation makes a set of apps safe together.
-
-That is the game-changing part for a cFS-focused message utility. It moves Synapse toward the role ROS 2 message packages play in a robot system: a central contract for messages, IDs, namespaces, and generated language bindings.
-
-## User Interface
-
-The implemented `0.2.x` interface extends `check` to accept multiple roots:
-
-```bash
-synapse check mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn mission/radio/radio_msgs.syn
-```
-
-## Proposed Future Manifest
-
-The following TOML shape is not implemented. It is a design candidate for a later mission manifest once Synapse supports range ownership and repeatable mission configuration:
-
-```bash
-synapse mission check mission.synapse.toml
-```
-
-Possible manifest shape:
+The manifest is a human-owned TOML file:
 
 ```toml
-[mission]
-name = "demo"
+version = 1
 
-roots = [
-  "mission/nav/nav_msgs.syn",
-  "mission/camera/camera_msgs.syn",
-  "mission/radio/radio_msgs.syn",
-]
+[topics.command]
+"camera_app::CameraCommands" = 0x82
 
-[[ranges]]
-namespace = "nav_app"
-telemetry = "0x0800..0x083F"
-command = "0x1800..0x183F"
-
-[[ranges]]
-namespace = "camera_app"
-telemetry = "0x0880..0x08BF"
-command = "0x1880..0x18BF"
+[topics.telemetry]
+"camera_app::CameraStatus" = 0x83
 ```
 
-For now, use multi-root `synapse check` as the supported mission validation interface.
+Command and telemetry topic IDs occupy separately validated spaces. The same
+numeric ID may therefore occur once in each section.
 
-## Possible Future Outputs
+Synapse reads but never modifies this file. Assignment changes remain explicit
+source-control changes.
 
-Synapse now provides static HTML documentation from the same validated roots:
+## Validation
+
+Validate all mission-visible schema roots together:
 
 ```bash
-synapse doc mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn -o site/
+synapse check --manifest mission.toml \
+  schemas/navigation.syn \
+  schemas/camera.syn \
+  schemas/payload.syn
 ```
 
-That command generates human-readable static documentation from packet IDs, command codes, fields, types, namespaces, imports, and doc comments.
+Synapse loads and deduplicates their import closures before checking:
 
-Synapse also provides machine-readable packet registry output:
+- Missing logical-topic assignments.
+- Stale manifest assignments with no matching schema topic.
+- Command topics placed under `topics.telemetry`, or the reverse.
+- Duplicate numeric IDs within one topic space.
+- Duplicate function codes within a command topic.
+- Duplicate logical telemetry declarations.
+- C macro-name collisions after namespace/name normalization.
+- Unsupported schema and ABI constructs.
+
+Manifest validation is intentionally strict. Pass the complete mission-visible
+schema set rather than a subset when the manifest describes the whole mission.
+
+## Routing Header
+
+Generate the cFE routing header:
 
 ```bash
-synapse registry mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --format json
-synapse registry mission/nav/nav_msgs.syn mission/camera/camera_msgs.syn --format csv -o packets.csv
+synapse routes --manifest mission.toml \
+  -o generated/mission_topics.h \
+  schemas/navigation.syn \
+  schemas/camera.syn \
+  schemas/payload.syn
 ```
 
-That command produces a validated packet registry for downstream databases or automation.
+Without `-o`, the header is written to stdout. The output includes
+`cfe_core_api_msgid_mapping.h` and maps topic IDs using the mission-configured
+cFE macros:
 
-See [`registry.md`](registry.md) for the current JSON and CSV schema.
+```c
+#define CAMERA_APP_CAMERA_COMMANDS_TOPICID  0x0082U
+#define CAMERA_APP_CAMERA_COMMANDS_MID \
+    CFE_PLATFORM_CMD_TOPICID_TO_MIDV(CAMERA_APP_CAMERA_COMMANDS_TOPICID)
 
-Those outputs stay inside Synapse's intended boundary: define, generate, validate, and report message contracts. Database storage, web hosting, dashboards, and mission operations remain separate tools.
+#define CAMERA_APP_CAMERA_STATUS_TOPICID  0x0083U
+#define CAMERA_APP_CAMERA_STATUS_MID \
+    CFE_PLATFORM_TLM_TOPICID_TO_MIDV(CAMERA_APP_CAMERA_STATUS_TOPICID)
+```
 
-## Implementation Plan
+At a cFE API boundary, convert the message-ID value using the normal cFE API:
 
-1. **Collect roots**
+```c
+CFE_SB_Subscribe(
+    CFE_SB_ValueToMsgId(CAMERA_APP_CAMERA_COMMANDS_MID),
+    CommandPipe
+);
+```
 
-   Accept multiple input roots for validation. Each root keeps the same direct-import visibility rules that path generation uses today.
+The generated routing header targets standard, non-EDS cFS builds. EDS-enabled
+builds generate their interface headers through the EDS toolchain and are
+outside the Synapse 0.3 support scope.
 
-2. **Load import closures**
+## Other Mission Outputs
 
-   Load and validate each root's import graph. Reuse existing import graph logic where possible.
-
-3. **Build the registry**
-
-   Walk every root and imported unit that participates in the mission. Record command and telemetry declarations with resolved MID and CC values.
-
-4. **Apply policies**
-
-   Start with global duplicate checks:
-
-   - Duplicate telemetry MIDs.
-   - Duplicate command MID/CC pairs.
-   - Command/telemetry MID bit-pattern mismatches when using the default `ccsds-v1` MsgId layout.
-
-   Use `--msgid-layout opaque` for missions where MsgIds are mission-owned opaque values and should not be interpreted with the legacy `0x1000` command/telemetry bit.
-
-5. **Report clearly**
-
-   Diagnostics should name the packet, namespace, source path, MID/CC value, and the conflicting packet. The registry exists largely to make these reports precise.
-
-## Open Design Questions
-
-- Should imported dependency files contribute packet entries automatically, or should only explicit mission roots count as owned packet producers?
-- Should mission validation allow two roots to import the same packet definition without reporting it twice?
-- Should `command` MIDs be unique globally, or is sharing a command MID across apps acceptable when command codes differ?
-- Should range ownership live in `.syn` syntax, a mission manifest, or both?
-- Should generated packet constants eventually include namespace ownership the same way C enum variant macros do?
-
-## First Useful Slice
-
-The first useful implementation does not need manifests or ranges.
-
-It is:
+The same roots can produce documentation and a machine-readable registry:
 
 ```bash
-synapse check root_a.syn root_b.syn root_c.syn
+synapse doc -o generated/docs schemas/navigation.syn schemas/camera.syn
+synapse registry --format json -o generated/packets.json \
+  schemas/navigation.syn schemas/camera.syn
 ```
 
-It reports:
+The registry reports logical topics and command codes. Final MsgId values are
+not registry fields because they belong to the cFE mission/platform mapping.
 
-- All normal single-root validation errors.
-- Duplicate telemetry MID values across the collected roots.
-- Duplicate command MID/CC pairs across the collected roots.
+## Schema Boundary
 
-That already makes Synapse much more valuable for real cFS mission integration.
+Schema-level `@mid(...)` attributes and top-level `command` declarations are
+rejected. Commands must be nested in a `commands` group, telemetry declarations
+name their own logical topic, and every mission-visible topic must be assigned
+by the manifest.

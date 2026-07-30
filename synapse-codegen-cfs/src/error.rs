@@ -28,36 +28,24 @@ pub enum CodegenError {
     UnboundedStringUnsupported { container: String, field: String },
     /// The legacy `message` keyword is parsed for migration, but cFS codegen requires intent.
     LegacyMessageUnsupported { packet: String },
-    /// cFS Software Bus command and telemetry packets require explicit message IDs.
-    MissingMid { packet: String },
-    /// Message IDs are only meaningful for cFS command and telemetry packets.
+    /// Deployment message IDs do not belong in reusable schemas.
     MessageIdUnsupported { item: String },
-    /// Message IDs must resolve to non-negative integers for cFS codegen.
-    MessageIdValueUnsupported { packet: String },
+    /// Commands must belong to a logical command topic.
+    CommandGroupRequired { packet: String },
     /// cFS command packets require an explicit command code.
     MissingCommandCode { packet: String },
     /// Command codes are only meaningful for cFS command packets.
     CommandCodeUnsupported { item: String },
     /// Command codes must be literal non-negative integers for cFS codegen today.
     CommandCodeValueUnsupported { packet: String },
-    /// Literal MIDs must be unique within one generated file.
-    DuplicateMid {
-        mid: String,
-        first_packet: String,
-        second_packet: String,
-    },
-    /// Literal command MID/CC pairs must be unique within one generated file.
-    DuplicateCommandCode {
-        mid: String,
+    /// Generated command-code constants use the cFE function-code ABI type.
+    CommandCodeOutOfRange { packet: String, value: u64 },
+    /// Function codes must be unique within one logical command topic.
+    DuplicateCommandCodeInGroup {
+        group: String,
         cc: String,
         first_packet: String,
         second_packet: String,
-    },
-    /// Literal command/telemetry MIDs must match the expected cFS command bit pattern.
-    MidRangeMismatch {
-        packet: String,
-        mid: String,
-        expected: &'static str,
     },
     /// Dynamic arrays parse today, but cFS ABI codegen has no ownership/length model yet.
     DynamicArrayUnsupported {
@@ -86,16 +74,13 @@ impl fmt::Display for CodegenError {
             | CodegenError::EnumVariantValueRequired { .. }
             | CodegenError::EnumVariantValueOutOfRange { .. } => fmt_enum_error(self, f),
             CodegenError::LegacyMessageUnsupported { .. }
-            | CodegenError::MissingMid { .. }
             | CodegenError::MessageIdUnsupported { .. }
-            | CodegenError::MessageIdValueUnsupported { .. }
-            | CodegenError::MidRangeMismatch { .. } => fmt_mid_error(self, f),
+            | CodegenError::CommandGroupRequired { .. } => fmt_packet_error(self, f),
             CodegenError::MissingCommandCode { .. }
             | CodegenError::CommandCodeUnsupported { .. }
-            | CodegenError::CommandCodeValueUnsupported { .. } => fmt_command_error(self, f),
-            CodegenError::DuplicateMid { .. } | CodegenError::DuplicateCommandCode { .. } => {
-                fmt_duplicate_error(self, f)
-            }
+            | CodegenError::CommandCodeValueUnsupported { .. }
+            | CodegenError::CommandCodeOutOfRange { .. } => fmt_command_error(self, f),
+            CodegenError::DuplicateCommandCodeInGroup { .. } => fmt_duplicate_error(self, f),
         }
     }
 }
@@ -182,47 +167,21 @@ fn fmt_enum_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Resu
     }
 }
 
-fn fmt_mid_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match error {
-        CodegenError::LegacyMessageUnsupported { .. }
-        | CodegenError::MissingMid { .. }
-        | CodegenError::MessageIdUnsupported { .. } => fmt_mid_presence_error(error, f),
-        CodegenError::MessageIdValueUnsupported { .. } | CodegenError::MidRangeMismatch { .. } => {
-            fmt_mid_value_error(error, f)
-        }
-        _ => unreachable!("non-MID error passed to fmt_mid_error"),
-    }
-}
-
-fn fmt_mid_presence_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+fn fmt_packet_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match error {
         CodegenError::LegacyMessageUnsupported { packet } => write!(
             f,
             "legacy message `{packet}` is not supported by cFS codegen; use `command` or `telemetry`"
         ),
-        CodegenError::MissingMid { packet } => {
-            write!(f, "packet `{packet}` is missing required `@mid(...)`")
-        }
         CodegenError::MessageIdUnsupported { item } => write!(
             f,
-            "`@mid(...)` is only supported on command and telemetry packets, found on `{item}`"
+            "`@mid(...)` is not supported on `{item}`; assign its logical topic in the mission manifest"
         ),
-        _ => unreachable!("non-MID presence error passed to fmt_mid_presence_error"),
-    }
-}
-
-fn fmt_mid_value_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match error {
-        CodegenError::MessageIdValueUnsupported { packet } => write!(
+        CodegenError::CommandGroupRequired { packet } => write!(
             f,
-            "packet `{packet}` has unresolved or non-integer `@mid(...)`; cFS codegen requires an integer, hex, local integer constant, or imported integer constant message ID"
+            "command `{packet}` must be declared inside a `commands` group"
         ),
-        CodegenError::MidRangeMismatch {
-            packet,
-            mid,
-            expected,
-        } => write!(f, "packet `{packet}` has MID `{mid}`, expected {expected}"),
-        _ => unreachable!("non-MID value error passed to fmt_mid_value_error"),
+        _ => unreachable!("non-packet error passed to fmt_packet_error"),
     }
 }
 
@@ -239,28 +198,24 @@ fn fmt_command_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::R
             f,
             "command `{packet}` has unresolved or non-integer `@cc(...)`; cFS codegen requires an integer, hex, or local integer constant command code"
         ),
+        CodegenError::CommandCodeOutOfRange { packet, value } => write!(
+            f,
+            "command `{packet}` has function code `{value}` outside the supported `u16` range"
+        ),
         _ => unreachable!("non-command error passed to fmt_command_error"),
     }
 }
 
 fn fmt_duplicate_error(error: &CodegenError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match error {
-        CodegenError::DuplicateMid {
-            mid,
-            first_packet,
-            second_packet,
-        } => write!(
-            f,
-            "duplicate MID `{mid}` used by packets `{first_packet}` and `{second_packet}`"
-        ),
-        CodegenError::DuplicateCommandCode {
-            mid,
+        CodegenError::DuplicateCommandCodeInGroup {
+            group,
             cc,
             first_packet,
             second_packet,
         } => write!(
             f,
-            "duplicate command MID/CC pair `{mid}`/`{cc}` used by packets `{first_packet}` and `{second_packet}`"
+            "duplicate function code `{cc}` in command topic `{group}` used by commands `{first_packet}` and `{second_packet}`"
         ),
         _ => unreachable!("non-duplicate error passed to fmt_duplicate_error"),
     }

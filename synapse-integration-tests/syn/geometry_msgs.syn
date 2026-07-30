@@ -36,7 +36,6 @@ struct Accel {
     angular: Vector3
 }
 
-@mid(0x0800)
 telemetry AccelStamped {
     header: std_msgs::Header
     accel:  Accel
@@ -47,7 +46,6 @@ struct AccelWithCovariance {
     covariance: f64[36]
 }
 
-@mid(0x0801)
 telemetry AccelWithCovarianceStamped {
     header: std_msgs::Header
     accel:  AccelWithCovariance
@@ -66,7 +64,6 @@ struct Inertia {
     izz: f64
 }
 
-@mid(0x0802)
 telemetry InertiaStamped {
     header:  std_msgs::Header
     inertia: Inertia
@@ -74,7 +71,6 @@ telemetry InertiaStamped {
 
 // ── Point ─────────────────────────────────────────────────────────────────────
 
-@mid(0x0803)
 telemetry PointStamped {
     header: std_msgs::Header
     point:  Point
@@ -87,7 +83,6 @@ struct Polygon {
     points: Point32[16]
 }
 
-@mid(0x0804)
 telemetry PolygonStamped {
     header:  std_msgs::Header
     polygon: Polygon
@@ -106,14 +101,12 @@ struct Pose2D {
     theta: f64
 }
 
-@mid(0x0805)
 telemetry PoseArray {
     header: std_msgs::Header
     pose_count: u16
     poses:  Pose[16]
 }
 
-@mid(0x0806)
 telemetry PoseStamped {
     header: std_msgs::Header
     pose:   Pose
@@ -124,7 +117,6 @@ struct PoseWithCovariance {
     covariance: f64[36]
 }
 
-@mid(0x0807)
 telemetry PoseWithCovarianceStamped {
     header: std_msgs::Header
     pose:   PoseWithCovariance
@@ -132,7 +124,6 @@ telemetry PoseWithCovarianceStamped {
 
 // ── Quaternion ────────────────────────────────────────────────────────────────
 
-@mid(0x0808)
 telemetry QuaternionStamped {
     header:     std_msgs::Header
     quaternion: Quaternion
@@ -145,7 +136,6 @@ struct Transform {
     rotation:    Quaternion
 }
 
-@mid(0x0809)
 telemetry TransformStamped {
     header:         std_msgs::Header
     child_frame_id: string[<=64]
@@ -159,7 +149,6 @@ struct Twist {
     angular: Vector3
 }
 
-@mid(0x080A)
 telemetry TwistStamped {
     header: std_msgs::Header
     twist:  Twist
@@ -170,7 +159,6 @@ struct TwistWithCovariance {
     covariance: f64[36]
 }
 
-@mid(0x080B)
 telemetry TwistWithCovarianceStamped {
     header: std_msgs::Header
     twist:  TwistWithCovariance
@@ -178,7 +166,6 @@ telemetry TwistWithCovarianceStamped {
 
 // ── Vector3 ───────────────────────────────────────────────────────────────────
 
-@mid(0x080C)
 telemetry Vector3Stamped {
     header: std_msgs::Header
     vector: Vector3
@@ -191,7 +178,6 @@ struct Wrench {
     torque: Vector3
 }
 
-@mid(0x080D)
 telemetry WrenchStamped {
     header: std_msgs::Header
     wrench: Wrench

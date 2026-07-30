@@ -85,16 +85,9 @@ fn cfs_c_codegen_geometry_msgs() {
     assert!(out.contains("#include \"cfe.h\""));
     assert!(out.contains("#include \"std_msgs.h\""));
 
-    // All 14 stamped messages get MID defines
-    for (name, mid) in STAMPED_MIDS {
-        let screaming = to_screaming_snake(name);
-        assert!(
-            out.contains(&format!("#define {}_MID  {}", screaming, mid)),
-            "missing C MID define for {name}"
-        );
-    }
+    assert!(!out.contains("/* Message IDs */"));
 
-    // All stamped messages are telemetry (MIDs 0x0800–0x080D, bit 12 clear)
+    // All stamped messages are telemetry.
     assert!(out.contains("CFE_MSG_TelemetryHeader_t Header;"));
     assert!(!out.contains("CFE_MSG_CommandHeader_t Header;"));
 
@@ -127,9 +120,9 @@ fn cfs_c_codegen_std_msgs() {
 #[test]
 fn cfs_c_codegen_command_telemetry_and_table() {
     let out = synapse_codegen_cfs::generate_c(&read_and_parse("cfs_patterns.syn"));
-    assert!(out.contains("#define SET_MODE_MID  0x1880U"));
+    assert!(!out.contains("SET_MODE_MID"));
     assert!(out.contains("#define SET_MODE_CC   1U"));
-    assert!(out.contains("#define NAV_STATE_MID  0x0801U"));
+    assert!(!out.contains("NAV_STATE_MID"));
     assert!(out.contains("} nav_app_NavConfig_t;"));
     assert!(out.contains("} nav_app_SetMode_t;"));
     assert!(out.contains("} nav_app_NavState_t;"));
@@ -146,14 +139,14 @@ fn cfs_c_codegen_command_telemetry_and_table() {
 fn cfs_c_codegen_camera_msgs() {
     let out = synapse_codegen_cfs::generate_c(&read_and_parse("camera_msgs.syn"));
     assert!(out.contains("#include \"std_msgs.h\""));
-    assert!(out.contains("#define SET_CAMERA_MODE_MID  0x1880U"));
-    assert!(out.contains("#define SET_EXPOSURE_MID  0x1880U"));
-    assert!(out.contains("#define UPDATE_INTRINSICS_MID  0x1880U"));
+    assert!(!out.contains("SET_CAMERA_MODE_MID"));
+    assert!(!out.contains("SET_EXPOSURE_MID"));
+    assert!(!out.contains("UPDATE_INTRINSICS_MID"));
     assert!(out.contains("#define SET_CAMERA_MODE_CC   1U"));
     assert!(out.contains("#define SET_EXPOSURE_CC   2U"));
     assert!(out.contains("#define UPDATE_INTRINSICS_CC   3U"));
-    assert!(out.contains("#define CAMERA_STATUS_MID  0x0881U"));
-    assert!(out.contains("#define CAMERA_CALIBRATION_STATUS_MID  0x0882U"));
+    assert!(!out.contains("CAMERA_STATUS_MID"));
+    assert!(!out.contains("CAMERA_CALIBRATION_STATUS_MID"));
     assert!(out.contains("typedef uint8_t camera_app_CameraMode_t;"));
     assert!(out.contains("#define CAMERA_APP_CAMERA_MODE_STANDBY  ((camera_app_CameraMode_t)0)"));
     assert!(out.contains("#define CAMERA_APP_CAMERA_MODE_FAULT  ((camera_app_CameraMode_t)4)"));
@@ -394,14 +387,7 @@ fn cfs_rust_codegen_geometry_msgs() {
 
     assert!(out.starts_with(&format!("// {}\n", synapse_codegen_cfs::GENERATED_BANNER)));
 
-    // All 14 stamped messages get MID consts
-    for (name, mid) in STAMPED_HEX {
-        let screaming = to_screaming_snake(name);
-        assert!(
-            out.contains(&format!("pub const {}_MID: u16 = {};", screaming, mid)),
-            "missing Rust MID const for {name}"
-        );
-    }
+    assert!(!out.contains("// Message IDs"));
 
     // All are telemetry
     assert!(out.contains("pub cfs_header: cfs_sys::CFE_MSG_TelemetryHeader_t,"));
@@ -432,9 +418,9 @@ fn cfs_rust_codegen_std_msgs() {
 fn cfs_rust_codegen_command_telemetry_and_table() {
     let opts = RustOptions::default();
     let out = synapse_codegen_cfs::generate_rust(&read_and_parse("cfs_patterns.syn"), &opts);
-    assert!(out.contains("pub const SET_MODE_MID: u16 = 0x1880;"));
+    assert!(!out.contains("SET_MODE_MID"));
     assert!(out.contains("pub const SET_MODE_CC: u16 = 1;"));
-    assert!(out.contains("pub const NAV_STATE_MID: u16 = 0x0801;"));
+    assert!(!out.contains("NAV_STATE_MID"));
     assert!(out.contains("pub struct NavConfig {"));
     assert!(out.contains("pub struct SetMode {"));
     assert!(out.contains("pub struct NavState {"));
@@ -452,14 +438,14 @@ fn cfs_rust_codegen_camera_msgs() {
     let opts = RustOptions::default();
     let out = synapse_codegen_cfs::generate_rust(&read_and_parse("camera_msgs.syn"), &opts);
     assert!(out.contains("use crate::std_msgs;"));
-    assert!(out.contains("pub const SET_CAMERA_MODE_MID: u16 = 0x1880;"));
-    assert!(out.contains("pub const SET_EXPOSURE_MID: u16 = 0x1880;"));
-    assert!(out.contains("pub const UPDATE_INTRINSICS_MID: u16 = 0x1880;"));
+    assert!(!out.contains("SET_CAMERA_MODE_MID"));
+    assert!(!out.contains("SET_EXPOSURE_MID"));
+    assert!(!out.contains("UPDATE_INTRINSICS_MID"));
     assert!(out.contains("pub const SET_CAMERA_MODE_CC: u16 = 1;"));
     assert!(out.contains("pub const SET_EXPOSURE_CC: u16 = 2;"));
     assert!(out.contains("pub const UPDATE_INTRINSICS_CC: u16 = 3;"));
-    assert!(out.contains("pub const CAMERA_STATUS_MID: u16 = 0x0881;"));
-    assert!(out.contains("pub const CAMERA_CALIBRATION_STATUS_MID: u16 = 0x0882;"));
+    assert!(!out.contains("CAMERA_STATUS_MID"));
+    assert!(!out.contains("CAMERA_CALIBRATION_STATUS_MID"));
     assert!(out.contains("pub type CameraMode = u8;"));
     assert!(out.contains("pub const CAMERA_MODE_STANDBY: CameraMode = 0;"));
     assert!(out.contains("pub const CAMERA_MODE_FAULT: CameraMode = 4;"));
@@ -725,50 +711,3 @@ fn main() {{
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-fn to_screaming_snake(name: &str) -> String {
-    let mut out = String::new();
-    for (i, ch) in name.chars().enumerate() {
-        if ch.is_uppercase() && i > 0 {
-            out.push('_');
-        }
-        out.push(ch.to_ascii_uppercase());
-    }
-    out
-}
-
-/// All 14 stamped messages with their C MID strings (U suffix).
-const STAMPED_MIDS: &[(&str, &str)] = &[
-    ("AccelStamped", "0x0800U"),
-    ("AccelWithCovarianceStamped", "0x0801U"),
-    ("InertiaStamped", "0x0802U"),
-    ("PointStamped", "0x0803U"),
-    ("PolygonStamped", "0x0804U"),
-    ("PoseArray", "0x0805U"),
-    ("PoseStamped", "0x0806U"),
-    ("PoseWithCovarianceStamped", "0x0807U"),
-    ("QuaternionStamped", "0x0808U"),
-    ("TransformStamped", "0x0809U"),
-    ("TwistStamped", "0x080AU"),
-    ("TwistWithCovarianceStamped", "0x080BU"),
-    ("Vector3Stamped", "0x080CU"),
-    ("WrenchStamped", "0x080DU"),
-];
-
-/// Same messages with Rust hex literals (no U suffix).
-const STAMPED_HEX: &[(&str, &str)] = &[
-    ("AccelStamped", "0x0800"),
-    ("AccelWithCovarianceStamped", "0x0801"),
-    ("InertiaStamped", "0x0802"),
-    ("PointStamped", "0x0803"),
-    ("PolygonStamped", "0x0804"),
-    ("PoseArray", "0x0805"),
-    ("PoseStamped", "0x0806"),
-    ("PoseWithCovarianceStamped", "0x0807"),
-    ("QuaternionStamped", "0x0808"),
-    ("TransformStamped", "0x0809"),
-    ("TwistStamped", "0x080A"),
-    ("TwistWithCovarianceStamped", "0x080B"),
-    ("Vector3Stamped", "0x080C"),
-    ("WrenchStamped", "0x080D"),
-];

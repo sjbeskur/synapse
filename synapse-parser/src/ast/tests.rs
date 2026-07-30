@@ -44,6 +44,7 @@ fn import_path() {
 // ── Const ────────────────────────────────────────────────
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn const_float() {
     let f = p("const PI: f64 = 3.14");
     assert_eq!(
@@ -194,7 +195,7 @@ fn message_optional_field() {
 
 #[test]
 fn command_packet_kind() {
-    let f = p("@mid(0x1880)\ncommand SetMode { mode: u8 }");
+    let f = p("commands NavCommands { @cc(1) command SetMode { mode: u8 } }");
     let Item::Command(m) = &f.items[0] else {
         panic!()
     };
@@ -204,8 +205,35 @@ fn command_packet_kind() {
 }
 
 #[test]
+fn command_group_assigns_logical_topic_to_nested_commands() {
+    let f = p("commands CameraCommands {
+            @cc(1)
+            command SetMode { mode: u8 }
+
+            @cc(2)
+            command SetExposure { exposure_us: u32 }
+        }");
+    assert_eq!(f.items.len(), 2);
+
+    let Item::Command(set_mode) = &f.items[0] else {
+        panic!()
+    };
+    assert_eq!(set_mode.command_group.as_deref(), Some("CameraCommands"));
+    assert_eq!(set_mode.name, "SetMode");
+
+    let Item::Command(set_exposure) = &f.items[1] else {
+        panic!()
+    };
+    assert_eq!(
+        set_exposure.command_group.as_deref(),
+        Some("CameraCommands")
+    );
+    assert_eq!(set_exposure.name, "SetExposure");
+}
+
+#[test]
 fn telemetry_packet_kind() {
-    let f = p("@mid(0x0801)\ntelemetry NavState { x: f64 }");
+    let f = p("telemetry NavState { x: f64 }");
     let Item::Telemetry(m) = &f.items[0] else {
         panic!()
     };
@@ -282,24 +310,24 @@ fn hex_literal_uppercase() {
 
 #[test]
 fn attribute_hex_on_message() {
-    let f = p("@mid(0x0801)\nmessage NavTlm { x: f64 }");
+    let f = p("@tag(0x0801)\nmessage NavTlm { x: f64 }");
     let Item::Message(m) = &f.items[0] else {
         panic!()
     };
     assert_eq!(m.attrs.len(), 1);
-    assert_eq!(m.attrs[0].name, "mid");
+    assert_eq!(m.attrs[0].name, "tag");
     assert_eq!(m.attrs[0].value, Literal::Hex(0x0801));
 }
 
 #[test]
 fn attribute_ident_ref() {
-    let f = p("@mid(nav_app::NAV_TLM_MID)\nmessage NavTlm { x: f64 }");
+    let f = p("@tag(nav_app::ROUTE_TAG)\nmessage NavTlm { x: f64 }");
     let Item::Message(m) = &f.items[0] else {
         panic!()
     };
     assert_eq!(
         m.attrs[0].value,
-        Literal::Ident(vec!["nav_app".into(), "NAV_TLM_MID".into()])
+        Literal::Ident(vec!["nav_app".into(), "ROUTE_TAG".into()])
     );
 }
 

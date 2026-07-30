@@ -5,7 +5,7 @@ fn parses(rule: Rule, input: &str) -> bool {
     SynapseParser::parse(rule, input)
         .map(|mut p| {
             p.next()
-                .map_or(false, |pair| pair.as_span().end() == input.len())
+                .is_some_and(|pair| pair.as_span().end() == input.len())
         })
         .unwrap_or(false)
 }
@@ -205,15 +205,26 @@ fn message_basic() {
 }
 
 #[test]
-fn command_basic() {
-    assert!(parses_file("@mid(0x1880)\ncommand SetMode { mode: u8 }"));
+fn top_level_command_is_rejected() {
+    assert!(!parses_file("command SetMode { mode: u8 }"));
+}
+
+#[test]
+fn command_group_basic() {
+    assert!(parses_file(
+        "commands CameraCommands {
+            @cc(1)
+            command SetMode { mode: u8 }
+
+            @cc(2)
+            command SetExposure { exposure_us: u32 }
+        }"
+    ));
 }
 
 #[test]
 fn telemetry_basic() {
-    assert!(parses_file(
-        "@mid(0x0801)\ntelemetry NavState { x: f64  y: f64 }"
-    ));
+    assert!(parses_file("telemetry NavState { x: f64  y: f64 }"));
 }
 
 #[test]

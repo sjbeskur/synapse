@@ -1,25 +1,45 @@
 # Mission Demo
 
-This example shows Synapse checking several cFS app message definitions as one mission-visible packet set.
+This example shows Synapse checking several reusable cFS app message
+definitions against mission-owned topic assignments.
 
-The useful part is not generated code. The useful part is validation across app boundaries:
+The `.syn` files define logical command groups and telemetry topics without
+deployment MIDs. `mission.toml` assigns cFE topic IDs:
 
-- Telemetry MIDs must be unique across the checked mission roots.
-- Command MID/CC pairs must be unique across the checked mission roots.
-- A shared command MID is allowed when command codes differ.
+- Command and telemetry topic IDs are unique within their respective spaces.
+- Every logical topic must have an assignment.
+- Function codes are unique within a command topic.
+- Stale or mistyped manifest entries fail validation.
 
 ## Valid Mission Check
 
 ```bash
 cargo run -p cfs-synapse -- check \
+  --manifest examples/mission-demo/mission.toml \
   examples/mission-demo/syn/nav_app.syn \
   examples/mission-demo/syn/camera_app.syn \
   examples/mission-demo/syn/payload_app.syn
 ```
 
-That command validates three app roots plus their shared `mission_ids.syn` import.
+That command validates three app roots and every assignment in the mission
+manifest.
 
-## Intentional Telemetry Conflict
+## Generate The cFE Routing Header
+
+```bash
+cargo run -p cfs-synapse -- routes \
+  --manifest examples/mission-demo/mission.toml \
+  -o /tmp/synapse-mission-topics.h \
+  examples/mission-demo/syn/nav_app.syn \
+  examples/mission-demo/syn/camera_app.syn \
+  examples/mission-demo/syn/payload_app.syn
+```
+
+The generated header maps each topic ID through
+`CFE_PLATFORM_CMD_TOPICID_TO_MIDV` or
+`CFE_PLATFORM_TLM_TOPICID_TO_MIDV`.
+
+## Intentional Telemetry Topic Conflict
 
 ```bash
 cargo run -p cfs-synapse -- check \
@@ -30,10 +50,10 @@ cargo run -p cfs-synapse -- check \
 Expected result:
 
 ```text
-duplicate telemetry MID `0x0801`
+duplicate telemetry topic `nav_app::NavState`
 ```
 
-## Intentional Command Conflict
+## Intentional Function-Code Conflict
 
 ```bash
 cargo run -p cfs-synapse -- check \
@@ -44,7 +64,7 @@ cargo run -p cfs-synapse -- check \
 Expected result:
 
 ```text
-duplicate command MID/CC pair `0x1881`/`1`
+duplicate function code `1` for command topic `camera_app::CameraCommands`
 ```
 
 ## Generate HTML Documentation
@@ -56,7 +76,8 @@ cargo run -p cfs-synapse -- doc -o /tmp/synapse-mission-docs \
   examples/mission-demo/syn/payload_app.syn
 ```
 
-That writes `/tmp/synapse-mission-docs/index.html` with packet IDs, command codes, fields, types, and doc comments.
+That writes `/tmp/synapse-mission-docs/index.html` with logical topics, command
+codes, fields, types, and doc comments.
 
 ## Export A Packet Registry
 

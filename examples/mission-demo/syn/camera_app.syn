@@ -1,7 +1,5 @@
 namespace camera_app
 
-import "mission_ids.syn"
-
 /// Camera operating mode.
 enum u8 CameraMode {
     /// Camera is powered but idle.
@@ -21,7 +19,6 @@ struct ExposureConfig {
 }
 
 /// Camera health and frame counter.
-@mid(demo_mission_ids::CAMERA_STATUS_TLM_MID)
 telemetry CameraStatus {
     /// Current camera mode.
     mode: CameraMode
@@ -31,19 +28,20 @@ telemetry CameraStatus {
     detector_temp_c: f32
 }
 
-/// Request a new camera mode.
-@mid(demo_mission_ids::CAMERA_CMD_MID)
-@cc(demo_mission_ids::CAMERA_SET_MODE_CC)
-command SetCameraMode {
-    /// Requested mode.
-    mode: CameraMode
-}
+/// Commands routed to the camera application.
+commands CameraCommands {
+    /// Request a new camera mode.
+    @cc(1)
+    command SetCameraMode {
+        /// Requested mode.
+        mode: CameraMode
+    }
 
-/// Request a new exposure configuration.
-@mid(demo_mission_ids::CAMERA_CMD_MID)
-@cc(demo_mission_ids::CAMERA_SET_EXPOSURE_CC)
-command SetExposure {
-    /// New exposure settings.
-    config: ExposureConfig
-}
+    /// Request a new exposure configuration.
+    @cc(2)
+    command SetExposure {
+        /// New exposure settings.
+        config: ExposureConfig
+    }
 
+}

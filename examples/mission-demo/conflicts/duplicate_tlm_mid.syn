@@ -1,11 +1,7 @@
-namespace payload_conflict
+namespace nav_app
 
-import "../syn/mission_ids.syn"
-
-/// Intentionally reuses nav_app::NavState telemetry MID.
-@mid(demo_mission_ids::NAV_STATE_TLM_MID)
-telemetry PayloadStatus {
+/// Intentionally redeclares the nav_app::NavState logical topic.
+telemetry NavState {
     /// Payload temperature.
     temperature_c: f32
 }
-

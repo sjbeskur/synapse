@@ -8,25 +8,14 @@ mod validate;
 
 use synapse_parser::ast::SynFile;
 
-pub use c::{
-    generate_c, try_generate_c, try_generate_c_with_constants,
-    try_generate_c_with_constants_and_options, try_generate_c_with_options,
-};
+pub use c::{generate_c, try_generate_c, try_generate_c_with_constants};
 use constants::const_context;
 pub use error::CodegenError;
-pub use rust::{
-    generate_rust, try_generate_rust, try_generate_rust_with_constants,
-    try_generate_rust_with_constants_and_options, try_generate_rust_with_options,
-};
+pub use rust::{generate_rust, try_generate_rust, try_generate_rust_with_constants};
 pub use types::{
-    CfsOptions, CfsPacket, CfsPacketKind, GENERATED_BANNER, MsgIdLayout, PREAMBLE,
-    ResolvedConstants, RustOptions,
+    CfsPacket, CfsPacketKind, GENERATED_BANNER, PREAMBLE, ResolvedConstants, RustOptions,
 };
-pub use validate::{
-    collect_cfs_packets_with_constants, collect_cfs_packets_with_constants_and_options,
-    validate_cfs, validate_cfs_with_constants, validate_cfs_with_constants_and_options,
-    validate_cfs_with_options,
-};
+pub use validate::{collect_cfs_packets_with_constants, validate_cfs, validate_cfs_with_constants};
 
 /// Resolve this file's integer constants, including aliases to visible imported constants.
 pub fn resolve_integer_constants(

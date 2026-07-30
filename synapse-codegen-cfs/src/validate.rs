@@ -8,10 +8,10 @@ use synapse_parser::ast::{
 use crate::{
     constants::{ConstContext, const_context, resolve_literal_to_u64},
     error::CodegenError,
-    types::{CfsOptions, CfsPacket, CfsPacketKind, MsgIdLayout, ResolvedConstants},
+    types::{CfsPacket, CfsPacketKind, ResolvedConstants},
     util::{
-        enum_defs, file_namespace, find_cc_attr, find_mid_attr, literal_cc_str, literal_mid_str,
-        primitive_name, type_expr_display,
+        enum_defs, file_namespace, find_cc_attr, find_mid_attr, literal_cc_str, primitive_name,
+        type_expr_display,
     },
 };
 
@@ -20,67 +20,35 @@ pub fn validate_cfs(file: &SynFile) -> Result<(), CodegenError> {
     validate_cfs_with_constants(file, &ResolvedConstants::new())
 }
 
-/// Validate that a parsed Synapse file is supported by cFS code generation.
-pub fn validate_cfs_with_options(file: &SynFile, options: &CfsOptions) -> Result<(), CodegenError> {
-    validate_cfs_with_constants_and_options(file, &ResolvedConstants::new(), options)
-}
-
 /// Validate cFS code generation support with additional imported constants available.
 pub fn validate_cfs_with_constants(
     file: &SynFile,
     imported_constants: &ResolvedConstants,
 ) -> Result<(), CodegenError> {
-    validate_cfs_with_constants_and_options(file, imported_constants, &CfsOptions::default())
-}
-
-/// Validate cFS code generation support with imported constants and options.
-pub fn validate_cfs_with_constants_and_options(
-    file: &SynFile,
-    imported_constants: &ResolvedConstants,
-    options: &CfsOptions,
-) -> Result<(), CodegenError> {
     let constants = const_context(file, imported_constants);
-    validate_supported(file, &constants, options)
+    validate_supported(file, &constants)
 }
 
 /// Collect resolved cFS packet facts with additional imported constants available.
 ///
-/// This validates packet-level attributes needed to resolve MIDs and command
-/// codes, but it does not validate fields or other cFS ABI constraints.
+/// This validates logical-topic and command-code attributes, but it does not
+/// validate fields or other cFS ABI constraints.
 pub fn collect_cfs_packets_with_constants(
     file: &SynFile,
     imported_constants: &ResolvedConstants,
 ) -> Result<Vec<CfsPacket>, CodegenError> {
-    collect_cfs_packets_with_constants_and_options(file, imported_constants, &CfsOptions::default())
-}
-
-/// Collect resolved cFS packet facts with imported constants and options.
-pub fn collect_cfs_packets_with_constants_and_options(
-    file: &SynFile,
-    imported_constants: &ResolvedConstants,
-    options: &CfsOptions,
-) -> Result<Vec<CfsPacket>, CodegenError> {
     let constants = const_context(file, imported_constants);
-    collect_cfs_packets(file, &constants, options)
+    collect_cfs_packets(file, &constants)
 }
 
 pub(crate) fn validate_supported(
     file: &SynFile,
     constants: &ConstContext<'_>,
-    options: &CfsOptions,
 ) -> Result<(), CodegenError> {
     let enum_defs = enum_defs(file);
-    let mut telemetry_mids = HashMap::new();
-    let mut command_codes = HashMap::new();
+    let mut command_group_codes = HashMap::new();
     for item in &file.items {
-        validate_item(
-            item,
-            constants,
-            options,
-            &enum_defs,
-            &mut telemetry_mids,
-            &mut command_codes,
-        )?;
+        validate_item(item, constants, &enum_defs, &mut command_group_codes)?;
     }
     Ok(())
 }
@@ -88,35 +56,53 @@ pub(crate) fn validate_supported(
 fn validate_item(
     item: &Item,
     constants: &ConstContext<'_>,
-    options: &CfsOptions,
     enum_defs: &HashMap<String, &EnumDef>,
-    telemetry_mids: &mut HashMap<u64, String>,
-    command_codes: &mut HashMap<(u64, u64), String>,
+    command_group_codes: &mut HashMap<(String, u64), String>,
 ) -> Result<(), CodegenError> {
     match item {
         Item::Struct(s) | Item::Table(s) => validate_plain_item(s, enum_defs),
-        Item::Command(m) | Item::Telemetry(m) => validate_packet_item(
-            m,
-            constants,
-            options,
-            enum_defs,
-            telemetry_mids,
-            command_codes,
-        ),
+        Item::Command(m) => validate_command_item(m, constants, enum_defs, command_group_codes),
+        Item::Telemetry(m) => validate_telemetry_item(m, enum_defs),
         _ => validate_non_packet_item(item),
     }
 }
 
-fn validate_packet_item(
-    packet: &MessageDef,
+fn validate_command_item(
+    command: &MessageDef,
     constants: &ConstContext<'_>,
-    options: &CfsOptions,
     enum_defs: &HashMap<String, &EnumDef>,
-    telemetry_mids: &mut HashMap<u64, String>,
-    command_codes: &mut HashMap<(u64, u64), String>,
+    command_group_codes: &mut HashMap<(String, u64), String>,
 ) -> Result<(), CodegenError> {
-    validate_packet(packet, constants, options, telemetry_mids, command_codes)?;
-    validate_fields(&packet.name, &packet.fields, enum_defs)
+    reject_message_id(&command.name, &command.attrs)?;
+    let group =
+        command
+            .command_group
+            .as_ref()
+            .ok_or_else(|| CodegenError::CommandGroupRequired {
+                packet: command.name.clone(),
+            })?;
+    let cc = required_command_code(command)?;
+    let cc_value = resolved_command_code(command, cc, constants)?;
+    let key = (group.clone(), cc_value);
+    if let Some(first_packet) = command_group_codes.insert(key, command.name.clone()) {
+        return Err(CodegenError::DuplicateCommandCodeInGroup {
+            group: group.clone(),
+            cc: literal_cc_str(cc, constants),
+            first_packet,
+            second_packet: command.name.clone(),
+        });
+    }
+
+    validate_fields(&command.name, &command.fields, enum_defs)
+}
+
+fn validate_telemetry_item(
+    telemetry: &MessageDef,
+    enum_defs: &HashMap<String, &EnumDef>,
+) -> Result<(), CodegenError> {
+    reject_message_id(&telemetry.name, &telemetry.attrs)?;
+    reject_telemetry_command_code(telemetry)?;
+    validate_fields(&telemetry.name, &telemetry.fields, enum_defs)
 }
 
 fn validate_non_packet_item(item: &Item) -> Result<(), CodegenError> {
@@ -143,13 +129,12 @@ fn validate_plain_item(
 fn collect_cfs_packets(
     file: &SynFile,
     constants: &ConstContext<'_>,
-    options: &CfsOptions,
 ) -> Result<Vec<CfsPacket>, CodegenError> {
     let namespace = file_namespace(file);
     let mut packets = Vec::new();
 
     for item in &file.items {
-        if let Some(packet) = cfs_packet_from_item(item, constants, options, &namespace)? {
+        if let Some(packet) = cfs_packet_from_item(item, constants, &namespace)? {
             packets.push(packet);
         }
     }
@@ -160,23 +145,32 @@ fn collect_cfs_packets(
 fn cfs_packet_from_item(
     item: &Item,
     constants: &ConstContext<'_>,
-    options: &CfsOptions,
     namespace: &[String],
 ) -> Result<Option<CfsPacket>, CodegenError> {
     let (Item::Command(packet) | Item::Telemetry(packet)) = item else {
         return Ok(None);
     };
 
-    let mid = required_mid(packet)?;
-    let mid_value = resolved_mid(packet, mid, constants)?;
-    validate_mid_range(packet, mid_value, mid, constants, options)?;
+    reject_message_id(&packet.name, &packet.attrs)?;
     let (kind, cc_value) = collected_packet_kind(packet, constants)?;
+    let topic = match packet.kind {
+        PacketKind::Command => {
+            packet
+                .command_group
+                .clone()
+                .ok_or_else(|| CodegenError::CommandGroupRequired {
+                    packet: packet.name.clone(),
+                })?
+        }
+        PacketKind::Telemetry => packet.name.clone(),
+        PacketKind::Message => unreachable!("legacy message items are not collected"),
+    };
 
     Ok(Some(CfsPacket {
         namespace: namespace.to_vec(),
         name: packet.name.clone(),
         kind,
-        mid: mid_value,
+        topic,
         cc: cc_value,
     }))
 }
@@ -258,22 +252,6 @@ fn enum_repr_range(repr: PrimitiveType) -> Option<(i64, i64)> {
         .find_map(|(ty, range)| (*ty == repr).then_some(*range))
 }
 
-fn required_mid(packet: &MessageDef) -> Result<&Literal, CodegenError> {
-    find_mid_attr(&packet.attrs).ok_or_else(|| CodegenError::MissingMid {
-        packet: packet.name.clone(),
-    })
-}
-
-fn resolved_mid(
-    packet: &MessageDef,
-    mid: &Literal,
-    constants: &ConstContext<'_>,
-) -> Result<u64, CodegenError> {
-    resolve_literal_to_u64(mid, constants).ok_or_else(|| CodegenError::MessageIdValueUnsupported {
-        packet: packet.name.clone(),
-    })
-}
-
 fn required_command_code(packet: &MessageDef) -> Result<&Literal, CodegenError> {
     find_cc_attr(&packet.attrs).ok_or_else(|| CodegenError::MissingCommandCode {
         packet: packet.name.clone(),
@@ -285,9 +263,18 @@ fn resolved_command_code(
     cc: &Literal,
     constants: &ConstContext<'_>,
 ) -> Result<u64, CodegenError> {
-    resolve_literal_to_u64(cc, constants).ok_or_else(|| CodegenError::CommandCodeValueUnsupported {
-        packet: packet.name.clone(),
-    })
+    let value = resolve_literal_to_u64(cc, constants).ok_or_else(|| {
+        CodegenError::CommandCodeValueUnsupported {
+            packet: packet.name.clone(),
+        }
+    })?;
+    if value > u16::MAX as u64 {
+        return Err(CodegenError::CommandCodeOutOfRange {
+            packet: packet.name.clone(),
+            value,
+        });
+    }
+    Ok(value)
 }
 
 fn required_command_code_value(
@@ -307,122 +294,8 @@ fn reject_telemetry_command_code(packet: &MessageDef) -> Result<(), CodegenError
     Ok(())
 }
 
-fn validate_packet(
-    packet: &MessageDef,
-    constants: &ConstContext<'_>,
-    options: &CfsOptions,
-    telemetry_mids: &mut HashMap<u64, String>,
-    command_codes: &mut HashMap<(u64, u64), String>,
-) -> Result<(), CodegenError> {
-    let (_, value) = validated_packet_mid(packet, constants, options)?;
-    validate_packet_command_code_shape(packet)?;
-    let cc_value = optional_command_code_value(packet, constants)?;
-    register_packet_mid(
-        packet,
-        constants,
-        telemetry_mids,
-        command_codes,
-        value,
-        cc_value,
-    )
-}
-
-fn validated_packet_mid<'a>(
-    packet: &'a MessageDef,
-    constants: &ConstContext<'_>,
-    options: &CfsOptions,
-) -> Result<(&'a Literal, u64), CodegenError> {
-    let mid = required_mid(packet)?;
-    let value = resolved_mid(packet, mid, constants)?;
-    validate_mid_range(packet, value, mid, constants, options)?;
-    Ok((mid, value))
-}
-
-fn validate_packet_command_code_shape(packet: &MessageDef) -> Result<(), CodegenError> {
-    match packet.kind {
-        PacketKind::Command => required_command_code(packet).map(|_| ()),
-        PacketKind::Telemetry => reject_telemetry_command_code(packet),
-        PacketKind::Message => Ok(()),
-    }
-}
-
-fn optional_command_code_value(
-    packet: &MessageDef,
-    constants: &ConstContext<'_>,
-) -> Result<Option<u64>, CodegenError> {
-    if packet.kind == PacketKind::Command {
-        return Ok(Some(required_command_code_value(packet, constants)?));
-    }
-    Ok(None)
-}
-
-fn register_packet_mid(
-    packet: &MessageDef,
-    constants: &ConstContext<'_>,
-    telemetry_mids: &mut HashMap<u64, String>,
-    command_codes: &mut HashMap<(u64, u64), String>,
-    value: u64,
-    cc_value: Option<u64>,
-) -> Result<(), CodegenError> {
-    if packet.kind == PacketKind::Command {
-        return register_command_mid(packet, constants, command_codes, value, cc_value);
-    }
-
-    if packet.kind == PacketKind::Telemetry {
-        return register_telemetry_mid(packet, constants, telemetry_mids, value);
-    }
-
-    Ok(())
-}
-
-fn register_command_mid(
-    packet: &MessageDef,
-    constants: &ConstContext<'_>,
-    command_codes: &mut HashMap<(u64, u64), String>,
-    value: u64,
-    cc_value: Option<u64>,
-) -> Result<(), CodegenError> {
-    let cc = required_command_code(packet).expect("command code was checked above");
-    let cc_value = cc_value.expect("command code value was checked above");
-    if let Some(first_packet) = command_codes.insert((value, cc_value), packet.name.clone()) {
-        return Err(CodegenError::DuplicateCommandCode {
-            mid: literal_mid_str(
-                required_mid(packet).expect("MID was checked above"),
-                constants,
-            ),
-            cc: literal_cc_str(cc, constants),
-            first_packet,
-            second_packet: packet.name.clone(),
-        });
-    }
-    Ok(())
-}
-
-fn register_telemetry_mid(
-    packet: &MessageDef,
-    constants: &ConstContext<'_>,
-    telemetry_mids: &mut HashMap<u64, String>,
-    value: u64,
-) -> Result<(), CodegenError> {
-    if let Some(first_packet) = telemetry_mids.insert(value, packet.name.clone()) {
-        return Err(CodegenError::DuplicateMid {
-            mid: literal_mid_str(
-                required_mid(packet).expect("MID was checked above"),
-                constants,
-            ),
-            first_packet,
-            second_packet: packet.name.clone(),
-        });
-    }
-    Ok(())
-}
-
 fn validate_plain_item_attrs(item_name: &str, attrs: &[Attribute]) -> Result<(), CodegenError> {
-    if find_mid_attr(attrs).is_some() {
-        return Err(CodegenError::MessageIdUnsupported {
-            item: item_name.to_string(),
-        });
-    }
+    reject_message_id(item_name, attrs)?;
     if find_cc_attr(attrs).is_some() {
         return Err(CodegenError::CommandCodeUnsupported {
             item: item_name.to_string(),
@@ -431,32 +304,12 @@ fn validate_plain_item_attrs(item_name: &str, attrs: &[Attribute]) -> Result<(),
     Ok(())
 }
 
-fn validate_mid_range(
-    packet: &MessageDef,
-    value: u64,
-    mid: &Literal,
-    constants: &ConstContext<'_>,
-    options: &CfsOptions,
-) -> Result<(), CodegenError> {
-    if options.msgid_layout == MsgIdLayout::Opaque {
-        return Ok(());
-    }
-
-    let command_bit_set = (value & 0x1000) != 0;
-    let expected = match packet.kind {
-        PacketKind::Command if !command_bit_set => Some("command MID with bit 0x1000 set"),
-        PacketKind::Telemetry if command_bit_set => Some("telemetry MID with bit 0x1000 clear"),
-        PacketKind::Command | PacketKind::Telemetry | PacketKind::Message => None,
-    };
-
-    if let Some(expected) = expected {
-        return Err(CodegenError::MidRangeMismatch {
-            packet: packet.name.clone(),
-            mid: literal_mid_str(mid, constants),
-            expected,
+fn reject_message_id(item_name: &str, attrs: &[Attribute]) -> Result<(), CodegenError> {
+    if find_mid_attr(attrs).is_some() {
+        return Err(CodegenError::MessageIdUnsupported {
+            item: item_name.to_string(),
         });
     }
-
     Ok(())
 }
 

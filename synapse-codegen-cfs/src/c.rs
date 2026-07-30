@@ -6,31 +6,22 @@ use synapse_parser::ast::{
 use crate::{
     constants::{ConstContext, const_context},
     error::CodegenError,
-    types::{CfsOptions, PREAMBLE, ResolvedConstants},
+    types::{PREAMBLE, ResolvedConstants},
     util::{
-        emit_doc_lines, emit_indented_doc_lines, find_cc_attr, find_mid_attr, import_c_header,
-        literal_cc_str, literal_mid_str, packet_is_command, packet_item, to_screaming_snake,
-        typed_literal_str,
+        emit_doc_lines, emit_indented_doc_lines, find_cc_attr, import_c_header, literal_cc_str,
+        packet_is_command, to_screaming_snake, typed_literal_str,
     },
     validate::validate_supported,
 };
 
-/// Generate a NASA cFS C header (`*_msg.h` + MID `#define`s) from a parsed Synapse file.
+/// Generate a NASA cFS C header from a parsed Synapse file.
 pub fn generate_c(file: &SynFile) -> String {
     try_generate_c(file).expect("parsed Synapse file is not supported by cFS C codegen")
 }
 
-/// Try to generate a NASA cFS C header (`*_msg.h` + MID `#define`s`) from a parsed Synapse file.
+/// Try to generate a NASA cFS C header from a parsed Synapse file.
 pub fn try_generate_c(file: &SynFile) -> Result<String, CodegenError> {
     try_generate_c_with_constants(file, &ResolvedConstants::new())
-}
-
-/// Try to generate a NASA cFS C header with validation options.
-pub fn try_generate_c_with_options(
-    file: &SynFile,
-    options: &CfsOptions,
-) -> Result<String, CodegenError> {
-    try_generate_c_with_constants_and_options(file, &ResolvedConstants::new(), options)
 }
 
 /// Try to generate a C header with additional imported constants available for attributes.
@@ -38,17 +29,8 @@ pub fn try_generate_c_with_constants(
     file: &SynFile,
     imported_constants: &ResolvedConstants,
 ) -> Result<String, CodegenError> {
-    try_generate_c_with_constants_and_options(file, imported_constants, &CfsOptions::default())
-}
-
-/// Try to generate a C header with imported constants and validation options.
-pub fn try_generate_c_with_constants_and_options(
-    file: &SynFile,
-    imported_constants: &ResolvedConstants,
-    options: &CfsOptions,
-) -> Result<String, CodegenError> {
     let constants = const_context(file, imported_constants);
-    validate_supported(file, &constants, options)?;
+    validate_supported(file, &constants)?;
     let mut out = String::from(PREAMBLE);
     emit_c_imports(file, &mut out);
     emit_items(file, &mut out, &constants);
@@ -69,36 +51,9 @@ fn emit_c_imports(file: &SynFile, out: &mut String) {
 }
 
 fn emit_items(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
-    emit_mid_defines(file, out, constants);
     emit_command_code_defines(file, out, constants);
     emit_enum_aliases(file, out);
     emit_c_types(file, out);
-}
-
-fn emit_mid_defines(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {
-    let defines: Vec<_> = file
-        .items
-        .iter()
-        .filter_map(|item| mid_define(item, constants))
-        .collect();
-
-    if defines.is_empty() {
-        return;
-    }
-
-    out.push_str("/* Message IDs */\n");
-    for define in defines {
-        out.push_str(&define);
-    }
-    out.push('\n');
-}
-
-fn mid_define(item: &Item, constants: &ConstContext<'_>) -> Option<String> {
-    let packet = packet_item(item)?;
-    let mid = find_mid_attr(&packet.attrs)?;
-    let define_name = to_screaming_snake(&packet.name);
-    let mid_str = literal_mid_str(mid, constants);
-    Some(format!("#define {}_MID  {}\n", define_name, mid_str))
 }
 
 fn emit_command_code_defines(file: &SynFile, out: &mut String, constants: &ConstContext<'_>) {

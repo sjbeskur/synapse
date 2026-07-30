@@ -51,7 +51,7 @@ COMMENT = _{ "//" ~ !"/" ~ (!("\n" | "\r") ~ ANY)* }
 doc_comment = @{ "///" ~ (!("\n" | "\r") ~ ANY)* }
 doc_block   =  { doc_comment+ }
 
-// Attribute: @name(literal)  e.g. @mid(0x0801)  @mid(nav_app::NAV_TLM_MID)
+// Attribute: @name(literal)  e.g. @cc(1)  @tag(nav_app::ROUTE_TAG)
 attribute = { "@" ~ ident ~ "(" ~ literal ~ ")" }
 
 // ============================================================
@@ -66,7 +66,7 @@ item = _{
   | const_decl
   | enum_def
   | struct_def
-  | command_def
+  | command_group_def
   | telemetry_def
   | table_def
   | message_def
@@ -102,6 +102,9 @@ enum_variant = { doc_block? ~ ident ~ ("=" ~ int_lit)? }
 
 // struct — plain data aggregate (no implied serialization)
 struct_def  = { doc_block? ~ attribute* ~ "struct"  ~ ident ~ "{" ~ field* ~ "}" }
+
+// commands — one logical cFS command topic containing commands selected by function code
+command_group_def = { doc_block? ~ "commands" ~ ident ~ "{" ~ command_def* ~ "}" }
 
 // command — cFS Software Bus command packet
 command_def = { doc_block? ~ attribute* ~ "command" ~ ident ~ "{" ~ field* ~ "}" }

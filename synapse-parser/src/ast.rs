@@ -64,6 +64,10 @@ pub struct StructDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageDef {
     pub kind: PacketKind,
+    /// Logical command topic containing this command.
+    ///
+    /// Telemetry and legacy messages do not belong to command groups.
+    pub command_group: Option<String>,
     pub name: String,
     pub fields: Vec<FieldDef>,
     pub doc: Vec<String>,
@@ -143,7 +147,7 @@ pub enum Literal {
     Ident(ScopedIdent),
 }
 
-/// A declaration attribute, e.g. `@mid(0x0801)`.
+/// A declaration attribute, e.g. `@cc(1)`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub name: String,

@@ -163,4 +163,5 @@ field: Type = value
 field?: Type = value
 ```
 
-In `0.2.x`, cFS codegen rejects optional markers, defaults, dynamic arrays, and non-string bounded arrays until concrete ABI and initializer semantics exist.
+In `0.3.x`, cFS codegen rejects optional markers, defaults, dynamic arrays, and
+non-string bounded arrays until concrete ABI and initializer semantics exist.

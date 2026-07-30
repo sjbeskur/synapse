@@ -11,7 +11,7 @@ Use this checklist before tagging a Synapse release.
   git log --oneline origin/main..HEAD
   ```
 
-- Confirm README, `docs/roadmap-0.2.md`, and examples describe the current behavior.
+- Confirm README, `docs/roadmap-0.3.md`, and examples describe the current behavior.
 - Confirm the release version matches the intended tag.
 
 ## 2. Update Versions

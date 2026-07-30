@@ -7,6 +7,7 @@ pub enum Error {
     Parse(Box<pest::error::Error<synapse_parser::synapse::Rule>>),
     Codegen(synapse_codegen_cfs::CodegenError),
     Import(String),
+    Manifest(String),
     Mission(String),
 }
 
@@ -14,7 +15,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Io(_) | Error::Parse(_) | Error::Codegen(_) => fmt_source_error(self, f),
-            Error::Import(_) | Error::Mission(_) => fmt_message_error(self, f),
+            Error::Import(_) | Error::Manifest(_) | Error::Mission(_) => fmt_message_error(self, f),
         }
     }
 }
@@ -24,13 +25,15 @@ fn fmt_source_error(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Error::Io(e) => write!(f, "{e}"),
         Error::Parse(e) => write!(f, "{e}"),
         Error::Codegen(e) => write!(f, "{e}"),
-        Error::Import(_) | Error::Mission(_) => unreachable!("non-source error"),
+        Error::Import(_) | Error::Manifest(_) | Error::Mission(_) => {
+            unreachable!("non-source error")
+        }
     }
 }
 
 fn fmt_message_error(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match error {
-        Error::Import(e) | Error::Mission(e) => write!(f, "{e}"),
+        Error::Import(e) | Error::Manifest(e) | Error::Mission(e) => write!(f, "{e}"),
         Error::Io(_) | Error::Parse(_) | Error::Codegen(_) => unreachable!("non-message error"),
     }
 }
@@ -41,7 +44,7 @@ impl StdError for Error {
             Error::Io(e) => Some(e),
             Error::Parse(e) => Some(e),
             Error::Codegen(e) => Some(e),
-            Error::Import(_) | Error::Mission(_) => None,
+            Error::Import(_) | Error::Manifest(_) | Error::Mission(_) => None,
         }
     }
 }

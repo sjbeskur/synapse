@@ -14,8 +14,9 @@ cmake --build /tmp/synapse-cpp-canary-build
 
 The interesting pieces are:
 
-- `syn/mission_ids.syn`: mission-owned MID and command-code constants.
-- `syn/demo_msgs.syn`: imports those constants in `@mid(...)` and `@cc(...)`.
+- `syn/demo_msgs.syn`: declares a logical command group and telemetry topic.
+- Command codes remain schema-owned through `@cc(...)`; the mission manifest
+  owns the runtime cFS message IDs.
 - `CMakeLists.txt`: regenerates `generated/*.h` with the `synapse` CLI.
 - `include/cfe.h`: minimal cFS packet-header stub for standalone compilation.
 - `src/main.cpp`: includes and uses the generated C headers from C++.

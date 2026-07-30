@@ -14,6 +14,19 @@ Synapse is a small interface definition language and code generator for NASA cFS
 
 Install `synapse` with the path that best fits your environment.
 
+For the complete 0.3 workflow—logical topics, `mission.toml`, validation,
+packet bindings, and cFE routing-header generation—follow the
+[Synapse 0.3 Quick Start](docs/quick-start.md).
+
+For a tested cFS 7.0.1 application build, telemetry publication, and command
+dispatch through `CI_LAB`, follow the
+[cFS Integration Test](docs/cfs-integration-test.md).
+
+Synapse 0.3 targets standard, non-EDS cFS builds. C headers are the primary
+flight-integration output. Rust generation provides ABI-compatible
+`#[repr(C)]` message types only; Synapse does not wrap cFE runtime APIs or
+provide a Rust cFS application framework.
+
 For C developers and CI jobs without Rust installed, download a prebuilt binary from GitHub Releases:
 
 ```bash
@@ -88,16 +101,18 @@ CFS_ROOT=/path/to/cFS just test-cfs
 
 ```bash
 synapse check <file.syn> [more-roots.syn ...]
+synapse check --manifest <mission.toml> <file.syn> [more-roots.syn ...]
 synapse doc [-o <out-dir>] <file.syn> [more-roots.syn ...]
 synapse registry [--format <json|csv>] [-o <file>] <file.syn> [more-roots.syn ...]
+synapse routes --manifest <mission.toml> [-o <header.h>] <file.syn> [more-roots.syn ...]
 synapse --lang <c|rust> [-o <out-dir>] <file.syn>
 synapse generate --lang <c|rust> [-o <out-dir>] <file.syn>
 ```
 
-- `check` validates input roots, their import graphs, and cFS codegen support without writing generated output. Multiple roots are checked together for mission-wide telemetry MID and command MID/CC conflicts.
-- `doc` generates static HTML documentation for input roots, their import graphs, packet IDs, command codes, fields, types, and doc comments. Without `-o`, HTML is written to stdout; with `-o`, Synapse writes `index.html`.
+- `check` validates input roots, their import graphs, and cFS codegen support without writing generated output. Add `--manifest` to require complete, correctly typed logical-topic assignments.
+- `doc` generates static HTML documentation for input roots, their import graphs, logical topics, command codes, fields, types, and doc comments. Without `-o`, HTML is written to stdout; with `-o`, Synapse writes `index.html`.
 - `registry` emits a validated packet registry for input roots as JSON or CSV. Without `-o`, registry output is written to stdout.
-- `--msgid-layout <ccsds-v1|opaque>` selects MID validation policy. The default is `ccsds-v1`, which validates the legacy `0x1000` command/telemetry bit. Use `opaque` for missions where cFE treats MsgIds as mission-owned opaque values.
+- `routes` validates a mission TOML file and generates a standalone cFE routing header. It never modifies the manifest.
 - `--lang c` generates a cFS C header (`.h`) that includes `cfe.h`.
 - `--lang rust` generates Rust `#[repr(C)]` bindings (`.rs`) that reference `cfs_sys` header types by default.
 - Without `-o`, generated code is written to stdout.
@@ -110,7 +125,7 @@ Rust projects can use Synapse from `build.rs` without requiring the `synapse` ex
 
 ```toml
 [build-dependencies]
-cfs-synapse = "0.1"
+cfs-synapse = "0.3"
 ```
 
 ```rust
@@ -124,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The library facade also exposes `check_path`, `check_str`, `generate_rust_file`, `generate_file`, `generate_files`, `generate_path`, and `generate_str` for custom build flows. Path-based generation validates the import graph rooted at the input file. Use `generate_files` when a build should emit the root file plus its transitive imports.
+The library facade also exposes `check_path`, `check_str`, `generate_file`, `generate_files`, `generate_path`, and `generate_str` for custom build flows. Mission-aware builds can load `MissionManifest` and call `check_paths_with_manifest`, `generate_routing_header`, or `write_routing_header`. Path-based generation validates the import graph rooted at the input file. Use `generate_files` when a build should emit the root file plus its transitive imports.
 
 ## Mental Model
 
@@ -150,28 +165,51 @@ enum u8 CameraMode {
 
 Represented enums generate fixed-width C/Rust aliases and named constants. The explicit representation is what makes them safe to use in generated cFS packet and table fields.
 
-Use `command` for Software Bus packets sent to an app:
+Use a `commands` group for Software Bus packets sharing one logical command
+topic. Function codes select the command within that topic:
 
 ```syn
-@mid(0x1880)
-@cc(1)
-command SetMode {
-    mode: CameraMode
+commands CameraCommands {
+    @cc(1)
+    command SetMode {
+        mode: CameraMode
+    }
 }
 ```
 
-Generated commands place `CFE_MSG_CommandHeader_t` first and emit both `_MID` and `_CC` constants. Commands may share a command MID when their literal command codes differ.
+Generated commands place `CFE_MSG_CommandHeader_t` first and emit `_CC`
+constants. The mission manifest assigns the group topic ID.
 
 Use `telemetry` for Software Bus packets published by an app:
 
 ```syn
-@mid(0x0801)
 telemetry NavState {
     position: geometry_msgs::Point
 }
 ```
 
-Generated telemetry packets place `CFE_MSG_TelemetryHeader_t` first.
+Generated telemetry packets place `CFE_MSG_TelemetryHeader_t` first. Each
+telemetry declaration is one logical topic assigned by the mission manifest.
+
+Keep deployment routing in a mission TOML file:
+
+```toml
+version = 1
+
+[topics.command]
+"camera_app::CameraCommands" = 0x82
+
+[topics.telemetry]
+"nav_app::NavState" = 0x83
+```
+
+Validate and generate the cFE mapping header:
+
+```bash
+synapse check --manifest mission.toml schemas/camera.syn schemas/nav.syn
+synapse routes --manifest mission.toml -o generated/mission_topics.h \
+  schemas/camera.syn schemas/nav.syn
+```
 
 Use `table` for cFS Table Services payload data:
 
@@ -194,19 +232,22 @@ The cFS generator currently emits:
 - `const` declarations as C `#define`s or Rust `pub const`s.
 - Represented enums such as `enum u8 CameraMode` as fixed-width type aliases and constants.
 - `struct` and `table` definitions as plain data structs.
-- `command` and `telemetry` definitions as Software Bus packet structs with cFS headers.
-- Required `@mid(...)` attributes as message ID constants.
+- `command` definitions nested inside logical `commands` groups and `telemetry`
+  definitions as Software Bus packet structs with cFS headers.
 - Required command `@cc(...)` attributes as command-code constants.
+- Mission manifests and generated routing headers for deployment-owned cFE
+  topic IDs and MsgId mappings.
 - Fixed arrays, bounded strings, and namespaced type references.
 
 Enums need an explicit integer representation when used in generated cFS fields, for example `enum u8 CameraMode`. Unrepresented enums, unbounded strings, optional field markers, field defaults, dynamic arrays, and non-string bounded arrays are parsed but rejected by cFS codegen until concrete ABI and initializer semantics exist. Prefer represented enums, fixed arrays, and bounded strings for generated packet payloads.
 
-See `docs/language.md` for the current language status and `0.1.x` review checklist.
+See `docs/language.md` for the current language status and support boundaries.
 See `docs/types.md` for the supported type forms and generated C/Rust mappings.
 See `docs/one-pager.md` for a short explanation of why Synapse is relevant.
 See `docs/mission.md` for the mission-wide validation and registry concept.
 See `docs/registry.md` for the JSON and CSV packet registry schema.
 See `docs/roadmap-0.2.md` for the `0.2.x` language, validation, and output status.
+See `docs/roadmap-0.3.md` for the `0.3.x` routing and cFS compatibility scope.
 
 ## Documentation Comments
 
@@ -244,13 +285,16 @@ See `docs/examples.md` for links to all sample `.syn` files and checked-in gener
 - `cfs-synapse-parser`: Pest grammar and AST builder for `.syn`
 - `cfs-synapse-codegen-cfs`: C and Rust cFS code generation
 - `cfs-synapse`: public library facade and `synapse` CLI binary
-- `cfs-sys`: bindgen wrapper for selected cFS types
+- `cfs-sys`: bindgen wrapper for the selected cFS header types used by
+  generated Rust ABI bindings; it does not wrap cFE runtime APIs
 - `synapse-integration-tests`: sample `.syn` files and generated-code checks
 - `generated`: checked-in generated geometry examples
 
 ## Release Model
 
-CI runs the core test suite on pull requests and pushes to `main`. Pushing a tag like `v0.1.0` runs the release workflow, builds release binaries, and attaches platform archives to the GitHub Release.
+CI runs the core test suite on pull requests and pushes to `main`. Pushing a
+semantic-version tag runs the release workflow, builds release binaries, and
+attaches platform archives to the GitHub Release.
 
 Crates.io publishing is gated behind the repository variable `PUBLISH_CRATE=true` and the `CARGO_REGISTRY_TOKEN` secret. When enabled, the release workflow publishes `cfs-synapse-parser`, `cfs-synapse-codegen-cfs`, and then `cfs-synapse`.
 

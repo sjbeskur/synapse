@@ -1,9 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::{
-    CfsOptions, Error, ImportGraph, ParsedUnit, RegistryFormat, format_mid,
-    imported_constants_for_unit,
-};
+use crate::{Error, ImportGraph, ParsedUnit, RegistryFormat, imported_constants_for_unit};
 
 #[derive(Debug, Clone)]
 struct RegistryPacket {
@@ -11,7 +8,7 @@ struct RegistryPacket {
     namespace: Vec<String>,
     name: String,
     kind: synapse_codegen_cfs::CfsPacketKind,
-    mid: u64,
+    topic: String,
     cc: Option<u64>,
 }
 
@@ -19,9 +16,8 @@ pub(crate) fn render_registry(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
     format: RegistryFormat,
-    options: &CfsOptions,
 ) -> Result<String, Error> {
-    let packets = collect_registry_packets(graph, units_by_path, options)?;
+    let packets = collect_registry_packets(graph, units_by_path)?;
     Ok(match format {
         RegistryFormat::Json => render_registry_json(&packets),
         RegistryFormat::Csv => render_registry_csv(&packets),
@@ -31,15 +27,13 @@ pub(crate) fn render_registry(
 fn collect_registry_packets(
     graph: &ImportGraph,
     units_by_path: &HashMap<PathBuf, &ParsedUnit>,
-    options: &CfsOptions,
 ) -> Result<Vec<RegistryPacket>, Error> {
     let mut packets = Vec::new();
     for unit in &graph.units {
         let imported_constants = imported_constants_for_unit(unit, units_by_path)?;
-        let unit_packets = synapse_codegen_cfs::collect_cfs_packets_with_constants_and_options(
+        let unit_packets = synapse_codegen_cfs::collect_cfs_packets_with_constants(
             &unit.file,
             &imported_constants,
-            options,
         )?;
 
         packets.extend(unit_packets.into_iter().map(|packet| RegistryPacket {
@@ -47,7 +41,7 @@ fn collect_registry_packets(
             namespace: packet.namespace,
             name: packet.name,
             kind: packet.kind,
-            mid: packet.mid,
+            topic: packet.topic,
             cc: packet.cc,
         }));
     }
@@ -78,10 +72,9 @@ fn render_registry_json(packets: &[RegistryPacket]) -> String {
             "      \"source\": {},\n",
             json_string(&packet.source.display().to_string())
         ));
-        out.push_str(&format!("      \"mid\": {},\n", packet.mid));
         out.push_str(&format!(
-            "      \"mid_hex\": {},\n",
-            json_string(&format_mid(packet.mid))
+            "      \"topic\": {},\n",
+            json_string(&packet.topic)
         ));
         match packet.cc {
             Some(cc) => out.push_str(&format!("      \"cc\": {cc}\n")),
@@ -94,7 +87,7 @@ fn render_registry_json(packets: &[RegistryPacket]) -> String {
 }
 
 fn render_registry_csv(packets: &[RegistryPacket]) -> String {
-    let mut out = String::from("namespace,name,qualified_name,kind,source,mid,mid_hex,cc\n");
+    let mut out = String::from("namespace,name,qualified_name,kind,source,topic,cc\n");
     for packet in packets {
         let fields = [
             packet.namespace.join("::"),
@@ -102,8 +95,7 @@ fn render_registry_csv(packets: &[RegistryPacket]) -> String {
             registry_packet_name(packet),
             registry_kind(packet.kind).to_string(),
             packet.source.display().to_string(),
-            packet.mid.to_string(),
-            format_mid(packet.mid),
+            packet.topic.clone(),
             packet.cc.map(|cc| cc.to_string()).unwrap_or_default(),
         ];
         out.push_str(

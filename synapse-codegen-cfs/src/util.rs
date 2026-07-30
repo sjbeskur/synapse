@@ -37,13 +37,6 @@ pub(crate) fn find_cc_attr(attrs: &[Attribute]) -> Option<&Literal> {
     attrs.iter().find(|a| a.name == "cc").map(|a| &a.value)
 }
 
-pub(crate) fn packet_item(item: &Item) -> Option<&MessageDef> {
-    match item {
-        Item::Command(m) | Item::Telemetry(m) => Some(m),
-        _ => None,
-    }
-}
-
 pub(crate) fn packet_is_command(m: &MessageDef) -> bool {
     match m.kind {
         PacketKind::Command => true,
@@ -109,19 +102,6 @@ pub(crate) fn emit_indented_doc_lines(out: &mut String, doc: &[String]) {
         } else {
             out.push_str(&format!("    /// {line}\n"));
         }
-    }
-}
-
-/// Format a MID literal for a C `#define` line.
-pub(crate) fn literal_mid_str(lit: &Literal, constants: &ConstContext<'_>) -> String {
-    match lit {
-        Literal::Hex(n) => format!("0x{:04X}U", n),
-        Literal::Int(n) => format!("{}U", n),
-        Literal::Ident(segs) if constants.is_local_bare_ident(segs) => segs.join("::"),
-        Literal::Ident(segs) => resolve_ident_to_u64(segs, constants)
-            .map(|value| format!("0x{:04X}U", value))
-            .unwrap_or_else(|| segs.join("::")),
-        other => literal_str(other),
     }
 }
 

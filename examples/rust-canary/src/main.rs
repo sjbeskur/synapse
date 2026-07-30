@@ -12,13 +12,6 @@ pub mod cfs_sys {
     }
 }
 
-pub mod mission_ids {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/generated/mission_ids.rs"
-    ));
-}
-
 pub mod demo_msgs {
     #![allow(unused_imports)]
 
@@ -53,12 +46,7 @@ fn main() {
         temperature_c: 21.5,
     };
 
-    println!(
-        "SetSensorMode MID: 0x{:04X}",
-        demo_msgs::SET_SENSOR_MODE_MID
-    );
     println!("SetSensorMode CC: {}", demo_msgs::SET_SENSOR_MODE_CC);
-    println!("SensorStatus MID: 0x{:04X}", demo_msgs::SENSOR_STATUS_MID);
     println!(
         "packet sizes: command={} telemetry={}",
         std::mem::size_of::<demo_msgs::SetSensorMode>(),

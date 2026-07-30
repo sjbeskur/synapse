@@ -22,3 +22,4 @@ synapse-parser      = { workspace = true }
 synapse-codegen-cfs = { workspace = true }
 clap                = { version = "4", features = ["derive"] }
 pest                = "2"
+toml                = "1"

@@ -4,14 +4,17 @@
 
 Synapse is a message-definition and code-generation utility for NASA cFS missions. It lets teams describe commands, telemetry, tables, constants, enums, and shared structs once in a small `.syn` IDL, then generate language bindings for mission software.
 
-The bigger value is mission-wide validation: Synapse can check multiple app message definitions together and catch Software Bus conflicts, such as duplicate telemetry MIDs or duplicate command MID/CC pairs, before those conflicts reach integration.
+The bigger value is mission-wide validation: Synapse can check multiple app
+message definitions together and catch Software Bus conflicts, such as
+duplicate logical telemetry topics or duplicate command topic/function-code
+pairs, before those conflicts reach integration.
 
 ## Why It Matters
 
 cFS missions are built from many apps that communicate through Software Bus messages. Those messages are mission contracts. When the contracts are spread across handwritten headers, duplicated constants, and language-specific glue, integration risk grows quietly:
 
-- Two apps can accidentally reuse the same telemetry MID.
-- Two commands can collide on the same MID/CC pair.
+- Two apps can accidentally declare the same logical telemetry topic.
+- Two commands can collide on the same topic/function-code pair.
 - C and Rust bindings can drift from the same intended packet layout.
 - Parsed-but-unsupported IDL features can create misleading ABI assumptions.
 - Mission ID ownership can become tribal knowledge instead of checked policy.
@@ -23,11 +26,12 @@ Synapse makes these contracts explicit, generated, and checkable.
 - Parses `.syn` message definition files.
 - Supports namespaces, imports, constants, represented enums, structs, tables, commands, and telemetry.
 - Generates cFS-compatible C headers.
-- Generates Rust `#[repr(C)]` bindings.
+- Generates Rust `#[repr(C)]` ABI bindings without wrapping cFE runtime APIs.
 - Validates cFS ABI hazards before code generation.
-- Resolves local and imported constants used in `@mid(...)` and `@cc(...)`.
+- Resolves local and imported constants used in `@cc(...)`.
 - Checks multiple app roots together with `synapse check`.
-- Detects duplicate telemetry MIDs and duplicate command MID/CC pairs across a mission-visible set.
+- Detects duplicate telemetry topics and duplicate command
+  topic/function-code pairs across a mission-visible set.
 - Generates static HTML documentation with `synapse doc`.
 - Emits JSON and CSV packet registries with `synapse registry`.
 
@@ -46,15 +50,20 @@ That mission-wide question is the important one. It turns Synapse from a code ge
 ## Example
 
 ```bash
-synapse check mission/nav_app.syn mission/camera_app.syn mission/payload_app.syn
+synapse check --manifest mission.toml \
+  mission/nav_app.syn mission/camera_app.syn mission/payload_app.syn
 ```
 
-This validates each app root, loads its imports, resolves packet IDs, builds an internal mission registry, and reports conflicts like:
+This validates each app root, loads its imports, and checks the human-owned
+topic assignments. It reports problems such as:
 
 ```text
-duplicate telemetry MID `0x0801`
-duplicate command MID/CC pair `0x1881`/`1`
+missing telemetry topic assignment for `nav_app::NavState`
+duplicate function code `1` for command topic `camera_app::CameraCommands`
 ```
+
+`synapse routes --manifest mission.toml ...` then generates the cFE topic-ID
+and MsgId mapping header.
 
 ## Why It Is Relevant
 
@@ -65,12 +74,14 @@ That makes Synapse useful for:
 - cFS apps written in different languages.
 - Missions that need generated C headers plus Rust bindings.
 - Early integration checks before app code lands together.
-- Cleaner ownership of mission IDs and packet contracts.
+- Cleaner ownership of mission topic IDs and packet contracts.
 - Safer evolution of commands and telemetry across releases.
 
 ## Why Not CSV?
 
-CSV can work for a narrow packet registry: packet name, MID, command code, and maybe a few flat fields. It is familiar, easy to edit, and can be useful as an export format.
+CSV can work for a narrow packet registry: packet name, logical topic, command
+code, and maybe a few flat fields. It is familiar, easy to edit, and can be
+useful as an export format.
 
 But CSV becomes strained when it is used as the source of truth for message definitions:
 
@@ -86,14 +97,10 @@ Synapse uses an IDL because cFS messages are structured contracts, not just rows
 
 ## Near-Term Direction
 
-The current `0.2.x` work focuses on safety and clarity:
-
-- Stronger validation for supported cFS ABI features.
-- More examples and canaries for C, C++, Rust, and mission-level checks.
-- Mission-wide registry checks through `synapse check`.
-- Machine-readable registry export for downstream databases, ICD tooling, and reports.
-- Searchable documentation output generated from `.syn` files and doc comments.
-- Future mission manifests for repeatable roots and MID range ownership.
+The `0.3.x` line focuses on mission-owned routing and standard, non-EDS cFS
+integration. C is the primary flight-integration output; Rust remains an ABI
+binding target rather than a cFS application framework. EDS integration is a
+candidate for `0.4.x`.
 
 See [`registry.md`](registry.md) for the current JSON and CSV packet registry schema.
 

@@ -1,6 +1,8 @@
 # Publishing Synapse
 
-This document describes the release process for Synapse. The user-facing crates.io package is `cfs-synapse`, which installs the `synapse` binary. The repo also publishes two support crates:
+This document describes the release process for Synapse. The user-facing
+crates.io package is `cfs-synapse`, which installs the `synapse` binary. The
+repository publishes these three crates:
 
 - `cfs-synapse-parser`
 - `cfs-synapse-codegen-cfs`
@@ -15,7 +17,7 @@ A release has two distribution channels:
 - GitHub Release archive for users who want a prebuilt Linux `synapse` binary.
 - crates.io packages for Rust users who want `cargo install cfs-synapse` or a `build.rs` dependency.
 
-The GitHub release workflow is triggered by pushing a tag like `v0.1.0`.
+The GitHub release workflow is triggered by pushing a semantic-version tag.
 
 ## Required GitHub Settings
 
@@ -86,8 +88,8 @@ Wait for the crates.io index to update between steps. If a later crate cannot fi
 Create and push a version tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 The release workflow will:

@@ -1,0 +1,11 @@
+version = 1
+
+[topics.command]
+"camera_app::CameraCommands" = 0x82
+"nav_app::NavCommands" = 0x81
+"payload_app::PayloadCommands" = 0x83
+
+[topics.telemetry]
+"camera_app::CameraStatus" = 0x82
+"nav_app::NavState" = 0x81
+"payload_app::PayloadStatus" = 0x83
