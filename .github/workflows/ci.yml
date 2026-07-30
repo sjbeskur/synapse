@@ -23,3 +23,6 @@ jobs:
 
       - name: Test core workspace
         run: cargo test -p cfs-synapse-parser -p cfs-synapse-codegen-cfs -p cfs-synapse -p synapse-integration-tests
+
+      - name: Test VS Code grammar
+        run: npm test --prefix vscode-synapse

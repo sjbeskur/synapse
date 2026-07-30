@@ -4,6 +4,9 @@
   "description": "Syntax highlighting for Synapse .syn files.",
   "version": "0.1.0",
   "publisher": "synapse",
+  "scripts": {
+    "test": "node test/grammar.test.mjs"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
