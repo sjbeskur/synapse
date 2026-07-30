@@ -18,6 +18,10 @@ For the complete 0.3 workflow—logical topics, `mission.toml`, validation,
 packet bindings, and cFE routing-header generation—follow the
 [Synapse 0.3 Quick Start](docs/quick-start.md).
 
+For a tested cFS 7.0.1 application build, telemetry publication, and command
+dispatch through `CI_LAB`, follow the
+[cFS Integration Test](docs/cfs-integration-test.md).
+
 Synapse 0.3 targets standard, non-EDS cFS builds. C headers are the primary
 flight-integration output. Rust generation provides ABI-compatible
 `#[repr(C)]` message types only; Synapse does not wrap cFE runtime APIs or

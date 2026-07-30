@@ -223,4 +223,6 @@ cFE MsgId values remain mission/platform-owned and are not registry fields.
 
 For more detail, see the [language reference](language.md), the
 [mission-routing guide](mission.md), and the
-[routing architecture](routing-model.md).
+[routing architecture](routing-model.md). To reproduce the real cFS 7.0.1
+command and telemetry validation, follow the
+[cFS integration test](cfs-integration-test.md).
